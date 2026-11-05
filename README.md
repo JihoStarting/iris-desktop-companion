@@ -148,6 +148,8 @@ copy .env.example .env
 
 Lalu buka `.env` dan isi dengan nilai milikmu sendiri. **Jangan pernah meng-commit file `.env`.**
 
+Panduan langkah demi langkah: [docs/QUICKSTART.md](docs/QUICKSTART.md)
+
 ---
 
 ## Konfigurasi
