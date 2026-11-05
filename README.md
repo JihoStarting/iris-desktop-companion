@@ -11,7 +11,7 @@
 
 IRIS adalah teman AI yang tinggal di desktop. Wajahnya avatar 3D (VRM) yang melayang di atas aplikasi lain, suaranya dari VOICEVOX, dan tangannya adalah **Hermes Agent** yang bisa mengerjakan tugas nyata di komputer (membuka folder, mencari file, menjalankan perintah, mencari di web).
 
-Proyek ini dibuat sebagai proyek pribadi dan masih terus dikembangkan. Catatan pengembangan lengkap (termasuk hasil uji tiap versi) ada di folder [`docs/`](docs/).
+Proyek ini dibuat sebagai proyek pribadi dan masih terus dikembangkan. Catatan pengembangan ada di bagian Dokumentasi di bawah.
 
 ---
 
@@ -301,7 +301,6 @@ Menemukan celah keamanan? Mohon jangan buka issue publik; hubungi pemilik reposi
 ├── LICENSE                  # lisensi (hak cipta dilindungi, hanya untuk dilihat)
 ├── README.md                # dokumen ini
 ├── IrisLauncher-src/        # kode sumber peluncur (C# dan PowerShell)
-└── docs/                    # catatan pengembangan dan referensi sistem
     └── iris-companion-gabungan.md
 ```
 
@@ -342,10 +341,7 @@ Untuk diagnosis lebih lanjut, buka DevTools dengan `Ctrl+Alt+D` dan cek tab Cons
 
 ## Dokumentasi
 
-Catatan pengembangan lengkap ada di folder [`docs/`](docs/):
-
-- [`iris-companion-gabungan.md`](docs/iris-companion-gabungan.md): satu dokumen gabungan overlay dan Hermes, berisi roadmap, referensi sistem, riwayat versi, dan hasil uji
-
+Roadmap, riwayat versi, dan hasil uji dicatat langsung di README ini.
 ---
 
 ## Lisensi
