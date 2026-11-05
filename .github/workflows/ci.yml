@@ -1,0 +1,31 @@
+﻿name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  cek-sintaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Cek sintaks Python
+        run: python -m py_compile server.py iris_web.py buat_klip_vrma.py cek-cancel-hermes.py
+
+      - name: Cek sintaks JavaScript
+        run: |
+          node --check main.js
+          node --check preload.js
+
+      - name: Cek package.json valid
+        run: node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"
