@@ -302,9 +302,7 @@ Menemukan celah keamanan? Mohon jangan buka issue publik; hubungi pemilik reposi
 ├── README.md                # dokumen ini
 ├── IrisLauncher-src/        # kode sumber peluncur (C# dan PowerShell)
 └── docs/                    # catatan pengembangan dan referensi sistem
-    ├── iris-companion-gabungan.md
-    ├── iris-system.md
-    └── roadmap-ai-companion.md
+    └── iris-companion-gabungan.md
 ```
 
 ---
@@ -346,9 +344,7 @@ Untuk diagnosis lebih lanjut, buka DevTools dengan `Ctrl+Alt+D` dan cek tab Cons
 
 Catatan pengembangan lengkap ada di folder [`docs/`](docs/):
 
-- [`iris-companion-gabungan.md`](docs/iris-companion-gabungan.md): dokumen gabungan overlay dan Hermes, berisi roadmap, riwayat versi, dan hasil uji
-- [`iris-system.md`](docs/iris-system.md): referensi sistem Hermes
-- [`roadmap-ai-companion.md`](docs/roadmap-ai-companion.md): roadmap pendamping AI desktop
+- [`iris-companion-gabungan.md`](docs/iris-companion-gabungan.md): satu dokumen gabungan overlay dan Hermes, berisi roadmap, referensi sistem, riwayat versi, dan hasil uji
 
 ---
 
