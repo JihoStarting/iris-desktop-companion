@@ -1,0 +1,50 @@
+{
+ "angguk": {
+  "file": "angguk.vrma",
+  "emo": [
+   "happy",
+   "neutral",
+   "idle"
+  ],
+  "big": false,
+  "speed": 1,
+  "fi": 0.35,
+  "fo": 0.45
+ },
+ "geleng": {
+  "file": "geleng.vrma",
+  "emo": [
+   "angry"
+  ],
+  "big": false,
+  "speed": 1,
+  "fi": 0.35,
+  "fo": 0.45
+ },
+ "miring": {
+  "file": "miring.vrma",
+  "emo": [
+   "surprised",
+   "shy",
+   "neutral",
+   "idle"
+  ],
+  "big": false,
+  "speed": 1,
+  "fi": 0.4,
+  "fo": 0.5
+ },
+ "tunduk": {
+  "file": "tunduk.vrma",
+  "emo": [
+   "sad",
+   "shy",
+   "neutral",
+   "idle"
+  ],
+  "big": false,
+  "speed": 1,
+  "fi": 0.5,
+  "fo": 0.7
+ }
+}

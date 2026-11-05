@@ -1,0 +1,38 @@
+# Secrets
+.env
+*.key
+*.pem
+
+# Dependencies & environment
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Data pribadi
+iris-history.json
+iris-memory.json
+
+# Logs & temp
+*.log
+*.rartemp
+__rar_*
+*.tmp
+
+# Arsip, binary, build
+*.rar
+*.zip
+*.7z
+*.exe
+dist/
+out/
+
+# Aset dan screenshot (cek lisensi dulu sebelum dilepas dari daftar ini)
+assets/
+screens/
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

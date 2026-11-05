@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>AI Companion - Tes</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; background: #1b1b22; color: #eee; }
+  #status { font-size: 13px; opacity: .7; margin-bottom: 8px; }
+  #log { height: 380px; overflow-y: auto; background: #24242e; border-radius: 10px; padding: 12px; }
+  .user { text-align: right; margin: 8px 0; color: #9ecbff; }
+  .bubble { background: #34344a; border-radius: 12px; padding: 8px 12px; margin: 8px 0; max-width: 85%; }
+  .bubble small { display: block; opacity: .55; margin-top: 4px; }
+  .err { color: #ff8a8a; font-size: 13px; margin: 6px 0; }
+  form { display: flex; gap: 8px; margin-top: 12px; }
+  input { flex: 1; padding: 10px; border-radius: 8px; border: 0; background: #2d2d3a; color: #eee; }
+  button { padding: 10px 14px; border-radius: 8px; border: 0; background: #5b6cff; color: #fff; cursor: pointer; }
+  button.sec { background: #44445a; }
+  #mouth { height: 6px; background: #5b6cff; width: 0; border-radius: 3px; margin-top: 8px; transition: width .05s; }
+</style>
+</head>
+<body>
+<h3>AI Companion - Tes Fase 1</h3>
+<div id="status">menyambung...</div>
+<div id="log"></div>
+<div id="mouth"></div>
+<form id="form">
+  <input id="input" placeholder="Ketik pesan lalu Enter..." autocomplete="off" autofocus>
+  <button type="submit">Kirim</button>
+  <button type="button" class="sec" id="stop">Stop</button>
+  <button type="button" class="sec" id="reset">Reset</button>
+</form>
+
+<script>
+const log = document.getElementById("log");
+const statusEl = document.getElementById("status");
+const mouth = document.getElementById("mouth");
+let ws;
+const queue = [];
+let playing = false;
+let audioCtx, analyser, rafId;
+
+function add(el) { log.appendChild(el); log.scrollTop = log.scrollHeight; }
+function addUser(t) { const d = document.createElement("div"); d.className = "user"; d.textContent = t; add(d); }
+function addErr(t) { const d = document.createElement("div"); d.className = "err"; d.textContent = t; add(d); }
+function addBubble(seg) {
+  const d = document.createElement("div"); d.className = "bubble";
+  d.textContent = seg.text;
+  const s = document.createElement("small");
+  s.textContent = `[${seg.emotion}] ${seg.jp || ""}`;
+  d.appendChild(s); add(d);
+}
+
+function ensureAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.connect(audioCtx.destination);
+  }
+  if (audioCtx.state === "suspended") audioCtx.resume();
+}
+
+function meter() {
+  const buf = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteTimeDomainData(buf);
+  let sum = 0;
+  for (const v of buf) { const x = (v - 128) / 128; sum += x * x; }
+  const rms = Math.sqrt(sum / buf.length);
+  mouth.style.width = Math.min(100, rms * 400) + "%";
+  rafId = requestAnimationFrame(meter);
+}
+
+async function playNext() {
+  if (playing) return;
+  const seg = queue.shift();
+  if (!seg) return;
+  playing = true;
+  addBubble(seg);
+  if (!seg.audio) { playing = false; return playNext(); }
+  try {
+    const bin = atob(seg.audio);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const buffer = await audioCtx.decodeAudioData(bytes.buffer);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(analyser);
+    src.onended = () => {
+      cancelAnimationFrame(rafId); mouth.style.width = "0";
+      playing = false; playNext();
+    };
+    currentSrc = src;
+    src.start();
+    meter();
+  } catch (e) { addErr("Gagal memutar audio: " + e); playing = false; playNext(); }
+}
+let currentSrc = null;
+
+function stopAll() {
+  queue.length = 0;
+  if (currentSrc) { try { currentSrc.onended = null; currentSrc.stop(); } catch {} currentSrc = null; }
+  cancelAnimationFrame(rafId); mouth.style.width = "0"; playing = false;
+}
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => statusEl.textContent = "tersambung";
+  ws.onclose = () => { statusEl.textContent = "terputus, mencoba lagi..."; setTimeout(connect, 2000); };
+  ws.onmessage = (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.type === "segment") { queue.push(m); playNext(); }
+    else if (m.type === "error") addErr(m.message);
+    else if (m.type === "done") statusEl.textContent = m.interrupted ? "tersambung (diinterupsi)" : "tersambung";
+  };
+}
+connect();
+
+document.getElementById("form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const input = document.getElementById("input");
+  const text = input.value.trim();
+  if (!text || ws.readyState !== 1) return;
+  ensureAudio(); stopAll();
+  addUser(text);
+  ws.send(JSON.stringify({ type: "user", text }));
+  statusEl.textContent = "menunggu balasan...";
+  input.value = "";
+});
+document.getElementById("stop").onclick = () => { stopAll(); ws.send(JSON.stringify({ type: "cancel" })); };
+document.getElementById("reset").onclick = () => { stopAll(); ws.send(JSON.stringify({ type: "reset" })); log.innerHTML = ""; };
+</script>
+</body>
+</html>

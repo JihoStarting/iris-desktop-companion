@@ -1,0 +1,6 @@
+# by: KangJiho
+fastapi>=0.110
+uvicorn[standard]>=0.29
+httpx>=0.27
+python-dotenv>=1.0   # server.py memuat .env lewat dotenv (dulu belum tercatat di sini)
+faster-whisper>=1.0   # opsional: hanya untuk mic / bicara langsung (Ctrl+Alt+G)
