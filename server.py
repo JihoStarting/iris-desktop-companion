@@ -1412,6 +1412,13 @@ STT_LANG = os.getenv("IRIS_STT_LANG", "id").strip() or None   # kosong = deteksi
 STT_DEVICE = os.getenv("IRIS_STT_DEVICE", "cpu").strip() or "cpu"
 STT_COMPUTE = os.getenv("IRIS_STT_COMPUTE", "int8").strip() or "int8"
 STT_MAX_BYTES = 3_000_000   # sekitar 90 detik WAV 16 kHz mono; overlay membatasi 30 detik
+# v65: akurasi pengenalan. beam_size lebih besar = lebih teliti (sedikit lebih lambat); initial_prompt memberi Whisper
+# daftar kata yang sering kamu ucapkan (nama dan kata perintah). Ganti isinya lewat IRIS_STT_PROMPT di .env (kosongkan = tanpa petunjuk).
+try:
+    STT_BEAM = max(1, min(10, int(os.getenv("IRIS_STT_BEAM", "5") or 5)))
+except ValueError:
+    STT_BEAM = 5
+STT_PROMPT = os.getenv("IRIS_STT_PROMPT", "Iris, Rover, Hermes, agen, agent, Chrome, Steam, buka, cari, carikan, cek, timer, pomodoro, tema, alarm.").strip() or None
 _stt_model = None
 _stt_lock: asyncio.Lock | None = None
 
@@ -1422,7 +1429,8 @@ def _stt_transcribe(wav: bytes) -> str:
         from faster_whisper import WhisperModel   # impor di sini: tanpa paketnya, server lain tetap jalan
         print(f"[{stamp()}] memuat model STT '{STT_MODEL_NAME}' ({STT_DEVICE}, {STT_COMPUTE})...", flush=True)
         _stt_model = WhisperModel(STT_MODEL_NAME, device=STT_DEVICE, compute_type=STT_COMPUTE)
-    segments, _info = _stt_model.transcribe(io.BytesIO(wav), language=STT_LANG, vad_filter=True, beam_size=1)
+    segments, _info = _stt_model.transcribe(io.BytesIO(wav), language=STT_LANG, vad_filter=True, beam_size=STT_BEAM,
+                                            initial_prompt=STT_PROMPT, condition_on_previous_text=False)
     return " ".join(sg.text.strip() for sg in segments).strip()
 
 

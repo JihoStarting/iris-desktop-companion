@@ -24,6 +24,7 @@ Proyek ini dibuat sebagai proyek pribadi dan masih terus dikembangkan.
 - Dipublikasikan di GitHub: 5 November 2026
 - Versi terbaru: v1.0.0 (peluncur `IrisLauncher.exe`)
 - Status: aktif dikembangkan sebagai proyek pribadi
+- Terakhir diperbarui: 6 November 2026 (penyetelan pengenalan suara dan perintah suara, lihat [Bicara lewat mikrofon](#bicara-lewat-mikrofon))
 
 Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan belum diuji penuh. Daftarnya ada di [Status pengujian](#status-pengujian).
 
@@ -42,6 +43,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - [Peluncur, cek kesehatan, dan layanan](#peluncur-cek-kesehatan-dan-layanan)
 - [Perintah chat](#perintah-chat)
 - [Pintasan keyboard](#pintasan-keyboard)
+- [Bicara lewat mikrofon](#bicara-lewat-mikrofon)
 - [Mini-browser `/chrome`](#mini-browser-chrome)
 - [Jembatan baca-saja untuk Hermes](#jembatan-baca-saja-untuk-hermes)
 - [Kemampuan Hermes Agent](#kemampuan-hermes-agent)
@@ -109,7 +111,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - **Terjemah layar**: teks Jepang di layar diucapkan dan diterjemahkan
 - **Tanya clipboard**: teks atau gambar di clipboard dikirim sebagai pertanyaan
 - **Komentar layar otomatis** (`/pantau`, ditandai 👁)
-- **Bicara lewat mikrofon** (STT, opsional) dengan faster-whisper
+- **Bicara lewat mikrofon** (STT, opsional) dengan faster-whisper. Model, bahasa, dan kosakata bantu bisa disetel lewat `.env`; ucapan yang diawali kata kerja aksi (mis. "Cek ...", "Cari ...") tetap dijalankan sebagai tugas walau Whisper menambahkan tanda tanya, dan jawaban singkat seperti "iya" atau "lanjut aja" setelah Iris menawarkan `/agen` menjalankan tugasnya. Lihat [Bicara lewat mikrofon](#bicara-lewat-mikrofon)
 - **Mode belajar bahasa Jepang** (`/belajar`): Iris memberi kalimat Jepang, kamu menebak arti atau mengulang ucapannya, lalu dikoreksi. Ada opsi menyerah untuk melihat jawaban
 - **Perintah aplikasi lokal** (`/lokal`): membuka aplikasi dari daftar putih yang ditetapkan di `main.js`
 
@@ -264,7 +266,8 @@ Semua pengaturan dibaca dari file `.env` (di folder proyek atau di folder user W
 | `IRIS_HISTORY_FILE`, `IRIS_MEMORY_FILE` | Ganti lokasi berkas riwayat dan memori |
 | `IRIS_SAVE_SCREEN=0` | Jangan sertakan screenshot terakhir ke Hermes |
 | `IRIS_MUTE_KEY` | Paksa kombinasi pintasan bisu sendiri |
-| `IRIS_STT_MODEL`, `IRIS_STT_LANG`, `IRIS_STT_DEVICE`, `IRIS_STT_COMPUTE` | Pengaturan faster-whisper |
+| `IRIS_STT_MODEL`, `IRIS_STT_LANG`, `IRIS_STT_DEVICE`, `IRIS_STT_COMPUTE` | Pengaturan faster-whisper (lihat [Bicara lewat mikrofon](#bicara-lewat-mikrofon)) |
+| `IRIS_STT_PROMPT` | Kosakata bantu untuk Whisper (nama dan istilah khusus, dipisah koma) supaya tidak salah dengar |
 | `IRIS_NEWTAB_URL` | Halaman awal mini-browser untuk akun tanpa link |
 | `IRIS_WEB_BRIDGE=1` | Nyalakan jembatan baca-saja (butuh `COMPANION_TOKEN`) |
 | `IRIS_BRIDGE_HOST`, `IRIS_BRIDGE_PORT` | Alamat jembatan baca-saja (port bawaan 8767) |
@@ -417,6 +420,29 @@ Klik kanan pada karakter untuk menu aksi cepat, dan gunakan ikon tray untuk peng
 
 ---
 
+## Bicara lewat mikrofon
+
+Opsional; butuh `pip install faster-whisper`. Klik ikon mik atau tekan `Ctrl+Alt+G`, ucapkan satu kalimat, lalu klik lagi (otomatis berhenti setelah 30 detik). Iris diam saat rekaman mulai supaya suaranya sendiri tidak ikut terekam. Pengenalan pertama lambat karena model diunduh dulu.
+
+| Variabel | Pilihan | Catatan |
+|---|---|---|
+| `IRIS_STT_MODEL` | `tiny`, `base` (bawaan), `small`, `medium` | Makin besar makin akurat tetapi makin lambat dan berat. `medium` sekitar 1,5 GB; kembalikan ke `small` bila terlalu lambat atau RAM sesak |
+| `IRIS_STT_LANG` | `id` (bawaan), `ja`, kosong | Kosong = deteksi otomatis. Bahasa dikunci agar tidak salah deteksi |
+| `IRIS_STT_DEVICE` | `cpu` (bawaan) | |
+| `IRIS_STT_COMPUTE` | `int8` (bawaan) | |
+| `IRIS_STT_PROMPT` | teks bebas | Nama dan istilah yang sering salah dengar (mis. nama aplikasi). Server juga menambahkan kata bantu bawaan seperti "agen", "agent", dan "carikan" |
+
+Tips akurasi: pakai model lebih besar, isi `IRIS_STT_PROMPT`, dan dekatkan mikrofon atau kurangi bising. Server memakai `vad_filter` dan tidak membawa teks sebelumnya ke pengenalan berikutnya untuk mengurangi kata karangan.
+
+Perintah suara:
+
+- Kalimat yang diawali kata kerja aksi (mis. "Cek brand ... itu apa?") dijalankan sebagai tugas walau Whisper menambahkan tanda tanya sendiri. Pertanyaan biasa tetap jadi obrolan.
+- Setelah Iris menawarkan `/agen` (mis. "Mau /agen buat cari info?"), ucapan "iya", "boleh", atau "lanjut aja" menjalankan tugas dengan ucapanmu sebelumnya sebagai topik. Tawaran berlaku sekitar 5 menit; "ya" saja tanpa tawaran tidak memicu apa pun.
+
+Batas: Whisper tetap bisa salah dengar total pada suara pelan atau bising, dan perintah yang salah dengar total tidak tertangkap. Cek hasil teksnya di chat (ditandai 🎤).
+
+---
+
 ## Mini-browser `/chrome`
 
 Panel browser kecil di samping karakter dengan **lima slot akun** yang masing-masing punya sesi login terpisah. Panel berjalan di proses terpisah dan tanpa akses ke fungsi Electron.
@@ -525,7 +551,8 @@ Fitur di bawah sudah ditulis tetapi **belum lulus uji penuh di PC**. Anggap eksp
 |---|---|
 | Gerak halus (pegas, crossfade) dan gerbang emosi ke klip | Belum dites visual |
 | Pikiran batin | Kode ditulis, belum dites dengan model dan suara asli |
-| Terjemah layar dan bicara lewat mikrofon (STT) | Belum diuji end-to-end |
+| Terjemah layar | Belum diuji end-to-end |
+| Bicara lewat mikrofon: penyetelan 6 Nov (model, kosakata bantu, perintah suara) | Perbaikan perilaku diuji dengan kalimat dari tangkapan layar; pemilik melaporkan tidak ada masalah. Akurasi tetap bergantung pada model dan mikrofon |
 | Mini-browser, fase 4 (pil akun, hemat RAM, tab diparkir) | Belum dites di Electron asli |
 | Jembatan baca-saja | Hanya diuji dengan klien tiruan |
 | Perbaikan v46 sampai v50 (jaga UI tetap di layar, panel pindah sisi, rambut dan bayangan setengah badan) | Belum dites |
@@ -624,6 +651,7 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 | Tombol Salin gambar gagal | Restart Iris. Handler mencoba tiga cara berurutan, termasuk lewat PowerShell |
 | Pintasan bisu tidak bekerja | Kombinasinya mungkin dipakai aplikasi lain. Terminal mencetak pintasan yang terdaftar; paksa sendiri lewat `IRIS_MUTE_KEY` |
 | Menu Keluar hanya menutup overlay | Overlay tidak dijalankan lewat peluncur (mis. `npm start`), atau peluncurnya belum versi terbaru. Bangun ulang `IrisLauncher.exe` dan mulai dari peluncur |
+| Whisper salah dengar nama atau perintah (mis. "agen" jadi "akun") | Naikkan `IRIS_STT_MODEL` (`small` atau `medium`), tambahkan kata itu ke `IRIS_STT_PROMPT`, dan dekatkan mikrofon. Lihat [Bicara lewat mikrofon](#bicara-lewat-mikrofon) |
 | Peluncur gagal di langkah WSL | Jalankan `iris-doctor.ps1` dan lihat log di `iris-start.log` |
 
 Untuk diagnosis lebih lanjut, jalankan overlay dengan `npm start`, buka DevTools dengan `Ctrl+Alt+D`, dan cek tab Console (DevTools tidak tersedia di versi rilis).
@@ -633,6 +661,7 @@ Untuk diagnosis lebih lanjut, jalankan overlay dengan `npm start`, buka DevTools
 ## Dokumentasi
 
 - [`docs/QUICKSTART.md`](docs/QUICKSTART.md): panduan mulai cepat dari nol sampai Iris menjawab
+- [`docs/iris-companion-gabungan.md`](docs/iris-companion-gabungan.md): dokumen gabungan overlay dan Hermes, berisi roadmap, referensi sistem, riwayat versi, dan hasil uji
 
 ---
 

@@ -2295,6 +2295,7 @@ const rootEl = document.getElementById('root');
 const logEl = document.getElementById('log');
 const logBody = document.getElementById('logBody');
 const explainChk = document.getElementById('explain');
+let irisReplyText = '';   // v65d: isi balasan Iris terakhir (kalau berisi /agen, jawaban "ya" berikutnya menjalankan tugasnya)
 let irisBlock = null;      // balasan Iris yang sedang disusun (satu kotak, banyak kalimat)
 const EXPLAIN_PREFIX = 'Jelaskan dengan detail tapi mudah dipahami, sekitar 5 sampai 8 kalimat. ' +
   'Tetap pakai format satu baris per kalimat: [emosi] kalimat Jepang ||| terjemahan Indonesia.\n\nPertanyaan: ';
@@ -2337,7 +2338,7 @@ function logAdd(cls, text) {
   return d;
 }
 function logUser(text, imgs) {
-  irisBlock = null;
+  irisBlock = null; irisReplyText = '';
   const d = logAdd('user', text);
   for (const url of (imgs || [])) {
     const im = document.createElement('img');
@@ -2426,6 +2427,7 @@ function onConfirmEnd(m) {   // server menutup kartu: replaced, cancelled, expir
 }
 function logErr(text) { irisBlock = null; addStamp(logAdd('err', text)); }
 function logIris(text) {
+  irisReplyText = (irisReplyText + ' ' + String(text || '')).slice(-800);
   if (!irisBlock) {
     irisBlock = document.createElement('div');
     irisBlock.className = 'msg iris';
@@ -2893,6 +2895,7 @@ function prefetchVoices() {
   for (const arr of Object.values(DRAG_VOICE)) arr.forEach((x) => jps.add(x[1]));
   HIT_VOICE.concat([HIT_SULK]).forEach((x) => jps.add(x[1]));   // v23
   ERR_JP.forEach((j) => jps.add(j));
+  Object.values(STT_VOICE).forEach((j) => jps.add(j));   // v65c
   const list = [...jps].filter((j) => !voiceCache.has(j));
   let i = 0;
   const next = () => {
@@ -3610,26 +3613,154 @@ function stopTalk() {
   r.stream.getTracks().forEach((t) => t.stop());   // mikrofon benar-benar dilepas
 }
 function toggleTalk() { if (rec) stopTalk(); else startTalk(); }
+const STT_VOICE = {   // v65c: kalimat tetap (Jepang untuk VOICEVOX); ikut di-prefetch supaya langsung bersuara tanpa menunggu server yang sedang sibuk mengenali suara
+  think: 'ちょっと待ってね、聞き取ってるよ。',
+  short: 'ちょっと短すぎたよ、もう一回お願い。',
+  miss: '聞き取れなかったよ。もう一回言ってくれる？',
+};
+let sttSentAt = 0;
 async function finishTalk(chunks, mime) {
   try {
     const { wav, seconds } = await blobToWav16k(new Blob(chunks, { type: mime || 'audio/webm' }));
-    if (seconds < REC_MIN_S) { showBubble('Terlalu singkat, coba lagi.', '', 'neutral'); hideBubbleLater(2500); return; }
-    showBubble('Iris cerna dulu suaranya...', '', 'neutral');
+    if (seconds < REC_MIN_S) { say('Terlalu singkat, coba lagi.', 'neutral', 2500, STT_VOICE.short, { ambient: true }); return; }
+    sttSentAt = Date.now();
+    say('Iris cerna dulu suaranya...', 'neutral', 3000, STT_VOICE.think, { ambient: true });   // v65c: sekarang bersuara
+    setTimeout(() => { if (sttSentAt && Date.now() - sttSentAt < 90000 && !playing) { showBubble('Iris cerna dulu suaranya...', STT_VOICE.think, 'neutral'); hideBubbleLater(30000); } }, 3200);   // masih mengenali: tampilkan lagi teksnya
     send({ type: 'stt', audio: await blobToBase64(new Blob([wav], { type: 'audio/wav' })) });
   } catch (e) { showError('Rekaman gagal diproses: ' + (e.message || e)); }
 }
 async function onSttResult(text) {
   const t = String(text || '').trim();
-  if (!t) { showBubble('Iris nggak nangkep suaranya. Coba lagi?', '', 'neutral'); hideBubbleLater(3000); return; }
+  sttSentAt = 0;
+  if (!t) { say('Iris nggak nangkep suaranya. Coba lagi?', 'neutral', 3000, STT_VOICE.miss, { ambient: true }); return; }
   if (SET.localCmd !== false) {   // v37: ucapan pendek yang cocok perintah lokal dijalankan tanpa LLM
     let handled = false;
     try { handled = await tryLocalCommand(t, true); } catch (e) { console.warn('perintah lokal gagal:', e); }
     if (handled) return;
   }
+  if (SET.voiceAgent !== false) {   // v65: ucapan yang berbentuk perintah/tugas disalurkan ke /perintah atau /agen
+    let r = null;
+    try { r = voiceRoute(t); } catch (e) { console.warn('rute suara gagal:', e); }
+    if (r) { bubble.classList.remove('show'); runVoiceRoute(r, t); return; }
+  }
   bubble.classList.remove('show');
+  voiceLastAsk = { text: t, at: Date.now() };   // v65b: bahan untuk jawaban lanjutan seperti "ya, cari pake agent"
   submitText(t, '🎤 ' + t);
 }
 micBtn.addEventListener('click', toggleTalk);
+
+/* ---- v65: suara -> perintah Iris dan tugas agen ----
+   Urutan setelah perintah lokal v37 (pause, volume, buka aplikasi daftar putih, mode fokus) tidak cocok:
+   (1) ucapan yang cocok dengan perintah slash (timer, pomodoro, alarm, tema, baju, layar, terjemah, clip, ekspor, jam, funfact, belajar, ingat, memori, status, bantuan)
+       dijalankan seperti kamu mengetik /perintahnya;
+   (2) awalan "agen" / "hermes" / "tugas", atau kalimat yang diawali kata kerja aksi (buka, cari, cek, kirim, buatkan, simpan, ...) dan minimal tiga kata,
+       dikirim sebagai /agen <ucapan>. Tugas yang berbau hapus/pindah/timpa tetap ditahan kartu konfirmasi dari server (v34).
+   Kalimat tanya (ada tanda tanya atau diawali kata tanya) tetap jadi obrolan biasa. Matikan dengan /vagen mati. */
+let voiceLastAsk = null;   // { text, at }: ucapan obrolan terakhir (dipakai kalau kamu menjawab "ya, cari pake agent")
+const AGENT_MENTION = /\b(?:pake|pakai|pakailah|pakek|lewat|via|dengan|suruh|minta|gunakan|menggunakan)\s+(?:si\s+)?(?:agent|agen|hermes)\b/i;
+const FOLLOW_FILL = new Set('ya iya oke ok boleh silakan silahkan lanjut lanjutkan cari carikan cariin aja saja pake pakai pakailah pakek agent agen hermes dong deh sekarang tolong yuk ayo gih sana kerjakan jalankan lakukan telusuri lewat via dengan suruh minta bisa gunakan menggunakan si kan akun untuk mencari mencarikan tahu tau'.split(' '));
+const FOLLOW_TRIG = /\b(cari|carikan|cariin|mencari|mencarikan|telusuri|agent|agen|hermes|kerjakan|jalankan|lakukan)\b/i;
+const AFFIRM_FILL = new Set('ya iya yap yup oke ok okay boleh silakan silahkan lanjut lanjutkan gas yuk ayo mau tentu sip siap baik dong deh aja saja sekarang tolong bisa kerjakan jalankan'.split(' '));
+function isAffirmOnly(body) {   // jawaban "ya / boleh / lanjut" saja
+  const w = String(body || '').toLowerCase().replace(/[.,!?;:]/g, ' ').split(/\s+/).filter(Boolean);
+  return w.length > 0 && w.length <= 5 && w.every((x) => AFFIRM_FILL.has(x));
+}
+function isBareFollow(body) {   // jawaban pendek tanpa topik, mis. "ya, cari pake agent"
+  const w = String(body || '').toLowerCase().replace(/[.,!?;:]/g, ' ').split(/\s+/).filter(Boolean);
+  return w.length > 0 && w.length <= 8 && w.every((x) => FOLLOW_FILL.has(x)) && FOLLOW_TRIG.test(body);
+}
+const NUMW = new Map(Object.entries({ nol: 0, satu: 1, dua: 2, tiga: 3, empat: 4, lima: 5, enam: 6, tujuh: 7, delapan: 8, sembilan: 9 }));
+function digitize(s) {   // "dua puluh lima" -> "25", "lima belas" -> "15"; kata lain dibiarkan
+  const w = String(s || '').split(' '), out = [];
+  for (let i = 0; i < w.length; i++) {
+    const a = w[i], b = w[i + 1], c = w[i + 2];
+    if (a === 'sepuluh') { out.push(10); continue; }
+    if (a === 'sebelas') { out.push(11); continue; }
+    if (NUMW.has(a)) {
+      if (b === 'belas') { out.push(10 + NUMW.get(a)); i += 1; continue; }
+      if (b === 'puluh') { let v = NUMW.get(a) * 10; i += 1; if (NUMW.has(c) && NUMW.get(c) > 0) { v += NUMW.get(c); i += 1; } out.push(v); continue; }
+      out.push(NUMW.get(a)); continue;
+    }
+    out.push(a);
+  }
+  return out.join(' ');
+}
+function stripLead(raw) {   // buang sapaan di depan dan pengisi di belakang, huruf besar dan tanda baca isi tetap
+  return String(raw || '').trim()
+    .replace(/^((hei|hai|halo|oke|ok|iris|tolong|coba|dong|ayo|bisa|bisakah|boleh|ya|iya|yaudah|nah|terus|lalu|yuk)[\s,.!]+)+/i, '')
+    .replace(/[\s,.!]*(dong|donk|ya|yah|deh|aja|saja|nih|please)?[\s.!]*$/i, '').trim();
+}
+const VOICE_AGENT_VERBS = /^(buka|bukain|bukakan|cari|carikan|cariin|telusuri|temukan|cek|cekkan|periksa|kirim|kirimkan|buatkan|bikin|bikinkan|simpan|simpankan|unduh|download|tulis|tuliskan|jalankan|tutup|tutupkan|ringkaskan|rangkum|salin|salinkan|pindahkan|hapus|hapuskan|install|instal|perbarui|update|screenshot|ambil|ambilkan|catatkan|bacakan|kerjakan|lakukan)\b/i;
+const VOICE_QUESTION = /^(apa|apakah|siapa|kenapa|mengapa|gimana|bagaimana|kapan|dimana|di mana|berapa|mana|kok|masa|bisakah|bukannya)\b/i;
+function voiceRoute(raw) {
+  const body = stripLead(raw);
+  const bodyF = body || String(raw || '').trim();   // "Iya." habis dibuang sebagai pengisi; tetap dipakai untuk jawaban lanjutan
+  if (!bodyF) return null;
+  const { n } = normLocal(raw);
+  const d = digitize(n);
+  let m;
+  // 1) perintah slash lewat suara
+  if ((m = d.match(/^(?:pasang |set |atur |mulai |buat |nyalakan )?timer (\d+(?:[.,]\d+)?)(?: (menit|mnt|jam|detik))?(?: (.+))?$/))) {
+    let v = parseFloat(m[1].replace(',', '.'));
+    if (m[2] === 'jam') v *= 60; else if (m[2] === 'detik') v /= 60;
+    if (v > 0 && v <= 600) return { slash: '/timer ' + (Math.round(v * 100) / 100) + (m[3] ? ' ' + m[3] : '') };
+  }
+  if (/^(?:batal(?:kan)?|hentikan|matikan|stop) timer$/.test(d)) return { slash: '/batal' };
+  if (/^(?:mulai |nyalakan |jalankan )?pomodoro$/.test(d)) return { slash: '/pomodoro' };
+  if ((m = d.match(/^(?:pasang |set |atur |buat )?alarm (?:jam |pukul )?(\d{1,2})(?: (\d{2}))?(?: (.+))?$/))) {
+    const hh = parseInt(m[1], 10), mm = m[2] ? parseInt(m[2], 10) : 0;
+    if (hh < 24 && mm < 60) return { slash: '/alarm ' + String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0') + (m[3] ? ' ' + m[3] : '') };
+  }
+  if (/^(?:batalkan|hapus) (?:semua )?alarm$/.test(d)) return { slash: '/alarm batal semua' };
+  if (/^(?:lihat |daftar )?alarm(?: apa saja| apa aja)?$/.test(d)) return { slash: '/alarm' };
+  if (/^(?:lihat|baca|cek|jelaskan|ringkas|analisis)\w* layar\b/.test(d)) return { slash: '/layar ' + body };
+  if ((m = d.match(/^(?:terjemah|terjemahkan|translate)(?: layar| ini| layar ini)?( ke .+)?$/))) return { slash: '/terjemah' + (m[1] ? ' ' + m[1].trim() : '') };
+  if (/^(?:tanya|ringkas|jelaskan|baca|ringkaskan) (?:isi )?(?:clipboard|papan klip|salinan)$/.test(d)) return { slash: '/clip' };
+  if (/^(?:ekspor|simpan|unduh|download) (?:chat|percakapan|obrolan)$/.test(d)) return { slash: '/ekspor' };
+  if (/^(?:jam berapa(?: sekarang)?|sekarang jam berapa|bacakan jam|sebutkan jam)$/.test(d)) return { slash: '/jam' };
+  if (/^(?:kasih |beri |ceritakan |sebutkan )?(?:satu )?(?:fun ?fact|fakta unik|tahukah kamu)$/.test(d)) return { slash: '/funfact sekarang' };
+  if ((m = d.match(/^(?:mulai |ayo )?(?:mode belajar|belajar jepang|belajar bahasa jepang|latihan jepang)(?: (.+))?$/))) return { slash: '/belajar' + (m[1] ? ' ' + m[1] : '') };
+  if ((m = d.match(/^(?:ganti |ubah |pakai )?tema (?:musim )?(.+)$/))) return { slash: '/tema ' + m[1] };
+  if (/^(?:ganti |ubah )?tema$/.test(d)) return { slash: '/tema' };
+  if ((m = d.match(/^(?:ganti |ubah |pakai )?(?:baju|outfit|kostum)(?: (.+))?$/))) return { slash: '/baju' + (m[1] ? ' ' + m[1] : '') };
+  if (/^(?:apa (?:saja )?yang kamu ingat|lihat memori|daftar ingatan)$/.test(d)) return { slash: '/memori' };
+  if ((m = body.match(/^(?:ingat|catat)(?: bahwa| kalau| kalo)?\s+(?!nggak|gak|ga |tidak)(.{3,})$/i))) return { slash: '/ingat ' + m[1].trim() };
+  if (/^(?:status|cek status|status koneksi)$/.test(d)) return { slash: '/status' };
+  if (/^(?:bantuan|help|daftar perintah|apa yang bisa kamu lakukan)$/.test(d)) return { slash: '/help' };
+  // 2) tugas agen (Hermes)
+  if (isBareFollow(bodyF) || (/\/agen\b/i.test(irisReplyText) && isAffirmOnly(bodyF))) {   // "ya, cari pake agent" atau "iya" sesudah Iris menawarkan /agen: ucapan obrolan sebelumnya (maksimal 5 menit) jadi topiknya
+    if (voiceLastAsk && Date.now() - voiceLastAsk.at < 300000) return { agent: '/agen ' + stripLead(voiceLastAsk.text) };
+    return null;
+  }
+  if ((m = body.match(/^(?:suruh )?(?:agen|hermes|tugas)[\s,:]+(.{3,})$/i))) return { agent: '/agen ' + m[1].trim() };
+  if (AGENT_MENTION.test(body) && body.split(/\s+/).length >= 3) {   // "Iris coba pake agent cari ..." / "suruh hermes ..." (kalimat tanya pun jalan: sebutan agen sudah jelas)
+    const task = body.replace(/^(?:pake|pakai|pakailah|pakek|lewat|via|dengan|suruh|minta|gunakan|menggunakan)\s+(?:si\s+)?(?:agent|agen|hermes)[\s,:]*/i, '').trim();
+    return { agent: '/agen ' + (task.length >= 3 ? task : body) };
+  }
+  if (VOICE_QUESTION.test(body)) return null;
+  if (VOICE_AGENT_VERBS.test(body) && body.split(/\s+/).length >= 3) return { agent: '/agen ' + body };
+  return null;
+}
+function runVoiceRoute(r, raw) {
+  if (r.slash) {
+    stopAll(); logUser('🎤 ' + raw);
+    if (/^\/belajar\b/i.test(r.slash)) { studyUntil = performance.now() + STUDY_MIN * 60000; applyOutfitRules(); }
+    if (!slashCmd(r.slash)) send({ type: 'user', text: r.slash });
+    return;
+  }
+  voiceLastAsk = null;
+  submitText(r.agent, '🎤 ' + raw);   // server menahan tugas berbahaya dengan kartu konfirmasi (v34)
+}
+function voiceAgentCmd(arg) {
+  const al = String(arg || '').trim().toLowerCase();
+  if (al === 'nyala' || al === 'on') { SET.voiceAgent = true; saveSet(); say('Suara jadi perintah dan tugas: nyala.', 'happy', 3000, '声でコマンド、オン。'); return; }
+  if (al === 'mati' || al === 'off') { SET.voiceAgent = false; saveSet(); say('Suara jadi perintah dan tugas: mati.', 'neutral', 3000, '声でコマンド、オフ。'); return; }
+  openChat();
+  logAdd('task', 'Suara jadi perintah dan tugas: ' + (SET.voiceAgent !== false ? 'NYALA' : 'MATI') + ' (/vagen nyala|mati).\n' +
+    '• timer 10 menit / batalkan timer / pomodoro / alarm jam 7 30\n• tema gugur / ganti baju / jam berapa / fun fact / mode belajar\n' +
+    '• lihat layar / terjemahkan layar / ringkas clipboard / ekspor chat / ingat bahwa <hal> / apa yang kamu ingat\n' +
+    '• tugas agen: awali "agen ..." atau pakai kata kerja aksi, mis. "buka Chrome dan cari berita hari ini", atau sebut "pakai agen" / "suruh Hermes" di kalimatmu (minimal tiga kata, bukan kalimat tanya).\n• jawaban lanjutan "ya, cari pakai agen" memakai ucapanmu sebelumnya sebagai topik (maksimal 5 menit)');
+}
 
 /* ---- v37: perintah lokal lewat suara (push-to-talk) atau /lokal <teks> ----
    Ucapan pendek yang cocok PERSIS dengan pola di bawah dijalankan di komputer tanpa LLM (cepat, tidak memakai kuota model); selain itu tetap jadi obrolan biasa.
@@ -4301,6 +4432,7 @@ const HELP = [
   '/chrome [nomor|nama|sembunyi|tutup|reset|daftar|perintah|ram|baca|elemen|jembatan|mundur|maju|muat|beranda]  mini-browser di sebelah karakter: buka akun bernomor itu di link awalnya, bawaan halaman tab baru (akun lama ditutup); /chrome 3 <alamat> = alamat lain; Ctrl+Alt+W = buka/tutup; di panel: Alt+Panah kiri = mundur, F5 = muat ulang; /chrome perintah = daftar lengkap',
   '/akun [daftar|tambah <nama> [link]|nama <nomor|nama> <baru>|link <nomor|semua> <url|baru>|hapus <nama>]  atur sepuluh akun mini-browser (tiap akun punya sesi login sendiri)',
   '/lokal [daftar|nyala|mati|<teks>]  perintah lokal tanpa LLM lewat suara (pause, volume, buka aplikasi daftar putih, aksi Iris); /lokal pause = uji tanpa mic',
+  '/vagen [nyala|mati]  ucapan yang berbentuk perintah (timer, tema, layar, ...) atau tugas (buka, cari, cek, ...) otomatis dijalankan; tanpa argumen = daftar contoh',
   '/ringkas <link video> [fokus]  Hermes mengambil transkrip video lalu merangkumnya (tanpa link = pakai link di clipboard)',
   '',
   'Klik kanan karakter = menu aksi cepat.',
@@ -4409,6 +4541,7 @@ function slashCmd(text) {
     case 'clip': case 'clipboard': askClipboard(); return true;
     case 'ringkas': case 'summarize': ringkasVideo(arg); return true;
     case 'lokal': case 'local': localCmdCmd(arg); return true;
+    case 'vagen': case 'suara': voiceAgentCmd(arg); return true;
     case 'layar': case 'screen':
       (async () => {
         let u = null;
