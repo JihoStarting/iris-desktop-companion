@@ -549,19 +549,14 @@ Fitur di bawah sudah ditulis tetapi **belum lulus uji penuh di PC**. Anggap eksp
 
 | Area | Catatan |
 |---|---|
-| Gerak halus (pegas, crossfade) dan gerbang emosi ke klip | Belum dites visual |
-| Pikiran batin | Kode ditulis, belum dites dengan model dan suara asli |
 | Terjemah layar | Belum diuji end-to-end |
 | Bicara lewat mikrofon: penyetelan 6 Nov (model, kosakata bantu, perintah suara) | Perbaikan perilaku diuji dengan kalimat dari tangkapan layar; pemilik melaporkan tidak ada masalah. Akurasi tetap bergantung pada model dan mikrofon |
 | Mini-browser, fase 4 (pil akun, hemat RAM, tab diparkir) | Belum dites di Electron asli |
-| Jembatan baca-saja | Hanya diuji dengan klien tiruan |
-| Perbaikan v46 sampai v50 (jaga UI tetap di layar, panel pindah sisi, rambut dan bayangan setengah badan) | Belum dites |
 | Tugas `/agen` ringan terasa lambat | Penyebab belum dipastikan |
 | Cancel yang benar-benar menghentikan agen | Belum terbukti |
-| Menutup peluncur dan menu Keluar yang mematikan semua layanan (`--stop-all`) | Baru ditulis, belum diuji end-to-end |
 | Bubble dengan lampiran dekat tepi atas layar | Belum dites |
 
-Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kartu hasil), konfirmasi `/agen` berbahaya, token `/ws`, ganti baju, tema, fun fact, alarm dan jam, mood, seret file dan lampiran gambar, ekspor, pilihan bernomor, pil status koneksi, dan peluncur.
+Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kartu hasil), konfirmasi `/agen` berbahaya, token `/ws`, ganti baju, tema, fun fact, alarm dan jam, mood, seret file dan lampiran gambar, ekspor, pilihan bernomor, pil status koneksi, dan peluncur, termasuk menutup peluncur dan menu Keluar yang mematikan semua layanan (`--stop-all`, dilaporkan pemilik berfungsi), serta perbaikan v46 sampai v50 (jaga UI tetap di layar, panel pindah sisi, rambut dan bayangan setengah badan; dilaporkan pemilik sudah beres), serta pikiran batin (dilaporkan pemilik aman), serta pikiran batin (dilaporkan pemilik aman).
 
 ---
 
