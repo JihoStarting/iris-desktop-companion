@@ -509,7 +509,7 @@ Hermes Agent berjalan di WSL2 dan menjadi "tangan" Iris lewat `/agen`. Kemampuan
 - **Dokumen dan media:** PDF, Word, Excel, PowerPoint, transkrip YouTube, analisis gambar
 - **Data:** SQLite, JSON, CSV, Airtable
 - **Integrasi:** Telegram, Notion, Google Workspace
-- **Skill kustom** (40+): mis. `deep-research`, `academic-writer`, `excalidraw`, `oss-forensics`, `laptop-storage-analyzer`, `cek-elearning`, dan `isi-form-otomatis`. Skill dimuat per tugas
+- **Skill kustom** (40+): mis. `deep-research`, `academic-writer`, `excalidraw`, `oss-forensics`, `laptop-storage-analyzer`, dan `isi-form-otomatis`. Skill dimuat per tugas
 
 Laporan Hermes ditampilkan apa adanya di kartu "Hasil tugas". Iris menyampaikannya secara netral dan bersumber, dan hanya menyatakan berhasil bila laporan Hermes jelas menyatakannya.
 
@@ -572,7 +572,6 @@ Ide yang sudah disetujui atau dicatat, **belum ada kodenya**:
 - Memori otomatis ringan (ringkasan fakta baru yang kamu setujui dulu sebelum disimpan)
 - Menari mengikuti musik dan perintah `/nari` (butuh klip `.vrma` lengan)
 - Angin dari kecepatan kursor (`/angin`)
-- Pemeriksa tugas e-learning otomatis lewat skill `cek-elearning`
 - `/catat` dan `/todo`, statistik Pomodoro, jurnal mood harian
 - Mode jangan ganggu otomatis saat game atau aplikasi layar penuh
 - Pencarian catatan (`/cari`, `/indeks`): ditunda
