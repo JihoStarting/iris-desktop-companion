@@ -1549,9 +1549,12 @@ app.whenReady().then(() => {
   // Bisukan suara overlay. Bisa dipaksa lewat environment variable IRIS_MUTE_KEY (mis. Control+Alt+J)
   registerFirst([process.env.IRIS_MUTE_KEY, 'Control+Alt+B', 'Control+Alt+M', 'Control+Shift+Alt+M'].filter(Boolean), () => sendAction('mute'));
   // Debug: buka DevTools (lihat error konsol)
-  registerShortcut('Control+Alt+D', () => {
-    if (win) win.webContents.openDevTools({ mode: 'detach' });
-  });
+  // Hanya saat pengembangan: di versi rilis (app.isPackaged) DevTools tidak tersedia
+  if (!app.isPackaged) {
+    registerShortcut('Control+Alt+D', () => {
+      if (win) win.webContents.openDevTools({ mode: 'detach' });
+    });
+  }
 });
 
 app.on('second-instance', () => {

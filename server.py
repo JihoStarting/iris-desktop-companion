@@ -75,7 +75,7 @@ Perubahan v2:
 
 Jalankan:
   python server.py
-Lalu buka http://localhost:8765 untuk tes (test_client.html).
+Lalu buka http://localhost:8765 untuk tes (dev/test_client.html).
 """
 
 import asyncio
@@ -847,7 +847,7 @@ def build_hermes_message(task: str, context: str = "", prev_note: str = "") -> s
 
 # v42: HERMES_STREAM=1 memakai respons stream (SSE). Saat tugas dibatalkan, koneksi ditutup lewat async-with, jadi Hermes
 # melihat klien putus di tengah giliran. Apakah Hermes lalu benar-benar menghentikan agen BELUM terbukti: jalankan
-# cek-cancel-hermes.py untuk mengukurnya (mode mana yang menghentikan agen), lalu pilih nilai HERMES_STREAM.
+# scripts/cek-cancel-hermes.py untuk mengukurnya (mode mana yang menghentikan agen), lalu pilih nilai HERMES_STREAM.
 HERMES_STREAM = os.getenv("HERMES_STREAM", "0").strip() == "1"
 
 
@@ -1932,7 +1932,7 @@ async def index():
                             '<h3>Server Iris aktif</h3><p>Halaman tes tidak dipakai karena <b>COMPANION_TOKEN</b> aktif '
                             '(browser tidak bisa mengirim header token). Pakai overlay Electron, atau kosongkan token di .env untuk halaman tes.</p>'
                             '<p><a style="color:#7da0ee" href="/health">/health</a> untuk cek layanan.</p></body>')
-    return FileResponse(BASE_DIR / "test_client.html")
+    return FileResponse(BASE_DIR / "dev" / "test_client.html")
 
 
 # v39: pil status koneksi. Server mendorong {"type":"health", voicevox/ninerouter/hermes: ok|warn|down, detail} ke overlay
@@ -1942,7 +1942,7 @@ HEALTH_PUSH_SEC = max(15, int(os.getenv("IRIS_HEALTH_SEC", "45")))
 
 async def health_probe() -> dict:
     result = {"voicevox": None, "ninerouter": None, "hermes": None,
-              "ws_token": f"aktif ({len(COMPANION_TOKEN)} karakter, sidik {token_fp(COMPANION_TOKEN)})" if COMPANION_TOKEN else "KOSONG (/ws terbuka)",
+              "ws_token": "aktif" if COMPANION_TOKEN else "KOSONG (/ws terbuka)",   # tanpa panjang / sidik: /health tidak bertoken
               "agent_confirm": f"aktif ({len(DANGER_WORDS)} kata pemicu)" if CONFIRM_ENABLED else "MATI"}
     async with httpx.AsyncClient(timeout=5.0) as client:
         async def p_voicevox():
@@ -2017,5 +2017,11 @@ _LOG_CONFIG = _build_log_config()
 
 
 if __name__ == "__main__":
+    # Token wajib (min. 16 karakter). Pengecualian hanya untuk pengembangan: COMPANION_ALLOW_NO_TOKEN=1
+    # Dicek di sini (bukan saat import) supaya tes otomatis yang meng-import server.py tidak ikut berhenti.
+    if len(COMPANION_TOKEN) < 16 and os.getenv("COMPANION_ALLOW_NO_TOKEN", "").strip() != "1":
+        raise SystemExit("[FATAL] COMPANION_TOKEN wajib diisi di .env (minimal 16 karakter). Buat dengan: "
+                         "python -c \"import secrets; print(secrets.token_urlsafe(32))\"  "
+                         "(khusus pengembangan: COMPANION_ALLOW_NO_TOKEN=1)")
     print(f"Buka http://{HOST}:{PORT}  (cek koneksi: http://{HOST}:{PORT}/health)")
     uvicorn.run(app, host=HOST, port=PORT, ws_max_size=32 * 1024 * 1024, log_config=_LOG_CONFIG)   # 4 gambar JPEG base64 muat dengan lega

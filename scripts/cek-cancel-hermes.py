@@ -5,8 +5,9 @@ Cara kerja: Hermes disuruh 12 langkah terpisah, tiap langkah menulis satu baris 
 (lalu tidur 4 detik). Setelah 14 detik koneksi diputus persis seperti tombol Stop. Kalau file TERUS bertambah,
 agen tetap jalan; kalau berhenti, cancel bekerja. Dites dua mode: biasa dan stream (HERMES_STREAM=1).
 
-Jalankan di PowerShell, dari folder server.py, SAAT TIDAK ADA tugas Hermes lain:
-    .\\.venv\\Scripts\\python.exe cek-cancel-hermes.py
+Jalankan di PowerShell, dari folder proyek (tempat server.py), SAAT TIDAK ADA tugas Hermes lain:
+    .\\.venv\\Scripts\\python.exe scripts\\cek-cancel-hermes.py
+Opsi: --skip-health melewati cek /health Hermes di awal.
 Tes memakai file dummy di Downloads (cancel-probe-*.txt). Tidak ada file lain yang disentuh.
 """
 import asyncio, json, os, sys, time
@@ -14,7 +15,7 @@ from pathlib import Path
 import httpx
 from dotenv import dotenv_values
 
-env = {**dotenv_values(Path.home() / ".env"), **dotenv_values(Path(__file__).parent / ".env"), **os.environ}
+env = {**dotenv_values(Path.home() / ".env"), **dotenv_values(Path(__file__).resolve().parent.parent / ".env"), **os.environ}
 URL = (env.get("HERMES_URL") or "http://127.0.0.1:8642/v1").rstrip("/")
 KEY = env.get("HERMES_API_KEY", "")
 WIN_DIR = Path.home() / "Downloads"
@@ -70,7 +71,7 @@ async def run(mode: str) -> None:
 
 
 async def main() -> None:
-    if "--health" not in sys.argv:
+    if "--skip-health" not in sys.argv:
         async with httpx.AsyncClient(timeout=5) as c:
             try:
                 r = await c.get(f"{URL}/health")

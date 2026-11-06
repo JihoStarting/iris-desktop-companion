@@ -1,11 +1,11 @@
 # by: KangJiho
 """Membuat 4 klip VRMA kecil (hanya tulang punggung, leher, kepala; tanpa lengan) ke assets/animations/ + clips.json.
-Hanya pustaka standar Python. Jalankan dari folder overlay:  python buat_klip_vrma.py
+Hanya pustaka standar Python. Jalankan dari folder proyek (induk scripts/):  python scripts/buat_klip_vrma.py
 Klip dibuat sendiri oleh skrip ini (tidak ada aset pihak lain). Gerakannya kecil dan konservatif; ubah angka AMP di CLIPS kalau kurang/terlalu terlihat."""
 import json, math, struct
 from pathlib import Path
 
-OUT = Path(__file__).resolve().parent / "assets" / "animations"
+OUT = Path(__file__).resolve().parent.parent / "assets" / "animations"   # scripts/ -> folder proyek -> assets/animations
 FPS = 30
 BONES = ["hips", "spine", "chest", "neck", "head"]            # rantai induk -> anak
 REST_T = {"hips": [0, 1.0, 0], "spine": [0, 0.1, 0], "chest": [0, 0.15, 0], "neck": [0, 0.2, 0], "head": [0, 0.1, 0]}
