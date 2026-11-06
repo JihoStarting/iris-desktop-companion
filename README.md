@@ -1,4 +1,4 @@
-﻿<p align="center">
+<p align="center">
   <img src="docs/img/iris-launcher-logo.png" alt="Logo IRIS" width="280">
 </p>
 
