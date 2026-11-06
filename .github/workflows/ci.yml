@@ -1,4 +1,4 @@
-﻿name: CI
+name: CI
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
           node-version: "20"
 
       - name: Cek sintaks Python
-        run: python -m py_compile server.py iris_web.py buat_klip_vrma.py cek-cancel-hermes.py
+        run: python -m py_compile server.py iris_web.py scripts/buat_klip_vrma.py scripts/cek-cancel-hermes.py
 
       - name: Cek sintaks JavaScript
         run: |
