@@ -430,6 +430,7 @@ namespace IrisLauncher
         public bool StopSemua = true;
         public bool KonfirmasiStop = true;
         public bool AutoStart = false;
+        public bool TutupMatikan = true;   // menutup launcher ikut mematikan semua layanan Iris
 
         public static string FilePath()
         {
@@ -476,6 +477,7 @@ namespace IrisLauncher
                             case "stopsemua": s.StopSemua = B(v, s.StopSemua); break;
                             case "konfirmasistop": s.KonfirmasiStop = B(v, s.KonfirmasiStop); break;
                             case "autostart": s.AutoStart = B(v, s.AutoStart); break;
+                            case "tutupmatikan": s.TutupMatikan = B(v, s.TutupMatikan); break;
                         }
                     }
                 }
@@ -503,7 +505,16 @@ namespace IrisLauncher
             l.Add("stopsemua=" + (StopSemua ? "1" : "0"));
             l.Add("konfirmasistop=" + (KonfirmasiStop ? "1" : "0"));
             l.Add("autostart=" + (AutoStart ? "1" : "0"));
+            l.Add("tutupmatikan=" + (TutupMatikan ? "1" : "0"));
             File.WriteAllLines(p, l.ToArray(), Encoding.UTF8);
+        }
+
+        // Argumen iris-stop.ps1 (sama dengan tombol Stop): StopSemua=false -> hanya overlay + server.py
+        public string StopArgs()
+        {
+            string a = "-Proyek \"" + Proyek + "\" -Distro " + Distro;
+            if (!StopSemua) a += " -TanpaWSL";
+            return a;
         }
 
         public Settings Clone() { return (Settings)MemberwiseClone(); }
@@ -520,7 +531,7 @@ namespace IrisLauncher
         }
         TextBox tbProyek, tbDistro;
         NumericUpDown nudTunggu;
-        CheckBox cbPenjaga, cbOverlay, cbKonfirm, cbAuto;
+        CheckBox cbPenjaga, cbOverlay, cbKonfirm, cbAuto, cbTutup;
         RadioButton rbSemua, rbSebagian;
         Label lblCek;
 
@@ -532,7 +543,7 @@ namespace IrisLauncher
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false; MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(600, 500);
+            ClientSize = new Size(600, 530);
             BackColor = Theme.Bg; ForeColor = Theme.Text;
             Font = new Font("Segoe UI", 9.5F);
             try { Icon = Res.AppIcon(); } catch { }
@@ -568,7 +579,8 @@ namespace IrisLauncher
             g.Controls.Add(rbSemua); g.Controls.Add(rbSebagian); Controls.Add(g); y += 98;
 
             cbKonfirm = C("Tanya konfirmasi sebelum mematikan (Stop dan Hermes)", s.KonfirmasiStop, 20, y); y += 28;
-            cbAuto = C("Jalankan Start otomatis saat launcher dibuka", s.AutoStart, 20, y); y += 44;
+            cbAuto = C("Jalankan Start otomatis saat launcher dibuka", s.AutoStart, 20, y); y += 28;
+            cbTutup = C("Saat launcher ditutup, matikan juga semua layanan Iris (sesuai pilihan Stop)", s.TutupMatikan, 20, y); y += 44;
 
             Button ok = new RBtn(); ok.Text = "Simpan"; ok.SetBounds(360, y, 110, 34);
             Flat(ok, Theme.BtnStart); ok.Click += Simpan;
@@ -637,7 +649,7 @@ namespace IrisLauncher
             Settings s = new Settings();
             s.Proyek = proyek; s.Distro = distro; s.TungguDetik = (int)nudTunggu.Value;
             s.Penjaga = cbPenjaga.Checked; s.Overlay = cbOverlay.Checked;
-            s.StopSemua = rbSemua.Checked; s.KonfirmasiStop = cbKonfirm.Checked; s.AutoStart = cbAuto.Checked;
+            s.StopSemua = rbSemua.Checked; s.KonfirmasiStop = cbKonfirm.Checked; s.AutoStart = cbAuto.Checked; s.TutupMatikan = cbTutup.Checked;
             Result = s;
             DialogResult = DialogResult.OK;
             Close();
@@ -672,6 +684,9 @@ namespace IrisLauncher
         Probe last = new Probe();
         bool inRun;
         DateTime lastLine = DateTime.Now;
+        bool closeNow, pendingCloseStop;   // closeNow: penutupan sudah diputuskan; pendingCloseStop: Stop-lalu-tutup menunggu proses yang sedang jalan
+        string runTitle = "";
+        EventWaitHandle stopEvt;           // sinyal dari 'IrisLauncher.exe --stop-all' (menu Keluar overlay)
 
         protected override void OnHandleCreated(EventArgs e)
         {
@@ -812,6 +827,7 @@ namespace IrisLauncher
 
             Shown += OnShown;
             FormClosing += OnClosing;
+            WatchStopSignal();
 
             timer = new System.Windows.Forms.Timer(); timer.Interval = 5000;
             timer.Tick += delegate { if (WindowState != FormWindowState.Minimized) Refresh2(); };
@@ -885,8 +901,29 @@ namespace IrisLauncher
             if (cfg.AutoStart && Settings.IsProject(cfg.Proyek)) DoStart();
         }
 
+        bool AnyAlive() { return last.Wsl || last.Voice || last.Router || last.Hermes || last.Server || last.Overlay; }
+
+        // Menutup launcher = mematikan semua layanan Iris dulu (kecuali dimatikan di Pengaturan atau Windows sedang shutdown).
         void OnClosing(object sender, FormClosingEventArgs e)
         {
+            if (closeNow || e.CloseReason == CloseReason.WindowsShutDown) { timer.Stop(); return; }
+            bool perluStop = cfg.TutupMatikan && Settings.IsProject(cfg.Proyek) && (busy || AnyAlive());
+            if (perluStop)
+            {
+                if (cfg.KonfirmasiStop)
+                {
+                    DialogResult q = MessageBox.Show(this,
+                        "Menutup launcher akan ikut mematikan Overlay, server.py" + (cfg.StopSemua ? ", Hermes, 9Router, VOICEVOX, dan WSL" : "") + ".\r\n\r\n"
+                        + "Tugas /agen yang sedang dikerjakan Hermes akan terputus.\r\n\r\n"
+                        + "Ya = matikan semua lalu tutup\r\nTidak = tutup launcher saja (layanan tetap hidup)\r\nBatal = jangan tutup",
+                        "Tutup Iris Launcher", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
+                    if (q == DialogResult.Cancel) { e.Cancel = true; return; }
+                    if (q == DialogResult.No) { timer.Stop(); return; }
+                }
+                e.Cancel = true;
+                StopAndClose();
+                return;
+            }
             if (busy)
             {
                 DialogResult r = MessageBox.Show(this, "Masih ada proses yang berjalan. Tutup launcher saja? (proses yang sudah jalan di belakang tidak ikut berhenti)",
@@ -1058,6 +1095,7 @@ namespace IrisLauncher
                 try { Res.ExtractScripts(); } catch (Exception ex) { Log("[GAGAL] " + ex.Message); return; }
             }
             Log("");
+            runTitle = title;
             DateTime mulai = DateTime.Now;
             Log("=== " + title + "  (" + mulai.ToString("HH:mm:ss") + ") ===");
             lastLine = mulai; inRun = true;
@@ -1068,6 +1106,7 @@ namespace IrisLauncher
             psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File " + P(script) + " " + args;
             psi.UseShellExecute = false; psi.CreateNoWindow = true;
             psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
+            psi.EnvironmentVariables["IRIS_LAUNCHER_EXE"] = Application.ExecutablePath;   // diwarisi overlay: menu Keluar memanggil launcher ini
             psi.StandardOutputEncoding = Encoding.UTF8; psi.StandardErrorEncoding = Encoding.UTF8;
 
             Thread th = new Thread(delegate ()
@@ -1097,6 +1136,7 @@ namespace IrisLauncher
                     if (done != null) { try { done(c); } catch { } }
                     SetBusy(false, c == 0 ? "Selesai." : "Selesai dengan peringatan atau galat (lihat log).");
                     Refresh2();
+                    if (pendingCloseStop) { pendingCloseStop = false; StopAndClose(); }
                 });
             });
             th.IsBackground = true; th.Start();
@@ -1133,9 +1173,49 @@ namespace IrisLauncher
                     "Stop", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                 if (r != DialogResult.Yes) return;
             }
-            string a = "-Proyek " + Q(cfg.Proyek) + " -Distro " + cfg.Distro;
-            if (!cfg.StopSemua) a += " -TanpaWSL";
-            Run("Stop", "iris-stop.ps1", a);
+            Run("Stop", "iris-stop.ps1", cfg.StopArgs());
+        }
+
+        // Jalankan iris-stop.ps1, lalu tutup jendela. Dipakai saat launcher ditutup dan saat overlay meminta Keluar.
+        void StopAndClose()
+        {
+            if (busy && runTitle.StartsWith("Stop (launcher")) return;   // penutupan sudah berjalan
+            if (busy)
+            {
+                pendingCloseStop = true;
+                if (!runTitle.StartsWith("Stop")) CancelRun();   // Stop yang sedang jalan dibiarkan selesai, jangan dipotong
+                return;
+            }
+            Run("Stop (launcher ditutup)", "iris-stop.ps1", cfg.StopArgs(), delegate (int c)
+            {
+                closeNow = true;
+                try { BeginInvoke((Action)delegate { Close(); }); } catch { }
+            });
+            if (!busy) { closeNow = true; Close(); }   // Run menolak mulai (skrip tidak bisa disiapkan): jangan terjebak
+        }
+
+        // Menu Keluar di overlay memanggil "IrisLauncher.exe --stop-all": instance ini menerima sinyalnya dan mematikan semuanya.
+        void WatchStopSignal()
+        {
+            try
+            {
+                stopEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "IrisLauncher.StopAll");
+                Thread th = new Thread(delegate ()
+                {
+                    while (true)
+                    {
+                        try { stopEvt.WaitOne(); } catch { return; }
+                        UI(delegate
+                        {
+                            Log("Overlay meminta keluar: mematikan semua layanan.");
+                            if (Settings.IsProject(cfg.Proyek)) StopAndClose();
+                            else { closeNow = true; Close(); }
+                        });
+                    }
+                });
+                th.IsBackground = true; th.Start();
+            }
+            catch { }
         }
 
         // Klik chip: nyalakan atau matikan HANYA layanan itu.
@@ -1182,17 +1262,41 @@ namespace IrisLauncher
 
     static class Program
     {
-        [STAThread]
-        static void Main()
+        // Launcher tidak terbuka tapi overlay minta Keluar: jalankan iris-stop.ps1 tanpa jendela.
+        static void HeadlessStop()
         {
+            try
+            {
+                Settings s = Settings.Load();
+                if (!Settings.IsProject(s.Proyek)) return;
+                Res.ExtractScripts();
+                ProcessStartInfo psi = new ProcessStartInfo();
+                psi.FileName = "powershell.exe";
+                psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + Path.Combine(Res.ScriptDir(), "iris-stop.ps1") + "\" " + s.StopArgs();
+                psi.UseShellExecute = false; psi.CreateNoWindow = true;
+                using (Process p = Process.Start(psi)) { p.WaitForExit(180000); }
+            }
+            catch { }
+        }
+
+        [STAThread]
+        static void Main(string[] args)
+        {
+            bool stopAll = args != null && Array.IndexOf(args, "--stop-all") >= 0;
             bool created;
             using (Mutex m = new Mutex(true, "IrisLauncher.SingleInstance", out created))
             {
                 if (!created)
                 {
+                    if (stopAll)
+                    {
+                        try { using (EventWaitHandle ev = EventWaitHandle.OpenExisting("IrisLauncher.StopAll")) { ev.Set(); } } catch { }
+                        return;
+                    }
                     MessageBox.Show("Iris Launcher sudah terbuka.", "Iris Launcher");
                     return;
                 }
+                if (stopAll) { HeadlessStop(); return; }
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Application.Run(new MainForm());

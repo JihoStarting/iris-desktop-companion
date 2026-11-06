@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, screen, globalShortcut, session, protocol, net, Tray, Menu, nativeImage, desktopCapturer, clipboard, shell, powerMonitor } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, screen, globalShortcut, session, protocol, net, Tray, Menu, nativeImage, desktopCapturer, clipboard, shell, powerMonitor, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -1438,7 +1438,7 @@ function setupTray() {
       { label: 'Bisukan suara', type: 'checkbox', checked: false, click: (item) => setMuted(item.checked) },
       { label: 'Pindah ke pojok kanan bawah', click: moveToCorner },
       { type: 'separator' },
-      { label: 'Keluar', click: () => app.quit() },
+      { label: 'Keluar', click: quitAll },
     ]));
     tray.on('click', toggleWin);
   } catch (e) {
@@ -1583,7 +1583,35 @@ ipcMain.on('web-quality', (e, level) => {
   if (level === 'hemat' && webPanel) { console.log('Chrome: kualitas hemat, panel ditutup untuk menghemat RAM.'); closeWebPanel('hemat'); }
 });
 
-ipcMain.on('quit', () => app.quit());
+// Keluar dari menu tray / menu overlay. Kalau overlay dijalankan oleh Iris Launcher (env IRIS_LAUNCHER_EXE ada),
+// tanyakan apakah semua layanan ikut dimatikan; "matikan semua" diserahkan ke launcher (IrisLauncher.exe --stop-all).
+// Tanpa launcher (npm start biasa) perilakunya tetap seperti dulu: hanya overlay yang tutup. Ctrl+Alt+Q tetap keluar darurat.
+let quitAsking = false;
+function quitAll() {
+  const exe = process.env.IRIS_LAUNCHER_EXE;
+  if (!exe || !fs.existsSync(exe)) { app.quit(); return; }
+  if (quitAsking) return;
+  quitAsking = true;
+  dialog.showMessageBox({
+    type: 'question',
+    title: 'Keluar dari Iris',
+    message: 'Matikan semua layanan Iris lewat Launcher?',
+    detail: 'Server, Hermes, 9Router, VOICEVOX, dan WSL ikut dimatikan (sesuai pengaturan Stop di Launcher). Tugas /agen yang sedang jalan akan terputus.',
+    buttons: ['Matikan semua', 'Overlay saja', 'Batal'],
+    defaultId: 0, cancelId: 2, noLink: true,
+  }).then(({ response }) => {
+    quitAsking = false;
+    if (response === 0) {
+      try { spawn(exe, ['--stop-all'], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); }
+      catch (e) { console.warn('Gagal memanggil launcher:', e.message || e); app.quit(); return; }
+      setTimeout(() => app.quit(), 400);
+    } else if (response === 1) {
+      app.quit();
+    }
+  }).catch(() => { quitAsking = false; app.quit(); });
+}
+
+ipcMain.on('quit', quitAll);
 
 /* ---------- v19: seret karakter langsung + saklar selalu-di-atas ----------
    Posisi jendela mengikuti kursor GLOBAL (bukan koordinat dari renderer), jadi tidak ada selisih walau jendela ikut bergerak.
