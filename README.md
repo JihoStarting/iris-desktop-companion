@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
   <img src="docs/img/iris-launcher-logo.png" alt="Logo IRIS" width="280">
 </p>
 
@@ -661,7 +661,6 @@ Untuk diagnosis lebih lanjut, jalankan overlay dengan `npm start`, buka DevTools
 ## Dokumentasi
 
 - [`docs/QUICKSTART.md`](docs/QUICKSTART.md): panduan mulai cepat dari nol sampai Iris menjawab
-- [`docs/iris-companion-gabungan.md`](docs/iris-companion-gabungan.md): dokumen gabungan overlay dan Hermes, berisi roadmap, referensi sistem, riwayat versi, dan hasil uji
 
 ---
 
