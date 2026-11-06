@@ -4,6 +4,8 @@
 
 # IRIS: AI Companion Desktop Overlay
 
+> *A desktop AI companion overlay for Windows + WSL2: VRM avatar, VOICEVOX voice, and a Hermes Agent bridge that can do real tasks on your computer. Documentation is in Indonesian.*
+
 ![License](https://img.shields.io/badge/license-All%20rights%20reserved-red)
 ![Electron](https://img.shields.io/badge/Electron-overlay-47848F)
 ![Python](https://img.shields.io/badge/Python-FastAPI-3776AB)
@@ -124,7 +126,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 
 ### Infrastruktur
 
-- `IrisLauncher.exe`: peluncur satu klik dengan indikator hijau per layanan
+- `IrisLauncher.exe`: peluncur satu klik dengan indikator hijau per layanan. Menutup peluncur ikut mematikan semua layanan (bisa dimatikan di Pengaturan), dan menu **Keluar** di overlay bisa mematikan semuanya lewat peluncur
 - `iris-doctor.ps1`: cek kesehatan seluruh sistem
 - `iris-start.ps1` dan `iris-stop.ps1`: start dan stop berurutan, aman dijalankan berulang
 - `9router.service`: 9Router berjalan sebagai layanan systemd di WSL
@@ -207,7 +209,13 @@ copy .env.example .env
 
 Kalau PowerShell menolak menjalankan `Activate.ps1` karena kebijakan eksekusi, jalankan dulu `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` di jendela yang sama. Alternatifnya, pakai `.\.venv\Scripts\python.exe` langsung tanpa aktivasi.
 
-Lalu buka `.env` dan isi dengan nilai milikmu sendiri. **Jangan pernah meng-commit file `.env`.**
+Lalu buka `.env` dan isi dengan nilai milikmu sendiri. **`COMPANION_TOKEN` wajib diisi** (minimal 16 karakter); server langsung berhenti dengan pesan `[FATAL]` kalau kosong. Buat tokennya dengan:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+**Jangan pernah meng-commit file `.env`.**
 
 Panduan langkah demi langkah: [docs/QUICKSTART.md](docs/QUICKSTART.md)
 
@@ -232,7 +240,7 @@ Semua pengaturan dibaca dari file `.env` (di folder proyek atau di folder user W
 | `COMPANION_HOST` | Alamat server overlay | `127.0.0.1` |
 | `COMPANION_PORT` | Port server overlay | `8765` |
 | `COMPANION_USER_NAME` | Nama panggilan pengguna | `Rover` |
-| `COMPANION_TOKEN` | Token autentikasi `/ws`. **Isi ini** (lihat [Keamanan](#keamanan)) | kosong |
+| `COMPANION_TOKEN` | Token autentikasi `/ws`. **Wajib**, minimal 16 karakter; server tidak mau jalan tanpanya (lihat [Keamanan](#keamanan)) | kosong (wajib diisi) |
 
 ### Hermes
 
@@ -248,6 +256,7 @@ Semua pengaturan dibaca dari file `.env` (di folder proyek atau di folder user W
 
 | Variabel | Fungsi |
 |---|---|
+| `COMPANION_ALLOW_NO_TOKEN=1` | **Khusus pengembangan**: izinkan server jalan tanpa token (mis. untuk `dev/test_client.html`). Jangan dipakai untuk pemakaian sehari-hari |
 | `IRIS_VOICE_STYLE=0` | Matikan gaya suara per emosi |
 | `IRIS_THOUGHTS=0` | Matikan pikiran batin dari sisi server |
 | `IRIS_HISTORY=0` | Matikan riwayat obrolan persisten |
@@ -289,11 +298,11 @@ npm start
 
 Cek kesehatan layanan di `http://127.0.0.1:8765/health`.
 
-> Jika `COMPANION_TOKEN` aktif, halaman `http://127.0.0.1:8765` di browser tidak bisa dipakai untuk chat karena browser tidak dapat mengirim header token. Gunakan overlay Electron.
+> Karena `COMPANION_TOKEN` wajib, halaman `http://127.0.0.1:8765` di browser tidak bisa dipakai untuk chat (browser tidak dapat mengirim header token). Gunakan overlay Electron. Halaman tes `dev/test_client.html` hanya tersedia bila kamu sengaja menjalankan server dengan `COMPANION_ALLOW_NO_TOKEN=1` dan token kosong.
 
 ### Lewat peluncur
 
-`IrisLauncher.exe` (lihat tab Releases) menjalankan WSL, layanan pendukung, server, dan overlay sekaligus.
+`IrisLauncher.exe` menjalankan WSL, layanan pendukung, server, dan overlay sekaligus. Bangun sendiri dengan `IrisLauncher-src\build.bat` (memakai `csc.exe` bawaan Windows, tanpa memasang apa pun), atau unduh dari tab Releases bila tersedia.
 
 ---
 
@@ -307,6 +316,13 @@ Cek kesehatan layanan di `http://127.0.0.1:8765/health`.
 | `iris-doctor.ps1` | Memeriksa folder proyek, `.venv`, Electron, `.env`, port, status WSL dan Hermes, `.wslconfig`, ruang disk, dan RAM. Tiap baris `OK`, `WARN`, atau `GAGAL` disertai cara memperbaiki. Nilai token tidak pernah dicetak |
 | `iris-hermes.ps1`, `iris-service.ps1` | Pembungkus untuk Hermes dan layanan WSL |
 | `9router.service` | Layanan systemd pengguna di WSL untuk 9Router |
+
+**Menutup peluncur dan menu Keluar**
+
+- Saat jendela peluncur ditutup dan masih ada layanan yang hidup, muncul pilihan: **Ya** (matikan semua lalu tutup), **Tidak** (tutup peluncur saja, layanan tetap hidup), atau **Batal**. Yang dimatikan mengikuti pilihan Stop di Pengaturan (semuanya termasuk WSL, atau hanya overlay dan `server.py`).
+- Di Pengaturan ada kotak centang untuk mematikan perilaku ini, dan satu lagi untuk melewati pertanyaan konfirmasi.
+- Menu **Keluar** (tray dan klik kanan karakter) bertanya apakah semua layanan ikut dimatikan. Pilihan "Matikan semua" memanggil `IrisLauncher.exe --stop-all`, baik peluncurnya sedang terbuka maupun tidak. Pilihan ini hanya muncul bila overlay dijalankan lewat peluncur; kalau overlay dijalankan dengan `npm start`, Keluar hanya menutup overlay.
+- `Ctrl+Alt+Q` tetap keluar darurat yang hanya menutup overlay.
 
 Contoh menjalankan tanpa peluncur:
 
@@ -393,11 +409,11 @@ Ketik di kotak input overlay. Ketik `/help` untuk daftar lengkap di aplikasi. Pe
 | `Ctrl+Alt+H` | Tampilkan atau sembunyikan Iris |
 | `Ctrl+Alt+B` | Bisukan suara dari sisi overlay (cadangan: `Ctrl+Alt+M`, `Ctrl+Shift+Alt+M`, atau `IRIS_MUTE_KEY`) |
 | `Ctrl+Alt+W` | Buka atau tutup mini-browser |
-| `Ctrl+Alt+Q` | Keluar |
-| `Ctrl+Alt+D` | Buka DevTools overlay |
+| `Ctrl+Alt+Q` | Keluar darurat (hanya overlay; layanan lain tidak ikut dimatikan) |
+| `Ctrl+Alt+D` | Buka DevTools overlay (hanya saat pengembangan, tidak ada di versi rilis) |
 | `Ctrl+V` | Tempel gambar dari clipboard sebagai lampiran |
 
-Klik kanan pada karakter untuk menu aksi cepat, dan gunakan ikon tray untuk pengaturan.
+Klik kanan pada karakter untuk menu aksi cepat, dan gunakan ikon tray untuk pengaturan. Menu **Keluar** di tray dan di klik kanan menutup overlay, dan bila overlay dijalankan lewat peluncur bisa sekaligus mematikan semua layanan.
 
 ---
 
@@ -471,7 +487,7 @@ Hermes Agent berjalan di WSL2 dan menjadi "tangan" Iris lewat `/agen`. Kemampuan
 
 Laporan Hermes ditampilkan apa adanya di kartu "Hasil tugas". Iris menyampaikannya secara netral dan bersumber, dan hanya menyatakan berhasil bila laporan Hermes jelas menyatakannya.
 
-> Tombol Stop memutus koneksi dari sisi Iris, tetapi belum terbukti menghentikan agen di sisi Hermes. Pesan pembatalan tetap menyebut "tugas mungkin masih berjalan". Skrip [`scripts/cek-cancel-hermes.py`](scripts/cek-cancel-hermes.py) mengukur mode mana yang benar-benar berhenti.
+> Tombol Stop memutus koneksi dari sisi Iris, tetapi belum terbukti menghentikan agen di sisi Hermes. Pesan pembatalan tetap menyebut "tugas mungkin masih berjalan". Skrip [`scripts/cek-cancel-hermes.py`](scripts/cek-cancel-hermes.py) mengukur mode mana yang benar-benar berhenti (jalankan dari folder proyek: `.\.venv\Scripts\python.exe scripts\cek-cancel-hermes.py`; opsi `--skip-health` melewati cek `/health` di awal).
 
 ---
 
@@ -480,14 +496,15 @@ Laporan Hermes ditampilkan apa adanya di kartu "Hasil tugas". Iris menyampaikann
 IRIS dirancang untuk berjalan lokal dan memberi agen akses ke komputermu, jadi beberapa pengaman dipasang:
 
 - Server hanya mendengar di `127.0.0.1`.
-- **Isi `COMPANION_TOKEN`.** Koneksi `/ws` dilindungi token lewat header `X-Iris-Token` (kode penolakan 1008), plus pengecekan `Origin`. Kalau token **kosong**, server tetap jalan dengan perilaku lama dan hanya mencetak peringatan di terminal. Karena agen bisa menjalankan perintah di komputermu, anggap token wajib
+- **`COMPANION_TOKEN` wajib** (minimal 16 karakter). Koneksi `/ws` dilindungi token lewat header `X-Iris-Token` (kode penolakan 1008), plus pengecekan `Origin`. Server menolak start bila token kosong atau terlalu pendek; satu-satunya pengecualian adalah `COMPANION_ALLOW_NO_TOKEN=1` untuk pengembangan. Karena agen bisa menjalankan perintah di komputermu, jangan pakai pengecualian itu untuk pemakaian sehari-hari
 - Perintah `/agen` yang berpotensi berbahaya (hapus, pindah, timpa, format file) meminta konfirmasi dulu. Daftar kata pemicu bisa disetel, `/health` menampilkan `agent_confirm`, dan konfirmasi sekali pakai kedaluwarsa dalam 120 detik
 - Semua jendela menolak navigasi, jendela baru, dan `<webview>`
 - Memori dan riwayat menolak menyimpan isi yang mirip rahasia (kata sandi dan sejenisnya)
 - Panel mini-browser berjalan terisolasi (sandbox, tanpa preload, tanpa akses kamera, mikrofon, atau notifikasi, navigasi hanya ke `https://`)
 - Jembatan baca-saja mati secara bawaan dan berlapis (lihat [bagiannya](#jembatan-baca-saja-untuk-hermes))
 - Fitur yang menyentuh privasi (duduk di jendela lain) **mati secara bawaan**
-- Log hanya mencatat sidik token, bukan isinya, dan URL dipotong sampai path
+- Log terminal hanya mencatat panjang dan sidik token, bukan isinya, dan URL dipotong sampai path. Endpoint `/health` tidak bertoken, jadi hanya menampilkan `ws_token` sebagai "aktif" atau "KOSONG", tanpa panjang atau sidik
+- DevTools tidak tersedia di versi rilis (aplikasi yang dipaketkan)
 
 Hal yang perlu kamu jaga sendiri:
 
@@ -514,6 +531,7 @@ Fitur di bawah sudah ditulis tetapi **belum lulus uji penuh di PC**. Anggap eksp
 | Perbaikan v46 sampai v50 (jaga UI tetap di layar, panel pindah sisi, rambut dan bayangan setengah badan) | Belum dites |
 | Tugas `/agen` ringan terasa lambat | Penyebab belum dipastikan |
 | Cancel yang benar-benar menghentikan agen | Belum terbukti |
+| Menutup peluncur dan menu Keluar yang mematikan semua layanan (`--stop-all`) | Baru ditulis, belum diuji end-to-end |
 | Bubble dengan lampiran dekat tepi atas layar | Belum dites |
 
 Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kartu hasil), konfirmasi `/agen` berbahaya, token `/ws`, ganti baju, tema, fun fact, alarm dan jam, mood, seret file dan lampiran gambar, ekspor, pilihan bernomor, pil status koneksi, dan peluncur.
@@ -582,6 +600,8 @@ assets/
     └── clips.json           # daftar klip gerak (opsional)
 ```
 
+Klip gerak sederhana bisa dibuat sendiri dengan `python scripts\buat_klip_vrma.py` dari folder proyek; skrip ini menulis `.vrma` dan `clips.json` ke `assets/animations/`.
+
 Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 
 ---
@@ -592,6 +612,7 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 |---|---|
 | Iris tidak bersuara, terminal penuh `VOICEVOX gagal` | VOICEVOX belum berjalan. Jalankan VOICEVOX dulu (port 50021) |
 | Balasan `401 Missing API key` | `NINEROUTER_API_KEY` kosong. Isi di `.env` lalu restart server |
+| Server langsung berhenti dengan `[FATAL] COMPANION_TOKEN wajib diisi` | Isi `COMPANION_TOKEN` (minimal 16 karakter) di `.env`, lalu start ulang. Hanya untuk pengembangan: `COMPANION_ALLOW_NO_TOKEN=1` |
 | Overlay tidak tersambung, log `/ws ditolak` | Token server dan overlay berbeda (mis. ada dua `.env` dengan token berbeda). Cek sidik token di terminal server dan terminal Electron, lalu restart keduanya |
 | Halaman `127.0.0.1:8765` menampilkan "Server Iris aktif" saja | Normal bila `COMPANION_TOKEN` aktif. Gunakan overlay Electron |
 | `/agen` membalas HTTP 503 atau tidak merespons | Pastikan API server Hermes aktif di `127.0.0.1:8642` dan `HERMES_API_KEY` sama dengan `API_SERVER_KEY` |
@@ -602,9 +623,10 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 | Model gambar timeout | Kurangi jumlah gambar yang dikirim atau naikkan `NINEROUTER_VISION_READ_TIMEOUT` |
 | Tombol Salin gambar gagal | Restart Iris. Handler mencoba tiga cara berurutan, termasuk lewat PowerShell |
 | Pintasan bisu tidak bekerja | Kombinasinya mungkin dipakai aplikasi lain. Terminal mencetak pintasan yang terdaftar; paksa sendiri lewat `IRIS_MUTE_KEY` |
+| Menu Keluar hanya menutup overlay | Overlay tidak dijalankan lewat peluncur (mis. `npm start`), atau peluncurnya belum versi terbaru. Bangun ulang `IrisLauncher.exe` dan mulai dari peluncur |
 | Peluncur gagal di langkah WSL | Jalankan `iris-doctor.ps1` dan lihat log di `iris-start.log` |
 
-Untuk diagnosis lebih lanjut, buka DevTools dengan `Ctrl+Alt+D` dan cek tab Console.
+Untuk diagnosis lebih lanjut, jalankan overlay dengan `npm start`, buka DevTools dengan `Ctrl+Alt+D`, dan cek tab Console (DevTools tidak tersedia di versi rilis).
 
 ---
 
