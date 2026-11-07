@@ -24,7 +24,7 @@ Proyek ini dibuat sebagai proyek pribadi dan masih terus dikembangkan.
 - Dipublikasikan di GitHub: 5 November 2026
 - Versi terbaru: v1.0.0 (peluncur `IrisLauncher.exe`)
 - Status: aktif dikembangkan sebagai proyek pribadi
-- Terakhir diperbarui: 7 November 2026 (tombol Stop kini menghentikan agen Hermes, VOICEVOX bisa berjalan di GPU, jeda sambung ulang WebSocket bertahap, perbaikan path berspasi; lihat [Status pengujian](#status-pengujian))
+- Terakhir diperbarui: 8 November 2026 (status server di peluncur dicek lewat `/ping`, belum diuji; tombol Stop kini menghentikan agen Hermes, VOICEVOX bisa berjalan di GPU, jeda sambung ulang WebSocket bertahap, perbaikan path berspasi; lihat [Status pengujian](#status-pengujian))
 
 Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan belum diuji penuh. Daftarnya ada di [Status pengujian](#status-pengujian).
 
@@ -273,6 +273,7 @@ Semua pengaturan dibaca dari file `.env` (di folder proyek atau di folder user W
 | `IRIS_WEB_BRIDGE=1` | Nyalakan jembatan baca-saja (butuh `COMPANION_TOKEN`) |
 | `IRIS_BRIDGE_HOST`, `IRIS_BRIDGE_PORT` | Alamat jembatan baca-saja (port bawaan 8767) |
 | `IRIS_PEEK_CUT` | Seberapa banyak karakter terlihat saat mengintip |
+| `IRIS_HEALTH_CONNECT` | Batas sambung (detik, bawaan 1,5) per layanan saat `/health` memeriksa VOICEVOX, 9Router, dan Hermes |
 
 Membuat token untuk `COMPANION_TOKEN`:
 
@@ -300,7 +301,7 @@ Buka dua terminal di folder proyek.
 npm start
 ```
 
-Cek kesehatan layanan di `http://127.0.0.1:8765/health`.
+Cek kesehatan layanan di `http://127.0.0.1:8765/health`. Untuk sekadar memastikan server hidup (tanpa memeriksa layanan lain), buka `http://127.0.0.1:8765/ping`; jawabannya `{"ok":true}`.
 
 > Karena `COMPANION_TOKEN` wajib, halaman `http://127.0.0.1:8765` di browser tidak bisa dipakai untuk chat (browser tidak dapat mengirim header token). Gunakan overlay Electron. Halaman tes `dev/test_client.html` hanya tersedia bila kamu sengaja menjalankan server dengan `COMPANION_ALLOW_NO_TOKEN=1` dan token kosong.
 
@@ -320,6 +321,11 @@ Cek kesehatan layanan di `http://127.0.0.1:8765/health`.
 | `iris-doctor.ps1` | Memeriksa folder proyek, `.venv`, Electron, `.env`, port, status WSL dan Hermes, `.wslconfig`, ruang disk, dan RAM. Tiap baris `OK`, `WARN`, atau `GAGAL` disertai cara memperbaiki; `WARN` juga muncul bila unit `voicevox` di WSL masih aktif (bisa merebut port 50021). Nilai token tidak pernah dicetak |
 | `iris-hermes.ps1`, `iris-service.ps1` | Pembungkus untuk Hermes dan layanan WSL |
 | `9router.service` | Layanan systemd pengguna di WSL untuk 9Router |
+
+**Cara peluncur menilai server hidup**
+
+- Peluncur, `iris-start.ps1`, dan `iris-service.ps1` memakai `GET /ping`, bukan `/health`. `/health` ikut memeriksa VOICEVOX, 9Router, dan Hermes, jadi melambat saat salah satunya mati dan bisa membuat server yang masih hidup tampak mati. Server lama tanpa `/ping` tetap dikenali (balasan 404 dihitung hidup).
+- `/health` tetap dipakai pil status di overlay, `/status`, dan `iris-doctor.ps1`. Batas sambung per layanan di `/health` 1,5 detik (ubah lewat `IRIS_HEALTH_CONNECT`).
 
 **Mesin suara VOICEVOX (GPU)**
 
@@ -564,6 +570,7 @@ Fitur di bawah sudah ditulis tetapi **belum lulus uji penuh di PC**. Anggap eksp
 | Sambung ulang WebSocket bertahap (jeda 2, 4, 8, maksimal 15 detik) | Diterapkan di `index.html`, belum diuji dengan memutus server saat overlay jalan |
 | VOICEVOX di GPU (DirectML) | Mesin naik dan mendeteksi GPU (RTX 4060 Laptop, `/version` 0.25.2). Pemakaian GPU saat sintesis dan perbandingan latensi dengan CPU belum diukur |
 | Batas tunggu stop Hermes di peluncur | Masih sekitar 12 detik, padahal systemd memberi Hermes sampai 70 detik; chip Hermes bisa tampak gagal mati padahal berhenti sesudahnya |
+| Status server di peluncur lewat `/ping` (chip server tidak lagi tampak Mati saat Hermes dimatikan) | Patch di-commit 8 November 2026 (`server.py`, peluncur, `iris-start.ps1`, `iris-service.ps1`). Perlu `build.bat` ulang dan belum diuji: matikan chip Hermes, chip server harus tetap Hidup |
 | Bubble dengan lampiran dekat tepi atas layar | Belum dites |
 
 Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kartu hasil), konfirmasi `/agen` berbahaya, token `/ws`, ganti baju, tema, fun fact, alarm dan jam, mood, seret file dan lampiran gambar, ekspor, pilihan bernomor, pil status koneksi, dan peluncur, termasuk menutup peluncur dan menu Keluar yang mematikan semua layanan (`--stop-all`, dilaporkan pemilik berfungsi), serta perbaikan v46 sampai v50 (jaga UI tetap di layar, panel pindah sisi, rambut dan bayangan setengah badan; dilaporkan pemilik sudah beres), serta pikiran batin (dilaporkan pemilik aman). Dari 7 November 2026: pembatalan tugas yang benar-benar menghentikan agen Hermes (HTTP 200 `stopping`, status `cancelled`) dan konversi path berspasi (`tests/test_path_berspasi.py`, 13 dari 13 tes proyek lulus).
@@ -663,6 +670,7 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 | Server baru langsung mati dengan `Errno 10048` | Server lama masih memegang port 8765. Cek `Get-NetTCPConnection -LocalPort 8765 -State Listen`, matikan prosesnya (atau lewat peluncur), lalu start ulang |
 | Stop tidak menghentikan agen Hermes | Pastikan `HERMES_STREAM=1` di `.env`, restart server, dan buka ulang overlay. Satu langkah yang sedang berjalan bisa selesai dulu. Me-restart `hermes-gateway` di tengah tugas memunculkan "Server disconnected"; itu bukan hasil tombol Stop |
 | Chip Hermes tampak gagal mati | Systemd memberi Hermes sampai 70 detik, sedangkan peluncur menunggu sekitar 12 detik. Cek `systemctl --user status hermes-gateway` di WSL sebelum menyimpulkan gagal |
+| Chip server.py tampak Mati padahal server jalan, atau server tidak bisa dinyalakan saat Hermes mati | Peluncur lama menilai server lewat `/health`, yang melambat saat Hermes mati. Perbarui `server.py`, bangun ulang `IrisLauncher.exe` (peluncur kini memakai `/ping`), lalu cek `http://127.0.0.1:8765/ping`. Bila masih salah, lihat di Task Manager apakah `python.exe` benar-benar hilang |
 
 Untuk diagnosis lebih lanjut, jalankan overlay dengan `npm start`, buka DevTools dengan `Ctrl+Alt+D`, dan cek tab Console (DevTools tidak tersedia di versi rilis).
 
