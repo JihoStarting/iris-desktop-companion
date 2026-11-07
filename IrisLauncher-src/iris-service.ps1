@@ -33,7 +33,7 @@ $UnitWsl = @{
   hermes   = @{ Unit = 'hermes-gateway'; Label = 'Hermes';   Url = 'http://127.0.0.1:8642/health' }
 }
 $SemuaUnit = @('voicevox', '9router', 'hermes-gateway')
-$UrlServer = 'http://127.0.0.1:8765/health'
+$UrlServer = 'http://127.0.0.1:8765/ping'   # bukan /health: /health ikut memeriksa Hermes dll. dan lambat saat Hermes mati
 
 function Get-HttpCode([string]$Url, [int]$TimeoutMs = 3000) {
   try {

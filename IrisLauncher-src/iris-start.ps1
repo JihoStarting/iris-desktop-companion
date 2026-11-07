@@ -151,7 +151,7 @@ if ($tertunda.Count -gt 0) {
 }
 
 # 3. server.py
-if ((Get-HttpCode 'http://127.0.0.1:8765/health') -gt 0) {
+if ((Get-HttpCode 'http://127.0.0.1:8765/ping') -gt 0) {
   Log 'server.py sudah menjawab di :8765 (tidak membuat server kedua)'
 } else {
   $py = Join-Path $Proyek '.venv\Scripts\python.exe'
@@ -164,7 +164,7 @@ if ((Get-HttpCode 'http://127.0.0.1:8765/health') -gt 0) {
     -RedirectStandardError (Join-Path $Proyek 'iris-server.err.log') | Out-Null
   Log 'server.py dijalankan (tersembunyi); menunggu /health (maks 120 detik)'
   $tSrv = Get-Date
-  if (Wait-Http 'http://127.0.0.1:8765/health' 120) {
+  if (Wait-Http 'http://127.0.0.1:8765/ping' 120) {
     Log ('server.py siap setelah {0:N0} detik' -f ((Get-Date) - $tSrv).TotalSeconds)
   } else {
     Log 'server.py belum menjawab dalam 120 detik; overlay tetap dijalankan. Lihat iris-server.err.log' 'WARN'

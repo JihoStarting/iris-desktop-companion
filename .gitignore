@@ -45,3 +45,9 @@ jahat.html
 tes-injeksi/
 jahat.html
 tes-injeksi/
+
+iris-history.json
+iris-memory.json
+screens/
+*.log
+vv-engine/

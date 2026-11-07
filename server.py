@@ -6,6 +6,10 @@ Alur:
   klien (WebSocket) -> teks user -> 9Router (stream) -> per baris
   -> VOICEVOX (speaker 2) -> kirim {teks, audio wav base64, moras, emosi} ke klien
 
+Perubahan v70 (server.py tidak lagi tampak mati saat Hermes dimatikan):
+  - Endpoint baru GET /ping: cek hidup server.py saja, langsung menjawab, tidak memeriksa layanan lain.
+  - /health: batas waktu sambung per layanan 1,5 detik (IRIS_HEALTH_CONNECT) supaya tidak lambat saat ada layanan yang mati.
+
 Perubahan v66 (gerbang persetujuan asli, Keamanan agen 2c):
   - Saat Hermes mau menjalankan perintah yang ditandai detektornya (rm -rf, python -c + rmtree, dst.), Hermes mengirim frame SSE
     "event: approval.request" lalu MENUNGGU jawaban lewat POST /v1/runs/{id}/approval. Dulu frame itu dibuang dan tugas menggantung
@@ -2217,6 +2221,10 @@ async def index():
 # v39: pil status koneksi. Server mendorong {"type":"health", voicevox/ninerouter/hermes: ok|warn|down, detail} ke overlay
 # tiap HEALTH_PUSH_SEC detik dan saat overlay meminta ({"type":"health"}). /health tetap ada (ditambah "state").
 HEALTH_PUSH_SEC = max(15, int(os.getenv("IRIS_HEALTH_SEC", "45")))
+# v70: batas waktu SAMBUNG per layanan saat health_probe. Di Windows, menyambung ke port loopback yang tertutup (Hermes/9Router/VOICEVOX
+# mati) baru ditolak setelah sekitar 2 detik per alamat, jadi /health jadi lambat tepat saat ada layanan yang mati. Dibatasi di sini supaya
+# /health tetap cepat (layanan yang tidak tersambung dalam waktu ini dianggap "down").
+HEALTH_CONNECT_SEC = env_float("IRIS_HEALTH_CONNECT", 1.5)
 
 
 async def health_probe() -> dict:
@@ -2225,7 +2233,7 @@ async def health_probe() -> dict:
               "agent_confirm": f"aktif ({len(DANGER_WORDS)} kata pemicu)" if CONFIRM_ENABLED else "MATI",
               "agent_approval": ("aktif (sekali/tolak)" if APPROVAL_ENABLED else "MATI (izin ditolak otomatis)")
                                 + ("" if HERMES_STREAM else "; HERMES_STREAM bukan 1, kartu tidak akan muncul")}
-    async with httpx.AsyncClient(timeout=5.0) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=HEALTH_CONNECT_SEC)) as client:
         async def p_voicevox():
             try:
                 r = await client.get(f"{VOICEVOX_URL}/version")
@@ -2268,6 +2276,14 @@ def health_states(result: dict) -> dict:
 def health_message(result: dict) -> dict:
     return {"type": "health", **health_states(result),
             "detail": {k: str(result.get(k))[:160] for k in ("voicevox", "ninerouter", "hermes")}}
+
+
+# v70: cek hidup server.py SAJA. Segera menjawab tanpa memeriksa VOICEVOX/9Router/Hermes. Dipakai Iris Launcher dan skrip start/service
+# untuk tahu "server.py hidup atau tidak". /health memeriksa layanan lain, jadi menjadi lambat atau gagal kalau Hermes (dll.) sedang mati;
+# dulu itu membuat server.py yang masih hidup tampak "Mati" di launcher begitu Hermes dimatikan.
+@app.get("/ping")
+async def ping():
+    return {"ok": True}
 
 
 @app.get("/health")

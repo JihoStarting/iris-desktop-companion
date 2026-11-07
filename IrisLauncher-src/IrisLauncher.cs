@@ -1029,7 +1029,9 @@ namespace IrisLauncher
             th[0] = new Thread(delegate () { p.Voice = Alive("http://127.0.0.1:50021/version"); });
             th[1] = new Thread(delegate () { p.Router = Alive("http://127.0.0.1:20128/"); });
             th[2] = new Thread(delegate () { p.Hermes = Alive("http://127.0.0.1:8642/health"); });
-            th[3] = new Thread(delegate () { p.Server = Alive("http://127.0.0.1:8765/health"); });
+            // /ping, bukan /health: /health ikut memeriksa Hermes dll., jadi lambat saat Hermes mati dan melewati batas 1,5 detik
+            // (server.py lama tanpa /ping membalas 404, itu tetap dihitung hidup)
+            th[3] = new Thread(delegate () { p.Server = Alive("http://127.0.0.1:8765/ping"); });
             foreach (Thread x in th) { x.IsBackground = true; x.Start(); }
             p.Wsl = AnyProc("vmmemWSL") || AnyProc("vmmem");
             p.Overlay = OverlayUp(proyek);
