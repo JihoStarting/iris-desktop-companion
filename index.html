@@ -2445,10 +2445,15 @@ function closeApprovalCard(id, text, color) {
   approvalCards.delete(id);
 }
 function answerApproval(id, choice) {
+  const c = approvalCards.get(id); if (!c) return;
   if (!(ws && ws.readyState === WebSocket.OPEN)) { closeApprovalCard(id, 'Koneksi terputus, jawaban tidak terkirim', ''); return; }
   send({ type: 'approval', id, choice });
-  if (choice === 'once') closeApprovalCard(id, 'Diizinkan sekali, dikirim ke Hermes', '#7ee2a0');
-  else closeApprovalCard(id, 'Ditolak', '');
+  /* v69: kartu TIDAK mengaku "dikirim ke Hermes" sebelum server melapor hasilnya (approval_end); tombol dikunci dan kartu menunggu. */
+  clearTimeout(c.timer);
+  if (c.ok) c.ok.disabled = true;
+  c.no.disabled = true;
+  c.res.textContent = 'Jawaban dikirim ke server, menunggu Hermes…'; c.res.style.color = '';
+  c.timer = setTimeout(() => closeApprovalCard(id, 'Tidak ada kabar dari server, cek terminal server', ''), 20000);
 }
 function onApproval(m) {
   irisBlock = null;
@@ -2478,8 +2483,9 @@ function onApproval(m) {
   say('Hermes minta izin dulu. Cek kartunya ya.', 'neutral', 6000, 'Hermesが許可を求めてるよ。カードを確認してね。', { force: true });
 }
 function onApprovalEnd(m) {   // server menutup kartu: approved/denied (sudah ditutup oleh klik), expired, cancelled, atau failed
-  const text = { approved: 'Diizinkan sekali, dikirim ke Hermes', denied: 'Ditolak', expired: 'Kedaluwarsa, ditolak otomatis',
-                 cancelled: 'Tugas dihentikan, tidak ada yang dikirim', failed: 'Gagal ditampilkan, ditolak otomatis' }[m.state] || 'Selesai';
+  const text = { approved: 'Diizinkan sekali, Hermes menerima jawaban', denied: 'Ditolak, Hermes menerima jawaban', expired: 'Kedaluwarsa, ditolak otomatis',
+                 cancelled: 'Tugas dihentikan, tidak ada yang dikirim', failed: 'Gagal ditampilkan, ditolak otomatis',
+                 send_failed: 'Hermes TIDAK menerima jawaban, cek terminal server' }[m.state] || 'Selesai';
   closeApprovalCard(String(m.id || ''), text, m.state === 'approved' ? '#7ee2a0' : '');
 }
 function logErr(text) { irisBlock = null; addStamp(logAdd('err', text)); }

@@ -363,7 +363,8 @@ def test_hub_kartu_dan_jawaban_once():
     async def main():
         ws = FakeWS()
         hub = server.ApprovalHub(ws)
-        t = asyncio.create_task(hub(_req()))
+        req = _req()
+        t = asyncio.create_task(hub(req))
         await asyncio.sleep(0.05)
         card = ws.of("approval")[0]
         assert card["id"].startswith("ap-") and card["choices"] == ["once", "deny"]   # tanpa session/always
@@ -371,6 +372,7 @@ def test_hub_kartu_dan_jawaban_once():
         assert "r1" not in json.dumps(card) and "chatcmpl" not in json.dumps(card), "id Hermes tidak boleh bocor ke overlay"
         assert hub.resolve(card["id"], "once") is True
         assert await asyncio.wait_for(t, 2) == "once"
+        await hub.finish(req, True)   # v69: kartu ditutup sesudah POST ke Hermes
         assert ws.of("approval_end")[0] == {"type": "approval_end", "id": card["id"], "state": "approved"}
         assert hub.pending == {}
     run(main())
@@ -453,7 +455,9 @@ def _e2e(choice):
     from fastapi.testclient import TestClient
 
     async def fake_ask(client, task, context="", prev_note="", approver=None):
-        c = await approver(server.parse_approval_event(dict(APPROVAL, command="rm -rf /mnt/z/tes-injeksi/folder-uji")))
+        req = server.parse_approval_event(dict(APPROVAL, command="rm -rf /mnt/z/tes-injeksi/folder-uji"))
+        c = await approver(req)
+        await approver.finish(req, True)   # v69: seperti _handle_approval
         return "SELESAI-" + c
 
     async def noop(*a, **k):

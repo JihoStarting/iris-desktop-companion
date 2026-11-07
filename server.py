@@ -979,6 +979,8 @@ async def _hermes_approve(client: httpx.AsyncClient, run_ids: list, headers: dic
                 return True
             if r.status_code == 409:   # tidak ada persetujuan aktif / giliran sudah selesai; id lain tidak akan membantu
                 return False
+            if r.status_code == 404:   # v69: id run ini tidak dikenal Hermes; bentuk body lain tidak akan membantu, langsung id berikutnya
+                break
             # 400 dan lainnya: coba bentuk body berikutnya
     return False
 
@@ -1000,7 +1002,19 @@ async def _handle_approval(client: httpx.AsyncClient, approver, headers: dict, r
             print(f"[{stamp()}] penjawab izin galat, ditolak: {e!r}", flush=True)
     if choice not in APPROVAL_CHOICES or (choice == "once" and not req.get("can_once", True)):
         choice = "deny"
-    await _hermes_approve(client, run_ids, headers, choice, req.get("request_id", ""), req.get("execution_generation"))
+    sent_ok = False
+    try:
+        sent_ok = await _hermes_approve(client, run_ids, headers, choice, req.get("request_id", ""), req.get("execution_generation"))
+    except asyncio.CancelledError:
+        req["_card_choice"] = "cancelled"   # v69: Stop/putus sebelum hasil POST diketahui
+        raise
+    finally:
+        fin = getattr(approver, "finish", None)
+        if req.get("_card_id") and callable(fin):
+            try:
+                await fin(req, sent_ok)   # v69: kartu baru ditutup SETELAH hasil POST ke Hermes diketahui
+            except Exception as e:
+                print(f"[{stamp()}] gagal menutup kartu izin: {e!r}", flush=True)
 
 
 async def _hermes_stream(client: httpx.AsyncClient, headers: dict, payload: dict, approver=None) -> str:
@@ -1936,7 +1950,21 @@ class ApprovalHub:
             raise
         finally:
             self.pending.pop(cid, None)
-            await safe_send(self.ws, {"type": "approval_end", "id": cid, "state": state})
+            if state in ("approved", "denied"):
+                # v69: keputusan sudah ada, tetapi hasil POST ke Hermes belum; approval_end dikirim oleh finish() sesudahnya
+                req["_card_id"], req["_card_choice"] = cid, state
+            else:
+                await safe_send(self.ws, {"type": "approval_end", "id": cid, "state": state})
+
+    async def finish(self, req: dict, sent_ok: bool) -> None:
+        """v69: tutup kartu sesudah _hermes_approve selesai. approved/denied hanya kalau Hermes menjawab 200; selain itu send_failed."""
+        cid = req.pop("_card_id", None)
+        state = req.pop("_card_choice", "denied")
+        if not cid:
+            return
+        if state in ("approved", "denied") and not sent_ok:
+            state = "send_failed"
+        await safe_send(self.ws, {"type": "approval_end", "id": cid, "state": state})
 
     def resolve(self, cid: str, choice: str) -> bool:
         """Jawaban dari overlay. Hanya id yang sedang menunggu, sekali pakai. Selain "once" selalu dianggap "deny"."""
