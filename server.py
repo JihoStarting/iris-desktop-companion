@@ -6,6 +6,17 @@ Alur:
   klien (WebSocket) -> teks user -> 9Router (stream) -> per baris
   -> VOICEVOX (speaker 2) -> kirim {teks, audio wav base64, moras, emosi} ke klien
 
+Perubahan v66 (gerbang persetujuan asli, Keamanan agen 2c):
+  - Saat Hermes mau menjalankan perintah yang ditandai detektornya (rm -rf, python -c + rmtree, dst.), Hermes mengirim frame SSE
+    "event: approval.request" lalu MENUNGGU jawaban lewat POST /v1/runs/{id}/approval. Dulu frame itu dibuang dan tugas menggantung
+    sampai Stop. Sekarang _hermes_stream membacanya, server mengirim {"type":"approval","id","command","choices","ttl"} ke overlay
+    (kartu Izinkan sekali / Tolak), dan jawaban {"type":"approval","id","choice":"once"|"deny"} diteruskan ke Hermes.
+  - Hanya "once" dan "deny" yang pernah dikirim ke Hermes. "session" dan "always" TIDAK ditawarkan dan, kalau dikirim klien, dianggap "deny".
+  - Fail-closed: tanpa jawaban dalam AGENT_APPROVAL_TTL (bawaan 120 detik, maks. 280), koneksi putus, Stop, atau perintah tak terbaca = "deny".
+  - Setelan .env: AGENT_APPROVAL=0 (matikan kartu; semua permintaan izin ditolak otomatis), AGENT_APPROVAL_TTL=120.
+  - Batas: hanya perintah yang ditandai detektor Hermes yang sampai ke sini. rm satu file dan find -delete tidak ditandai, jadi tidak
+    ada kartu untuknya. Butuh HERMES_STREAM=1 (mode non-stream: Hermes langsung menolak sendiri tanpa bertanya).
+
 Perubahan v41 (emosi lebih banyak):
   - Emosi baru selain 6 yang lama: tease (menggoda), smug (bangga), excited (semangat), worried (khawatir), sleepy (ngantuk),
     confused (bingung). Daftar lengkap ada di EMO_NAMES. Tiap emosi baru punya gaya suara sendiri (EMO_VOICE) dan, kalau diisi di .env,
@@ -245,6 +256,15 @@ AGENT_PREFIXES = ("/agen ", "/agent ", "/h ")
 # v34: konfirmasi sebelum tugas agen yang berbau berbahaya diteruskan ke Hermes (lihat docstring di atas)
 CONFIRM_ENABLED = os.getenv("AGENT_CONFIRM", "1").strip().lower() not in ("0", "false", "off", "no")
 CONFIRM_TTL = env_float("AGENT_CONFIRM_TTL", 120.0)   # detik, batas menunggu klik Jalankan atau Batal
+# v68: kartu v34 hanya muncul kalau gerbang Hermes (v66/v67) mati, supaya pengguna cukup konfirmasi SEKALI (kartu Hermes yang menampilkan perintah asli).
+# AGENT_CONFIRM_ALWAYS=1 mengembalikan dua kartu (v34 lalu Hermes); berguna karena Hermes tidak menandai rm satu file atau find -delete.
+CONFIRM_ALWAYS = os.getenv("AGENT_CONFIRM_ALWAYS", "0").strip().lower() in ("1", "true", "on", "yes")
+
+# v66: gerbang persetujuan asli (event approval.request dari Hermes). Lihat docstring di atas.
+APPROVAL_ENABLED = os.getenv("AGENT_APPROVAL", "1").strip().lower() not in ("0", "false", "off", "no")
+APPROVAL_TTL = min(env_float("AGENT_APPROVAL_TTL", 120.0), 280.0)   # lebih pendek dari approvals.timeout Hermes (300 dtk) supaya Iris yang menolak lebih dulu
+APPROVAL_CHOICES = ("once", "deny")   # satu-satunya pilihan yang boleh dikirim ke Hermes ("session"/"always" sengaja tidak ada)
+APPROVAL_CMD_MAX = 600
 DEFAULT_DANGER_WORDS = [
     # Indonesia (awalan me-/meng-/di-/ter- dikenali otomatis; bentuk tak beraturan ditulis sendiri)
     "hapus", "buang", "pindah", "memindah", "timpa", "menimpa", "ganti nama", "ubah nama", "bersihkan", "kosongkan",
@@ -878,6 +898,9 @@ def build_hermes_message(task: str, context: str = "", prev_note: str = "") -> s
 # melihat klien putus di tengah giliran. Apakah Hermes lalu benar-benar menghentikan agen BELUM terbukti: jalankan
 # scripts/cek-cancel-hermes.py untuk mengukurnya (mode mana yang menghentikan agen), lalu pilih nilai HERMES_STREAM.
 HERMES_STREAM = os.getenv("HERMES_STREAM", "0").strip() == "1"
+if not HERMES_STREAM:
+    print("[WARN] HERMES_STREAM bukan 1: tombol Stop tidak menghentikan agen dan kartu persetujuan tindakan agen tidak akan pernah muncul "
+          "(Hermes menolak sendiri perintah berbahaya tanpa bertanya). Isi HERMES_STREAM=1 di .env.", flush=True)
 
 
 def _hermes_text(data: dict) -> str:
@@ -895,9 +918,97 @@ async def _hermes_stop(run_id: str, headers: dict) -> None:
         print(f"[{stamp()}] stop Hermes {run_id} gagal: {e!r}", flush=True)
 
 
-async def _hermes_stream(client: httpx.AsyncClient, headers: dict, payload: dict) -> str:
+def parse_approval_event(obj) -> dict:
+    """v66: ratakan frame SSE `approval.request` Hermes jadi dict tetap. Selalu mengembalikan dict (command "" kalau tidak terbaca).
+    Frame boleh datar, atau memuat objek bersarang di kunci approval/request/data/payload; field yang tidak ada diabaikan."""
+    flat: dict = {}
+    if isinstance(obj, dict):
+        flat = dict(obj)
+        for k in ("approval", "request", "data", "payload"):
+            inner = obj.get(k)
+            if isinstance(inner, dict):
+                flat.update(inner)
+    cmd = flat.get("command")
+    cmd = cmd.strip() if isinstance(cmd, str) else ""
+    raw_choices = flat.get("choices")
+    choices = [c for c in raw_choices if isinstance(c, str)] if isinstance(raw_choices, list) else []
+    desc = ""
+    for k in ("description", "reason", "pattern_description", "message"):
+        if isinstance(flat.get(k), str) and flat[k].strip():
+            desc = " ".join(flat[k].split())[:200]
+            break
+    rid = ""
+    for k in ("request_id", "approval_id"):
+        if isinstance(flat.get(k), (str, int)) and not isinstance(flat.get(k), bool) and str(flat[k]).strip():
+            rid = str(flat[k]).strip()
+            break
+    run = flat.get("run_id")
+    gen = flat.get("execution_generation")
+    return {
+        "command": cmd,
+        "description": desc,
+        "request_id": rid,
+        "run_id": run.strip() if isinstance(run, str) else "",
+        "execution_generation": gen if isinstance(gen, int) and not isinstance(gen, bool) else (int(gen) if isinstance(gen, str) and gen.strip().isdigit() else None),
+        "smart_denied": bool(flat.get("smart_denied")),
+        "can_once": (not choices) or ("once" in choices),   # Hermes tidak menawarkan "once" = hanya Tolak yang ditampilkan
+    }
+
+
+async def _hermes_approve(client: httpx.AsyncClient, run_ids: list, headers: dict, choice: str, request_id: str, generation=None) -> bool:
+    """Kirim jawaban ke POST {HERMES_URL}/runs/{id}/approval. choice hanya "once" atau "deny". True kalau Hermes menjawab 200.
+    v67: Hermes (session_authority, respond_run) hanya menerima body dengan TEPAT tiga kunci: choice, request_id, execution_generation
+    (kurang atau lebih = 400 invalid_params). Bentuk lain dipertahankan sebagai cadangan untuk Hermes lama. Coba berurutan (dengan
+    execution_generation, tanpa itu, hanya choice); berhenti di 200 (berhasil) atau 409 (tidak ada persetujuan aktif)."""
+    choice = choice if choice in APPROVAL_CHOICES else "deny"
+    bodies: list[dict] = []
+    if request_id and generation is not None:
+        bodies.append({"choice": choice, "request_id": request_id, "execution_generation": generation})
+    if request_id:
+        bodies.append({"choice": choice, "request_id": request_id})
+    bodies.append({"choice": choice})
+    for rid in run_ids:
+        for body in bodies:
+            try:
+                r = await client.post(f"{HERMES_URL}/runs/{rid}/approval", json=body, headers=headers, timeout=httpx.Timeout(10.0))
+            except Exception as e:
+                print(f"[{stamp()}] jawaban izin ke Hermes ({rid}) gagal: {e!r}", flush=True)
+                continue
+            print(f"[{stamp()}] jawaban izin ke Hermes {rid}: {choice} kunci={sorted(body)} -> HTTP {r.status_code} {r.text[:300]}", flush=True)
+            if r.status_code == 200:
+                return True
+            if r.status_code == 409:   # tidak ada persetujuan aktif / giliran sudah selesai; id lain tidak akan membantu
+                return False
+            # 400 dan lainnya: coba bentuk body berikutnya
+    return False
+
+
+async def _handle_approval(client: httpx.AsyncClient, approver, headers: dict, run_ids: list, req: dict) -> None:
+    """Satu permintaan izin dari Hermes: tanya pengguna lewat approver, lalu kirim jawabannya. Fail-closed: apa pun yang
+    tidak jelas menjadi "deny" supaya Hermes tidak menggantung. Dibatalkan (Stop/putus) = tidak mengirim apa-apa."""
+    choice = "deny"
+    if not req.get("command"):
+        print(f"[{stamp()}] approval.request tanpa perintah terbaca: ditolak otomatis", flush=True)
+    elif not APPROVAL_ENABLED or approver is None:
+        print(f"[{stamp()}] approval.request ditolak otomatis (AGENT_APPROVAL mati atau tidak ada penjawab)", flush=True)
+    else:
+        try:
+            choice = await approver(req)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            print(f"[{stamp()}] penjawab izin galat, ditolak: {e!r}", flush=True)
+    if choice not in APPROVAL_CHOICES or (choice == "once" and not req.get("can_once", True)):
+        choice = "deny"
+    await _hermes_approve(client, run_ids, headers, choice, req.get("request_id", ""), req.get("execution_generation"))
+
+
+async def _hermes_stream(client: httpx.AsyncClient, headers: dict, payload: dict, approver=None) -> str:
     chunks: list[str] = []
     run_id = ""   # id potongan SSE pertama = id run di Hermes (dipakai untuk stop)
+    env_run_id = ""   # v66: run_id dari amplop approval.request (cadangan kalau belum ada potongan biasa)
+    approval_tasks: set[asyncio.Task] = set()   # v66: permintaan izin yang sedang menunggu jawaban pengguna
+    event = ""   # v66: nama event SSE yang sedang dibaca ("" = pesan biasa)
     try:
         async with client.stream("POST", f"{HERMES_URL}/chat/completions", json={**payload, "stream": True},
                                  headers=headers, timeout=httpx.Timeout(30.0, read=HERMES_TIMEOUT)) as r:
@@ -908,6 +1019,12 @@ async def _hermes_stream(client: httpx.AsyncClient, headers: dict, payload: dict
                 return _hermes_text(json.loads((await r.aread()).decode("utf-8", "replace")))
             try:
                 async for line in r.aiter_lines():
+                    if not line:   # baris kosong = akhir satu frame SSE
+                        event = ""
+                        continue
+                    if line.startswith("event:"):
+                        event = line[6:].strip()
+                        continue
                     if not line.startswith("data:"):
                         continue
                     d = line[5:].strip()
@@ -915,6 +1032,20 @@ async def _hermes_stream(client: httpx.AsyncClient, headers: dict, payload: dict
                         break
                     try:
                         obj = json.loads(d)
+                    except Exception:
+                        continue
+                    if event == "approval.request" or (isinstance(obj, dict) and obj.get("type") == "approval.request"):
+                        # v66: Hermes menunggu izin. Dicek SEBELUM membaca "choices", karena di frame ini isinya daftar string.
+                        req = parse_approval_event(obj)
+                        env_run_id = env_run_id or req["run_id"]
+                        ids = [x for x in dict.fromkeys([run_id, req["run_id"]]) if x]
+                        shape = sorted(obj)[:14] if isinstance(obj, dict) else type(obj).__name__
+                        print(f"[{stamp()}] Hermes minta izin (kunci frame: {shape}): {req['command'][:120]!r}", flush=True)
+                        t = asyncio.create_task(_handle_approval(client, approver, headers, ids, req))
+                        approval_tasks.add(t)
+                        t.add_done_callback(approval_tasks.discard)
+                        continue
+                    try:
                         delta = (obj.get("choices") or [{}])[0].get("delta") or {}
                     except Exception:
                         continue
@@ -926,15 +1057,21 @@ async def _hermes_stream(client: httpx.AsyncClient, headers: dict, payload: dict
             except (asyncio.CancelledError, httpx.ReadTimeout):
                 # Tombol Stop / batas waktu total: hentikan agennya SEBELUM koneksi ditutup (urutan yang terbukti
                 # lewat scripts/cek-stop-hermes.py), bukan hanya memutus koneksi.
-                if run_id:
-                    await asyncio.shield(_hermes_stop(run_id, headers))
+                if run_id or env_run_id:
+                    await asyncio.shield(_hermes_stop(run_id or env_run_id, headers))
                 raise
     except httpx.ReadTimeout as e:
         raise HermesTimeout(f"tidak ada balasan selama {int(HERMES_TIMEOUT)} detik") from e
+    finally:
+        # v66: apa pun akhirnya (selesai, Stop, timeout, galat), kartu izin yang masih terbuka ditutup dan tidak ada jawaban yang dikirim
+        for t in list(approval_tasks):
+            t.cancel()
+        if approval_tasks:
+            await asyncio.gather(*approval_tasks, return_exceptions=True)
     return "".join(chunks).strip()
 
 
-async def ask_hermes(client: httpx.AsyncClient, task: str, context: str = "", prev_note: str = "") -> str:
+async def ask_hermes(client: httpx.AsyncClient, task: str, context: str = "", prev_note: str = "", approver=None) -> str:
     headers = {"Content-Type": "application/json"}
     if HERMES_KEY:
         headers["Authorization"] = f"Bearer {HERMES_KEY}"
@@ -949,7 +1086,7 @@ async def ask_hermes(client: httpx.AsyncClient, task: str, context: str = "", pr
     }
     if HERMES_STREAM:
         try:
-            return await asyncio.wait_for(_hermes_stream(client, headers, payload), timeout=HERMES_TIMEOUT)
+            return await asyncio.wait_for(_hermes_stream(client, headers, payload, approver), timeout=HERMES_TIMEOUT)
         except asyncio.TimeoutError as e:   # batas total; wait_for sudah membatalkan dan menutup koneksi
             raise HermesTimeout(f"tidak ada balasan selama {int(HERMES_TIMEOUT)} detik") from e
     try:
@@ -1683,7 +1820,7 @@ async def stop_task(t: asyncio.Task | None) -> None:
         await asyncio.gather(t, return_exceptions=True)
 
 
-async def handle_agent_task(ws: WebSocket, client: httpx.AsyncClient, history: list, task: str):
+async def handle_agent_task(ws: WebSocket, client: httpx.AsyncClient, history: list, task: str, approver=None):
     """Tugas ke Hermes: ucapkan kalimat pembuka, tunggu Hermes, lalu Iris menyampaikan hasilnya
     lewat jalur LLM biasa supaya format [emosi] jp ||| id tetap terjaga.
 
@@ -1709,7 +1846,7 @@ async def handle_agent_task(ws: WebSocket, client: httpx.AsyncClient, history: l
         phase, maybe_running = "hermes", True
         hb = asyncio.create_task(heartbeat(ws, t0))
         try:
-            result = to_windows_paths(await ask_hermes(client, task, build_agent_context(history, include_note=follow), prev_note))
+            result = to_windows_paths(await ask_hermes(client, task, build_agent_context(history, include_note=follow), prev_note, approver))
             t_hermes = time.perf_counter() - t0
             print(f"[{stamp()}] Hermes selesai dalam {t_hermes:.1f} detik", flush=True)
             maybe_running = False
@@ -1761,6 +1898,55 @@ async def handle_agent_task(ws: WebSocket, client: httpx.AsyncClient, history: l
         await safe_send(ws, status_msg(False, final[0], final[1], total))
 
 
+class ApprovalHub:
+    """v66: kartu persetujuan tindakan agen untuk SATU koneksi /ws. Dipakai sebagai `approver` oleh _hermes_stream:
+    `await hub(req)` mengirim kartu ke overlay lalu menunggu pilihan, dan mengembalikan "once" atau "deny" (tidak pernah yang lain)."""
+
+    def __init__(self, ws: WebSocket):
+        self.ws = ws
+        self.pending: dict[str, asyncio.Future] = {}
+
+    async def __call__(self, req: dict) -> str:
+        cid = "ap-" + secrets.token_hex(4)   # id kartu dibuat di sini; id/request_id Hermes tidak pernah sampai ke overlay
+        fut = asyncio.get_running_loop().create_future()
+        self.pending[cid] = fut
+        cmd = req["command"]
+        if len(cmd) > APPROVAL_CMD_MAX:
+            cmd = cmd[:APPROVAL_CMD_MAX] + "…"
+        choice, state = "deny", "expired"
+        try:
+            sent = await safe_send(self.ws, {
+                "type": "approval", "id": cid, "command": cmd, "description": req.get("description", ""),
+                "flagged": bool(req.get("smart_denied")), "choices": ["once", "deny"] if req.get("can_once", True) else ["deny"],
+                "ttl": int(APPROVAL_TTL),
+            })
+            if not sent:
+                state = "failed"
+                return "deny"
+            print(f"[{stamp()}] kartu izin {cid} dikirim ke overlay, menunggu keputusan", flush=True)
+            try:
+                choice = await asyncio.wait_for(fut, APPROVAL_TTL)
+                state = "approved" if choice == "once" else "denied"
+            except asyncio.TimeoutError:
+                choice, state = "deny", "expired"
+                print(f"[{stamp()}] kartu izin {cid} kedaluwarsa, ditolak otomatis", flush=True)
+            return choice
+        except asyncio.CancelledError:
+            state = "cancelled"
+            raise
+        finally:
+            self.pending.pop(cid, None)
+            await safe_send(self.ws, {"type": "approval_end", "id": cid, "state": state})
+
+    def resolve(self, cid: str, choice: str) -> bool:
+        """Jawaban dari overlay. Hanya id yang sedang menunggu, sekali pakai. Selain "once" selalu dianggap "deny"."""
+        fut = self.pending.get(cid)
+        if fut is None or fut.done():
+            return False
+        fut.set_result("once" if choice == "once" else "deny")
+        return True
+
+
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     if not origin_ok(ws.headers.get("origin")):
@@ -1789,6 +1975,7 @@ async def ws_endpoint(ws: WebSocket):
     current_is_agent = False
     speak_tasks: set[asyncio.Task] = set()
     pending: dict | None = None   # v34: tugas agen yang ditahan menunggu konfirmasi {id, task, at}
+    hub = ApprovalHub(ws)         # v66: kartu persetujuan tindakan agen dari Hermes
 
     async def drop_pending(state: str) -> None:
         nonlocal pending
@@ -1881,7 +2068,7 @@ async def ws_endpoint(ws: WebSocket):
                         agent_task = split_agent_request(text)
                         if agent_task and not images:
                             hits = danger_hits(agent_task)
-                            if hits:
+                            if hits and (CONFIRM_ALWAYS or not APPROVAL_ENABLED):   # v68: gerbang Hermes aktif = cukup satu kartu
                                 # v34: tahan dulu; yang sedang berjalan tidak diganggu sebelum pengguna menyetujui
                                 cid = secrets.token_hex(4)
                                 pending = {"id": cid, "task": agent_task, "at": time.time()}
@@ -1901,7 +2088,7 @@ async def ws_endpoint(ws: WebSocket):
                             agent_task = None
                         if agent_task:
                             current = asyncio.create_task(
-                                handle_agent_task(ws, client, history, agent_task)
+                                handle_agent_task(ws, client, history, agent_task, approver=hub)
                             )
                             current_is_agent = True
                         else:
@@ -1948,8 +2135,13 @@ async def ws_endpoint(ws: WebSocket):
                     print(f"[{stamp()}] /agen disetujui pengguna, diteruskan ke Hermes", flush=True)
                     await safe_send(ws, {"type": "confirm_end", "id": cid, "state": "approved"})
                     await cancel_current()
-                    current = asyncio.create_task(handle_agent_task(ws, client, history, p["task"]))
+                    current = asyncio.create_task(handle_agent_task(ws, client, history, p["task"], approver=hub))
                     current_is_agent = True
+                elif kind == "approval":
+                    # v66: jawaban kartu izin Hermes. Hanya "once" yang berarti izin; apa pun selain itu = tolak. Sekali pakai.
+                    cid = str(msg.get("id") or "")
+                    if not hub.resolve(cid, "once" if msg.get("choice") == "once" else "deny"):
+                        await safe_send(ws, {"type": "approval_end", "id": cid, "state": "expired"})
                 elif kind == "cancel":
                     await drop_pending("cancelled")
                     await cancel_current()
@@ -2002,7 +2194,9 @@ HEALTH_PUSH_SEC = max(15, int(os.getenv("IRIS_HEALTH_SEC", "45")))
 async def health_probe() -> dict:
     result = {"voicevox": None, "ninerouter": None, "hermes": None,
               "ws_token": "aktif" if COMPANION_TOKEN else "KOSONG (/ws terbuka)",   # tanpa panjang / sidik: /health tidak bertoken
-              "agent_confirm": f"aktif ({len(DANGER_WORDS)} kata pemicu)" if CONFIRM_ENABLED else "MATI"}
+              "agent_confirm": f"aktif ({len(DANGER_WORDS)} kata pemicu)" if CONFIRM_ENABLED else "MATI",
+              "agent_approval": ("aktif (sekali/tolak)" if APPROVAL_ENABLED else "MATI (izin ditolak otomatis)")
+                                + ("" if HERMES_STREAM else "; HERMES_STREAM bukan 1, kartu tidak akan muncul")}
     async with httpx.AsyncClient(timeout=5.0) as client:
         async def p_voicevox():
             try:

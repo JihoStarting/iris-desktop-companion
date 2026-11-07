@@ -298,6 +298,7 @@
   .msg.confirm .pill.go:hover { background: rgba(255, 196, 92, 0.2); }
   .msg.confirm .res { margin-top: 6px; font-size: 11px; font-weight: 600; }
   .msg.confirm.closed { opacity: .65; border-color: var(--line); }
+  .msg.confirm .flag { margin-top: 4px; font-size: 11px; font-weight: 600; color: #ff9d8a; }
   /* v32: link di chat; diarahkan kursor = muncul popup Salin */
   .lnk { color: var(--acc); text-decoration: underline dotted; text-underline-offset: 2px; cursor: pointer; word-break: break-all; }
   .lnk:hover, .lnk.hot { background: rgba(var(--acc-rgb), 0.16); border-radius: 3px; }
@@ -1977,7 +1978,7 @@ function connect() {
   ws = new WebSocket(WS_URL);
   ws.onopen = () => { wsRetry = 0; dot.classList.add('on'); connRender(); greetOnce(); };
   // jeda sambung ulang bertahap (2, 4, 8, lalu maksimal 15 detik) supaya server yang sedang sibuk/mati tidak digempur terus
-  ws.onclose = () => { dot.classList.remove('on'); connState = null; connRender(); stopThinking(); statusEl.classList.remove('show'); const jeda = Math.min(2000 * 2 ** wsRetry, 15000); wsRetry++; setTimeout(connect, jeda); };
+  ws.onclose = () => { for (const id of [...approvalCards.keys()]) closeApprovalCard(id, 'Koneksi terputus, tugas dihentikan', ''); dot.classList.remove('on'); connState = null; connRender(); stopThinking(); statusEl.classList.remove('show'); const jeda = Math.min(2000 * 2 ** wsRetry, 15000); wsRetry++; setTimeout(connect, jeda); };
   ws.onerror = () => {};
   ws.onmessage = (e) => {
     let m;
@@ -1988,6 +1989,8 @@ function connect() {
     else if (m.type === 'agent_result') logTask(m.text);
     else if (m.type === 'confirm') onConfirm(m);
     else if (m.type === 'confirm_end') onConfirmEnd(m);
+    else if (m.type === 'approval') onApproval(m);
+    else if (m.type === 'approval_end') onApprovalEnd(m);
     else if (m.type === 'stt_result') onSttResult(m.text);
     else if (m.type === 'health') onHealth(m);
     else if (m.type === 'status') onStatus(m);
@@ -2426,6 +2429,58 @@ function onConfirm(m) {
 function onConfirmEnd(m) {   // server menutup kartu: replaced, cancelled, expired, atau approved (sudah ditutup oleh klik)
   const text = { replaced: 'Diganti permintaan baru', cancelled: 'Dibatalkan', expired: 'Kedaluwarsa, kirim lagi kalau masih mau', approved: 'Dijalankan' }[m.state] || 'Selesai';
   closeConfirmCard(m.id, text, m.state === 'approved' ? '#7ee2a0' : '');
+}
+/* v66: gerbang persetujuan asli. Saat agen Hermes mau menjalankan perintah yang ditandai berbahaya, server mengirim
+   {type:'approval', id, command, description, flagged, choices, ttl}. Hanya dua jawaban: 'once' (izinkan satu perintah ini) dan 'deny'.
+   Tidak ada tombol "selalu" atau "sesi" dengan sengaja. Server menutup kartu lewat {type:'approval_end', id, state}. Peta terpisah dari
+   confirmCards (v34) supaya kartu konfirmasi baru tidak menutup kartu izin yang masih ditunggu server. */
+const approvalCards = new Map();   // id -> { card, ok, no, res, timer }
+function closeApprovalCard(id, text, color) {
+  const c = approvalCards.get(id); if (!c) return;
+  clearTimeout(c.timer);
+  if (c.ok) c.ok.disabled = true;
+  c.no.disabled = true;
+  c.card.classList.add('closed');
+  c.res.textContent = text; c.res.style.color = color || '';
+  approvalCards.delete(id);
+}
+function answerApproval(id, choice) {
+  if (!(ws && ws.readyState === WebSocket.OPEN)) { closeApprovalCard(id, 'Koneksi terputus, jawaban tidak terkirim', ''); return; }
+  send({ type: 'approval', id, choice });
+  if (choice === 'once') closeApprovalCard(id, 'Diizinkan sekali, dikirim ke Hermes', '#7ee2a0');
+  else closeApprovalCard(id, 'Ditolak', '');
+}
+function onApproval(m) {
+  irisBlock = null;
+  const id = String(m.id || ''); if (!id) return;
+  const d = document.createElement('div'); d.className = 'msg confirm approval';
+  const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = '⚠ Hermes minta izin menjalankan perintah ini';
+  const what = document.createElement('div'); what.className = 'what'; what.textContent = String(m.command || '');
+  const why = document.createElement('div'); why.className = 'why';
+  why.textContent = (m.description ? String(m.description) + '. ' : '') + 'Izin berlaku untuk perintah ini saja, tidak disimpan.';
+  d.append(cap, what, why);
+  if (m.flagged) { const fl = document.createElement('div'); fl.className = 'flag'; fl.textContent = 'Hermes menandai perintah ini berisiko tinggi.'; d.append(fl); }
+  const btns = document.createElement('div'); btns.className = 'btns';
+  const choices = Array.isArray(m.choices) ? m.choices : ['once', 'deny'];
+  let ok = null;
+  if (choices.includes('once')) { ok = document.createElement('button'); ok.className = 'pill go'; ok.textContent = 'Izinkan sekali'; btns.append(ok); }
+  const no = document.createElement('button'); no.className = 'pill'; no.textContent = 'Tolak'; btns.append(no);
+  const res = document.createElement('div'); res.className = 'res';
+  d.append(btns, res);
+  addStamp(d);
+  logBody.appendChild(d);
+  const timer = setTimeout(() => closeApprovalCard(id, 'Kedaluwarsa, ditolak otomatis', ''), Math.max(5, Number(m.ttl) || 120) * 1000);
+  approvalCards.set(id, { card: d, ok, no, res, timer });
+  if (ok) ok.addEventListener('click', () => answerApproval(id, 'once'));
+  no.addEventListener('click', () => answerApproval(id, 'deny'));
+  if (!logEl.classList.contains('open')) openChat();   // kartunya ada di panel chat; kalau tertutup, buka supaya kelihatan
+  logScroll();
+  say('Hermes minta izin dulu. Cek kartunya ya.', 'neutral', 6000, 'Hermesが許可を求めてるよ。カードを確認してね。', { force: true });
+}
+function onApprovalEnd(m) {   // server menutup kartu: approved/denied (sudah ditutup oleh klik), expired, cancelled, atau failed
+  const text = { approved: 'Diizinkan sekali, dikirim ke Hermes', denied: 'Ditolak', expired: 'Kedaluwarsa, ditolak otomatis',
+                 cancelled: 'Tugas dihentikan, tidak ada yang dikirim', failed: 'Gagal ditampilkan, ditolak otomatis' }[m.state] || 'Selesai';
+  closeApprovalCard(String(m.id || ''), text, m.state === 'approved' ? '#7ee2a0' : '');
 }
 function logErr(text) { irisBlock = null; addStamp(logAdd('err', text)); }
 function logIris(text) {
