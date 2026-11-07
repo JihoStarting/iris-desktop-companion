@@ -569,7 +569,7 @@ Fitur di bawah sudah ditulis tetapi **belum lulus uji penuh di PC**. Anggap eksp
 | Tugas `/agen` ringan terasa lambat | Penyebab belum dipastikan |
 | Sambung ulang WebSocket bertahap (jeda 2, 4, 8, maksimal 15 detik) | Diterapkan di `index.html`, belum diuji dengan memutus server saat overlay jalan |
 | VOICEVOX di GPU (DirectML) | Mesin naik dan mendeteksi GPU (RTX 4060 Laptop, `/version` 0.25.2). Pemakaian GPU saat sintesis dan perbandingan latensi dengan CPU belum diukur |
-| Batas tunggu stop Hermes di peluncur | Masih sekitar 12 detik, padahal systemd memberi Hermes sampai 70 detik; chip Hermes bisa tampak gagal mati padahal berhenti sesudahnya |
+| Batas tunggu stop Hermes di peluncur | Systemd Hermes sudah diperbaiki (batas stop 75 detik, 7 November 2026) dan skrip peluncur menunggu 75 detik; exe dibangun ulang 8 November. Belum diuji: matikan lalu nyalakan chip Hermes, chip tidak boleh tampak gagal |
 | Status server di peluncur lewat `/ping` (chip server tidak lagi tampak Mati saat Hermes dimatikan) | Patch di-commit 8 November 2026 (`server.py`, peluncur, `iris-start.ps1`, `iris-service.ps1`). Perlu `build.bat` ulang dan belum diuji: matikan chip Hermes, chip server harus tetap Hidup |
 | Bubble dengan lampiran dekat tepi atas layar | Belum dites |
 
@@ -669,7 +669,7 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 | Suara VOICEVOX lambat atau GPU tidak terpakai | Cek kotak **Mesin suara VOICEVOX** di Pengaturan peluncur, dan cari `DirectML (device_id=0): OK` di `iris-voicevox.err.log`. Bila unit `voicevox` di WSL masih aktif, matikan: `wsl -d Ubuntu -- systemctl --user disable --now voicevox` |
 | Server baru langsung mati dengan `Errno 10048` | Server lama masih memegang port 8765. Cek `Get-NetTCPConnection -LocalPort 8765 -State Listen`, matikan prosesnya (atau lewat peluncur), lalu start ulang |
 | Stop tidak menghentikan agen Hermes | Pastikan `HERMES_STREAM=1` di `.env`, restart server, dan buka ulang overlay. Satu langkah yang sedang berjalan bisa selesai dulu. Me-restart `hermes-gateway` di tengah tugas memunculkan "Server disconnected"; itu bukan hasil tombol Stop |
-| Chip Hermes tampak gagal mati | Systemd memberi Hermes sampai 70 detik, sedangkan peluncur menunggu sekitar 12 detik. Cek `systemctl --user status hermes-gateway` di WSL sebelum menyimpulkan gagal |
+| Chip Hermes tampak gagal mati | Hermes bisa butuh sampai sekitar 70 detik untuk berhenti; peluncur menunggu 75 detik. Kalau tetap tampak gagal, cek `systemctl --user status hermes-gateway` di WSL. Peluncur lama (sebelum build ulang 8 November) hanya menunggu sekitar 12 detik, jadi bangun ulang `IrisLauncher.exe` |
 | Chip server.py tampak Mati padahal server jalan, atau server tidak bisa dinyalakan saat Hermes mati | Peluncur lama menilai server lewat `/health`, yang melambat saat Hermes mati. Perbarui `server.py`, bangun ulang `IrisLauncher.exe` (peluncur kini memakai `/ping`), lalu cek `http://127.0.0.1:8765/ping`. Bila masih salah, lihat di Task Manager apakah `python.exe` benar-benar hilang |
 
 Untuk diagnosis lebih lanjut, jalankan overlay dengan `npm start`, buka DevTools dengan `Ctrl+Alt+D`, dan cek tab Console (DevTools tidak tersedia di versi rilis).
