@@ -1,4 +1,4 @@
-# Secrets
+﻿# Secrets
 .env
 *.key
 *.pem
@@ -41,5 +41,7 @@ docs/archive/
 
 vv-engine/
 
+jahat.html
+tes-injeksi/
 jahat.html
 tes-injeksi/
