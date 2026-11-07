@@ -63,7 +63,7 @@ else { $mau = 'nyala' }
 if ($mau -eq 'mati') {
   if ($hidup) {
     Write-Host 'Mematikan Hermes (maks 12 detik)...'
-    & wsl.exe -d $Distro -- timeout 12 systemctl --user stop $Unit 2>$null
+    & wsl.exe -d $Distro -- timeout 75 systemctl --user stop $Unit 2>$null
     Write-Host 'Hermes dihentikan.' -ForegroundColor Cyan
   } else {
     Write-Host 'Hermes memang sudah mati.'

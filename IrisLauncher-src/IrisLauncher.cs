@@ -431,6 +431,7 @@ namespace IrisLauncher
         public bool KonfirmasiStop = true;
         public bool AutoStart = false;
         public bool TutupMatikan = true;   // menutup launcher ikut mematikan semua layanan Iris
+        public bool VoiceGpu = true;       // VOICEVOX Windows (vv-engine): true = GPU (DirectML), false = CPU
 
         public static string FilePath()
         {
@@ -478,6 +479,7 @@ namespace IrisLauncher
                             case "konfirmasistop": s.KonfirmasiStop = B(v, s.KonfirmasiStop); break;
                             case "autostart": s.AutoStart = B(v, s.AutoStart); break;
                             case "tutupmatikan": s.TutupMatikan = B(v, s.TutupMatikan); break;
+                            case "vvgpu": s.VoiceGpu = B(v, s.VoiceGpu); break;
                         }
                     }
                 }
@@ -506,6 +508,7 @@ namespace IrisLauncher
             l.Add("konfirmasistop=" + (KonfirmasiStop ? "1" : "0"));
             l.Add("autostart=" + (AutoStart ? "1" : "0"));
             l.Add("tutupmatikan=" + (TutupMatikan ? "1" : "0"));
+            l.Add("vvgpu=" + (VoiceGpu ? "1" : "0"));
             File.WriteAllLines(p, l.ToArray(), Encoding.UTF8);
         }
 
@@ -532,7 +535,7 @@ namespace IrisLauncher
         TextBox tbProyek, tbDistro;
         NumericUpDown nudTunggu;
         CheckBox cbPenjaga, cbOverlay, cbKonfirm, cbAuto, cbTutup;
-        RadioButton rbSemua, rbSebagian;
+        RadioButton rbSemua, rbSebagian, rbGpu, rbCpu;
         Label lblCek;
 
         public SettingsForm(Settings s)
@@ -543,7 +546,7 @@ namespace IrisLauncher
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false; MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(600, 530);
+            ClientSize = new Size(600, 632);
             BackColor = Theme.Bg; ForeColor = Theme.Text;
             Font = new Font("Segoe UI", 9.5F);
             try { Icon = Res.AppIcon(); } catch { }
@@ -577,6 +580,14 @@ namespace IrisLauncher
             rbSebagian = new RadioButton(); rbSebagian.Text = "Hanya overlay dan server.py (WSL dan Hermes tetap hidup)";
             rbSebagian.SetBounds(14, 50, 520, 24); rbSebagian.ForeColor = Theme.Text; rbSebagian.Checked = !s.StopSemua;
             g.Controls.Add(rbSemua); g.Controls.Add(rbSebagian); Controls.Add(g); y += 98;
+
+            GroupBox gv = new GroupBox(); gv.Text = "Mesin suara VOICEVOX (berlaku saat VOICEVOX dinyalakan berikutnya)"; gv.ForeColor = Theme.Muted;
+            gv.SetBounds(20, y, 560, 84);
+            rbGpu = new RadioButton(); rbGpu.Text = "GPU (DirectML), lebih cepat; otomatis ke CPU bila GPU gagal";
+            rbGpu.SetBounds(14, 24, 520, 24); rbGpu.ForeColor = Theme.Text; rbGpu.Checked = s.VoiceGpu;
+            rbCpu = new RadioButton(); rbCpu.Text = "CPU saja, lebih hemat daya (tanpa --use_gpu)";
+            rbCpu.SetBounds(14, 50, 520, 24); rbCpu.ForeColor = Theme.Text; rbCpu.Checked = !s.VoiceGpu;
+            gv.Controls.Add(rbGpu); gv.Controls.Add(rbCpu); Controls.Add(gv); y += 98;
 
             cbKonfirm = C("Tanya konfirmasi sebelum mematikan (Stop dan Hermes)", s.KonfirmasiStop, 20, y); y += 28;
             cbAuto = C("Jalankan Start otomatis saat launcher dibuka", s.AutoStart, 20, y); y += 28;
@@ -650,6 +661,7 @@ namespace IrisLauncher
             s.Proyek = proyek; s.Distro = distro; s.TungguDetik = (int)nudTunggu.Value;
             s.Penjaga = cbPenjaga.Checked; s.Overlay = cbOverlay.Checked;
             s.StopSemua = rbSemua.Checked; s.KonfirmasiStop = cbKonfirm.Checked; s.AutoStart = cbAuto.Checked; s.TutupMatikan = cbTutup.Checked;
+            s.VoiceGpu = rbGpu.Checked;
             Result = s;
             DialogResult = DialogResult.OK;
             Close();
@@ -752,7 +764,7 @@ namespace IrisLauncher
             st.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             string[] tips = new string[] {
                 "WSL. Mati = semua layanan di dalamnya ikut mati.",
-                "VOICEVOX (di dalam WSL)", "9Router (di dalam WSL)", "Hermes (di dalam WSL)",
+                "VOICEVOX (Windows, vv-engine + GPU; bila folder vv-engine tidak ada, di dalam WSL)", "9Router (di dalam WSL)", "Hermes (di dalam WSL)",
                 "server.py (Windows)", "Overlay Electron (Windows)" };
             for (int i = 0; i < 6; i++)
             {
@@ -1160,6 +1172,7 @@ namespace IrisLauncher
             string a = "-Proyek " + Q(cfg.Proyek) + " -Distro " + cfg.Distro + " -TungguDetik " + cfg.TungguDetik;
             if (!cfg.Penjaga) a += " -TanpaPenjaga";
             if (!cfg.Overlay) a += " -TanpaOverlay";
+            if (!cfg.VoiceGpu) a += " -TanpaGPU";
             Run("Start", "iris-start.ps1", a);
         }
 
@@ -1229,7 +1242,7 @@ namespace IrisLauncher
             if (!nyala && cfg.KonfirmasiStop && (i == 0 || i == 3))
             {
                 string msg = i == 0
-                    ? "WSL akan dimatikan. VOICEVOX, 9Router, dan Hermes ikut mati karena berjalan di dalam WSL.\r\n\r\nTugas /agen yang sedang jalan akan terputus. Lanjutkan?"
+                    ? "WSL akan dimatikan. 9Router dan Hermes ikut mati karena berjalan di dalam WSL (VOICEVOX ikut mati hanya bila masih dijalankan di WSL).\r\n\r\nTugas /agen yang sedang jalan akan terputus. Lanjutkan?"
                     : "Hermes akan dimatikan (WSL, 9Router, dan VOICEVOX tidak disentuh).\r\n\r\nTugas /agen yang sedang jalan akan terputus. Lanjutkan?";
                 DialogResult r = MessageBox.Show(this, msg, ChipName[i], MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                 if (r != DialogResult.Yes) return;
@@ -1239,6 +1252,7 @@ namespace IrisLauncher
                 + " -Distro " + cfg.Distro + " -TungguDetik " + cfg.TungguDetik;
             if (!string.IsNullOrEmpty(cfg.Proyek)) a += " -Proyek " + Q(cfg.Proyek);
             if (!cfg.Penjaga) a += " -TanpaPenjaga";
+            if (!cfg.VoiceGpu) a += " -TanpaGPU";
 
             busyChip = i; errChip = -1;
             busyCaption = nyala ? "Menyalakan..." : "Mematikan...";

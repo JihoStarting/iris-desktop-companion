@@ -684,6 +684,14 @@ def build_user_content(text: str, images: list[str]):
 _PATH_TAIL = r"""(?:/[^\s"'`<>|,;)]*)*"""
 
 
+_LINE_PATH_RE = re.compile(
+    r"(?P<head>^[ \t]*(?:[-*>]|\d+[.)])?[ \t]*(?:[^\n/]{0,40}:[ \t]*)?[\"'`]?)"
+    r"(?P<path>(?:" + re.escape(WIN_HOME) + r"|/mnt/[a-zA-Z](?![A-Za-z0-9_]))(?:/[^/\n\"'`<>|,;]+)*/?)"
+    r"(?P<tail>[\"'`]?[ \t]*)$",
+    re.M,
+)
+
+
 def _win_from_wsl(path: str) -> str:
     m = re.match(r"^/mnt/([a-zA-Z])(/.*)?$", path)
     if not m:
@@ -699,6 +707,19 @@ def to_windows_paths(text: str) -> str:
         while p and p[-1] in ".:!?":      # tanda baca penutup kalimat bukan bagian path
             trail, p = p[-1] + trail, p[:-1]
         return _win_from_wsl(p) + trail
+    # v-spasi: baris yang isinya hanya sebuah path (boleh diawali penanda butir atau label pendek seperti "Path:") dan path itu
+    # berlanjut sampai ujung baris, diubah UTUH termasuk spasi di nama folder/file ("Laporan KKN Final.docx"). Baris yang
+    # path-nya diikuti kalimat tidak disentuh di sini dan jatuh ke aturan lama di bawah (spasi hanya di dalam WIN_HOME).
+    def conv_line(m):
+        path, tail = m.group("path"), m.group("tail")
+        stripped = path.rstrip(".:!?")
+        trail = path[len(stripped):]
+        last = stripped.rsplit("/", 1)[-1]
+        # komponen terakhir berspasi tanpa ekstensi tapi ada tanda kurung = kemungkinan catatan ("(selesai)"), bukan nama
+        if " " in last and not re.search(r"\.[A-Za-z0-9]{1,6}$", last) and re.search(r"\s[(\[]", last):
+            return m.group(0)
+        return m.group("head") + _win_from_wsl(stripped) + trail + tail
+    text = _LINE_PATH_RE.sub(conv_line, text)
     text = re.sub(re.escape(WIN_HOME) + _PATH_TAIL, conv, text)
     return re.sub(r"/mnt/[a-zA-Z](?![A-Za-z0-9_])" + _PATH_TAIL, conv, text)
 
@@ -855,8 +876,20 @@ def _hermes_text(data: dict) -> str:
     return ((data.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
 
 
+async def _hermes_stop(run_id: str, headers: dict) -> None:
+    """Suruh Hermes benar-benar menghentikan agen (POST /runs/{id}/stop). Memutus koneksi saja TIDAK cukup (terbukti dengan
+    scripts/cek-cancel-hermes.py). Gagal apa pun diabaikan: ini upaya terbaik, tidak boleh mengganggu pembatalan di sisi Iris."""
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as c:
+            r = await c.post(f"{HERMES_URL}/runs/{run_id}/stop", headers=headers, json={})
+        print(f"[{stamp()}] stop Hermes {run_id}: HTTP {r.status_code} {r.text[:120]}", flush=True)
+    except Exception as e:
+        print(f"[{stamp()}] stop Hermes {run_id} gagal: {e!r}", flush=True)
+
+
 async def _hermes_stream(client: httpx.AsyncClient, headers: dict, payload: dict) -> str:
     chunks: list[str] = []
+    run_id = ""   # id potongan SSE pertama = id run di Hermes (dipakai untuk stop)
     try:
         async with client.stream("POST", f"{HERMES_URL}/chat/completions", json={**payload, "stream": True},
                                  headers=headers, timeout=httpx.Timeout(30.0, read=HERMES_TIMEOUT)) as r:
@@ -865,19 +898,29 @@ async def _hermes_stream(client: httpx.AsyncClient, headers: dict, payload: dict
                 r.raise_for_status()
             if "event-stream" not in r.headers.get("content-type", ""):   # server membalas biasa (bukan stream)
                 return _hermes_text(json.loads((await r.aread()).decode("utf-8", "replace")))
-            async for line in r.aiter_lines():
-                if not line.startswith("data:"):
-                    continue
-                d = line[5:].strip()
-                if d == "[DONE]":
-                    break
-                try:
-                    delta = (json.loads(d).get("choices") or [{}])[0].get("delta") or {}
-                except Exception:
-                    continue
-                c = delta.get("content")
-                if isinstance(c, str):
-                    chunks.append(c)
+            try:
+                async for line in r.aiter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    d = line[5:].strip()
+                    if d == "[DONE]":
+                        break
+                    try:
+                        obj = json.loads(d)
+                        delta = (obj.get("choices") or [{}])[0].get("delta") or {}
+                    except Exception:
+                        continue
+                    if not run_id and isinstance(obj.get("id"), str):
+                        run_id = obj["id"]
+                    c = delta.get("content")
+                    if isinstance(c, str):
+                        chunks.append(c)
+            except (asyncio.CancelledError, httpx.ReadTimeout):
+                # Tombol Stop / batas waktu total: hentikan agennya SEBELUM koneksi ditutup (urutan yang terbukti
+                # lewat scripts/cek-stop-hermes.py), bukan hanya memutus koneksi.
+                if run_id:
+                    await asyncio.shield(_hermes_stop(run_id, headers))
+                raise
     except httpx.ReadTimeout as e:
         raise HermesTimeout(f"tidak ada balasan selama {int(HERMES_TIMEOUT)} detik") from e
     return "".join(chunks).strip()

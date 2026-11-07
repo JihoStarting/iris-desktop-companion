@@ -60,14 +60,23 @@ if ($TanpaWSL) {
   exit 0
 }
 
+# 2b. VOICEVOX Windows: hanya run.exe dari folder vv-engine proyek ini
+$vvDir = Join-Path $Proyek 'vv-engine'
+$vvProc = @(Get-CimInstance Win32_Process -Filter "Name='run.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($vvDir + '\', [System.StringComparison]::OrdinalIgnoreCase) })
+if ($vvProc.Count -gt 0) {
+  foreach ($p in $vvProc) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+  Write-Host 'VOICEVOX (Windows) dihentikan'
+}
+
 # 3. Layanan WSL: hanya kalau WSL memang sedang jalan (jangan membangunkan WSL hanya untuk mematikannya)
 $raw = ''
 try { $raw = ((& wsl.exe -l -v 2>&1) | Out-String) -replace "`0", '' } catch { $raw = '' }
 $wslJalan = [regex]::IsMatch($raw, '(?m)^\s*\*?\s*' + [regex]::Escape($Distro) + '\s+Running')
 
 if ($wslJalan) {
-  Write-Host 'Menghentikan Hermes, 9Router, VOICEVOX (maks 12 detik)...'
-  & wsl.exe -d $Distro -- timeout 12 systemctl --user stop hermes-gateway 9router voicevox 2>$null
+  Write-Host 'Menghentikan Hermes, 9Router, VOICEVOX (maks 75 detik)...'
+  & wsl.exe -d $Distro -- timeout 75 systemctl --user stop hermes-gateway 9router voicevox 2>$null
   Write-Host 'Layanan WSL dihentikan'
 } else {
   Write-Host 'WSL memang sudah mati'

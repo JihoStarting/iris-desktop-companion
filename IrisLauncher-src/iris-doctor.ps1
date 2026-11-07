@@ -429,6 +429,13 @@ if ($wslRunning) {
       Say 'INFO' ('Unit ' + $u + ' tidak ditemukan sebagai unit systemd user')
     }
   }
+  if (Test-Path -LiteralPath (Join-Path $Proyek 'vv-engine\run.exe')) {
+    Say 'INFO' 'vv-engine\run.exe ada: VOICEVOX dijalankan di Windows (DirectML/GPU), bukan di WSL'
+    $stVv = Get-UserUnit $Distro 'voicevox'
+    if ($stVv.Exists -and $stVv.Enabled -eq 'enabled') {
+      Say 'WARN' 'Unit voicevox di WSL masih enabled: ikut naik bersama WSL dan bisa merebut port 50021 dari mesin Windows' ('Matikan permanen (mengubah sistem, jalankan sendiri): wsl -d ' + $Distro + ' -- systemctl --user disable --now voicevox')
+    }
+  }
   if ($linuxUser -ne '') {
     $lg = ''
     try { $lg = (((& wsl.exe -d $Distro -- loginctl show-user $linuxUser -p Linger 2>&1) | Out-String).Trim() -split "`r?`n")[0].Trim() } catch { $lg = '' }

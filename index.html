@@ -1972,10 +1972,12 @@ function fixSegmentOrder(m) {
     if (jaRatio(m.text) > 0.25 && jaRatio(m.jp) < 0.1) { const t = m.text; m.text = m.jp; m.jp = t; }
   } catch { /* abaikan */ }
 }
+let wsRetry = 0;   // jumlah gagal sambung berturut-turut (untuk jeda bertahap)
 function connect() {
   ws = new WebSocket(WS_URL);
-  ws.onopen = () => { dot.classList.add('on'); connRender(); greetOnce(); };
-  ws.onclose = () => { dot.classList.remove('on'); connState = null; connRender(); stopThinking(); statusEl.classList.remove('show'); setTimeout(connect, 2000); };
+  ws.onopen = () => { wsRetry = 0; dot.classList.add('on'); connRender(); greetOnce(); };
+  // jeda sambung ulang bertahap (2, 4, 8, lalu maksimal 15 detik) supaya server yang sedang sibuk/mati tidak digempur terus
+  ws.onclose = () => { dot.classList.remove('on'); connState = null; connRender(); stopThinking(); statusEl.classList.remove('show'); const jeda = Math.min(2000 * 2 ** wsRetry, 15000); wsRetry++; setTimeout(connect, jeda); };
   ws.onerror = () => {};
   ws.onmessage = (e) => {
     let m;

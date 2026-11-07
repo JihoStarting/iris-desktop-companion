@@ -6,7 +6,7 @@ Pakai:
   powershell -ExecutionPolicy Bypass -File .\iris-service.ps1 -Nama hermes -Aksi nyala
 Nama : wsl | voicevox | router | hermes | server | overlay
 Aksi : nyala | mati
-Opsi : -Proyek <jalur>  -Distro Ubuntu  -TungguDetik 90  -TanpaPenjaga
+Opsi : -Proyek <jalur>  -Distro Ubuntu  -TungguDetik 90  -TanpaPenjaga  -TanpaGPU (VOICEVOX Windows pakai CPU)
 
 Aturan: hanya layanan yang dipilih yang hidup.
   - voicevox/router/hermes butuh WSL berjalan. Kalau WSL sedang mati, WSL dibangunkan seperlunya,
@@ -21,7 +21,8 @@ param(
   [string]$Proyek = '',
   [string]$Distro = 'Ubuntu',
   [int]$TungguDetik = 90,
-  [switch]$TanpaPenjaga
+  [switch]$TanpaPenjaga,
+  [switch]$TanpaGPU
 )
 
 if ($Proyek) { $Proyek = $Proyek.TrimEnd('\') }
@@ -141,8 +142,8 @@ if ($Nama -eq 'wsl') {
   }
   # mati
   if (-not (Test-WslJalan)) { Write-Host 'WSL memang sudah mati.'; Stop-Penjaga; exit 0 }
-  Write-Host 'Menghentikan Hermes, 9Router, VOICEVOX (maks 12 detik)...'
-  & wsl.exe -d $Distro -- timeout 12 systemctl --user stop hermes-gateway 9router voicevox 2>$null
+  Write-Host 'Menghentikan Hermes, 9Router, VOICEVOX (maks 75 detik)...'
+  & wsl.exe -d $Distro -- timeout 75 systemctl --user stop hermes-gateway 9router voicevox 2>$null
   Stop-Penjaga
   Write-Host 'Mematikan WSL...'
   & wsl.exe --shutdown
@@ -153,6 +154,63 @@ if ($Nama -eq 'wsl') {
     Write-Host 'WSL dimatikan. RAM sudah lepas.'
   }
   exit 0
+}
+
+# ============================================================ VOICEVOX di Windows (vv-engine\run.exe)
+# Dipakai bila <Proyek>\vv-engine\run.exe ada; tidak membangunkan WSL. Bila tidak ada, jatuh ke unit WSL di bawah.
+if ($Nama -eq 'voicevox' -and $Proyek -and (Test-Path -LiteralPath (Join-Path $Proyek 'vv-engine\run.exe'))) {
+  $VvDir = Join-Path $Proyek 'vv-engine'
+  $VvExe = Join-Path $VvDir 'run.exe'
+  $VvUrl = 'http://127.0.0.1:50021/version'
+  $vvProses = @(Get-CimInstance Win32_Process -Filter "Name='run.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($VvDir + '\', [System.StringComparison]::OrdinalIgnoreCase) })
+
+  if ($Aksi -eq 'nyala') {
+    if ((Get-HttpCode $VvUrl) -gt 0) { Write-Host 'VOICEVOX sudah menjawab.'; exit 0 }
+    $gpu = -not $TanpaGPU
+    $t0 = Get-Date
+    $tVv = Get-Date
+    function Start-VvWin([bool]$Gpu) {
+      $vvArgs = @('--host', '127.0.0.1', '--port', '50021')
+      if ($Gpu) { $vvArgs += '--use_gpu' }
+      $vvArgs += @('--cpu_num_threads', '4')
+      Start-Process -FilePath $VvExe -ArgumentList $vvArgs -WorkingDirectory $VvDir -WindowStyle Hidden `
+        -RedirectStandardOutput (Join-Path $Proyek 'iris-voicevox.out.log') `
+        -RedirectStandardError (Join-Path $Proyek 'iris-voicevox.err.log') | Out-Null
+    }
+    Start-VvWin $gpu
+    Write-Host ('Menyalakan VOICEVOX (Windows, GPU=' + $gpu + ')...')
+    while (((Get-Date) - $t0).TotalSeconds -lt $TungguDetik) {
+      if ((Get-HttpCode $VvUrl) -gt 0) { Write-Host 'VOICEVOX naik.'; exit 0 }
+      if ((((Get-Date) - $tVv).TotalSeconds -gt 5) -and (@(Get-CimInstance Win32_Process -Filter "Name='run.exe'" -ErrorAction SilentlyContinue |
+          Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($VvDir + '\', [System.StringComparison]::OrdinalIgnoreCase) }).Count -eq 0)) {
+        if ($gpu) {
+          Write-Host 'GPU gagal naik; mencoba tanpa GPU...'
+          $gpu = $false
+          Start-VvWin $false
+          $tVv = Get-Date
+        } else {
+          break
+        }
+      }
+      Start-Sleep -Seconds 2
+    }
+    Write-Host 'VOICEVOX belum menjawab. Lihat iris-voicevox.err.log (port 50021 bentrok dengan unit voicevox di WSL?)'
+    exit 1
+  }
+
+  # mati
+  if ($vvProses.Count -gt 0) {
+    foreach ($p in $vvProses) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+    Write-Host 'VOICEVOX (Windows) dihentikan'
+  }
+  if (((Get-HttpCode $VvUrl 1500) -gt 0) -and (Test-WslJalan)) {
+    Write-Host 'Port 50021 masih menjawab; menghentikan unit voicevox di WSL juga...'
+    & wsl.exe -d $Distro -- timeout 12 systemctl --user stop voicevox 2>$null | Out-Null
+  }
+  if (Wait-Mati $VvUrl 8) { Write-Host 'VOICEVOX dihentikan.'; exit 0 }
+  Write-Host 'VOICEVOX masih menjawab setelah dihentikan.'
+  exit 1
 }
 
 # ============================================================ VOICEVOX / 9Router / Hermes
@@ -169,8 +227,9 @@ if ($UnitWsl.ContainsKey($Nama)) {
   }
   # mati: jangan membangunkan WSL hanya untuk mematikan layanan
   if (-not (Test-WslJalan)) { Write-Host "WSL mati, jadi $($u.Label) memang sudah mati."; exit 0 }
-  Write-Host "Mematikan $($u.Label) (maks 12 detik)..."
-  & wsl.exe -d $Distro -- timeout 12 systemctl --user stop $u.Unit 2>$null | Out-Null
+  $batasStop = if ($Nama -eq 'hermes') { 75 } else { 12 }   # systemd memberi Hermes sampai 70 detik (TimeoutStopSec)
+  Write-Host "Mematikan $($u.Label) (maks $batasStop detik)..."
+  & wsl.exe -d $Distro -- timeout $batasStop systemctl --user stop $u.Unit 2>$null | Out-Null
   if (Wait-Mati $u.Url 8) { Write-Host "$($u.Label) dihentikan."; exit 0 }
   Write-Host "$($u.Label) masih menjawab setelah dihentikan."
   exit 1
