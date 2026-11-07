@@ -24,7 +24,7 @@ Proyek ini dibuat sebagai proyek pribadi dan masih terus dikembangkan.
 - Dipublikasikan di GitHub: 5 November 2026
 - Versi terbaru: v1.0.0 (peluncur `IrisLauncher.exe`)
 - Status: aktif dikembangkan sebagai proyek pribadi
-- Terakhir diperbarui: 6 November 2026 (penyetelan pengenalan suara dan perintah suara, lihat [Bicara lewat mikrofon](#bicara-lewat-mikrofon))
+- Terakhir diperbarui: 7 November 2026 (tombol Stop kini menghentikan agen Hermes, VOICEVOX bisa berjalan di GPU, jeda sambung ulang WebSocket bertahap, perbaikan path berspasi; lihat [Status pengujian](#status-pengujian))
 
 Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan belum diuji penuh. Daftarnya ada di [Status pengujian](#status-pengujian).
 
@@ -93,7 +93,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 ### Obrolan dan suara
 
 - Obrolan dengan persona Iris (gaya santai, campuran Indonesia dan Jepang)
-- Suara per emosi lewat VOICEVOX: kecepatan, nada, dan intonasi menyesuaikan emosi kalimat, lip-sync berbasis mora, dan cache suara lokal
+- Suara per emosi lewat VOICEVOX: kecepatan, nada, dan intonasi menyesuaikan emosi kalimat, lip-sync berbasis mora, dan cache suara lokal. Mesin VOICEVOX bisa berjalan di Windows dengan GPU (DirectML) atau CPU, dipilih di Pengaturan peluncur
 - Reaksi lokal (colek, sapaan, timer, dan sebagainya) bersuara tanpa memanggil model
 - Pesan galat ikut dibacakan (timeout, tidak tersambung, galat lain)
 - Sapaan menurut waktu (pagi, siang, sore, malam)
@@ -117,9 +117,9 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 
 ### Agen dan memori
 
-- **Jembatan Hermes Agent** (`/agen`, `/agent`, `/h`): memberi tugas ke agen di WSL, lengkap dengan indikator "sedang memproses" berhitung detik, heartbeat, tombol Stop, dan batas waktu
+- **Jembatan Hermes Agent** (`/agen`, `/agent`, `/h`): memberi tugas ke agen di WSL, lengkap dengan indikator "sedang memproses" berhitung detik, heartbeat, tombol Stop (menghentikan agen di Hermes bila `HERMES_STREAM=1`), dan batas waktu
 - **Konfirmasi tugas berbahaya**: tugas `/agen` yang berbau hapus, pindah, timpa, atau format file ditahan dulu dan muncul kartu "Iris mau menjalankan ini. Lanjut?" dengan tombol Jalankan dan Batal
-- Kartu **Hasil tugas** dengan tombol Salin. Path WSL di laporan otomatis diubah menjadi path Windows (`C:\Users\<user>\...`)
+- Kartu **Hasil tugas** dengan tombol Salin. Path WSL di laporan otomatis diubah menjadi path Windows, termasuk folder berspasi (`C:\Users\<user>\...`)
 - Hermes menerima konteks 10 pesan terakhir hanya bila tugas merujuk ke percakapan, dan tahu folder Windows lewat `HERMES_WIN_HOME`
 - Iris dilarang mengaku bisa membuat, mengubah, atau menghapus file di obrolan biasa; ia menyuruh memakai `/agen`. Laporan agen disampaikan netral dan bersumber
 - **Memori ringan**: `/ingat`, `/memori`, `/lupa` (maksimal 40 hal, 200 karakter per hal). Isi yang mirip rahasia ditolak
@@ -129,6 +129,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 ### Infrastruktur
 
 - `IrisLauncher.exe`: peluncur satu klik dengan indikator hijau per layanan. Menutup peluncur ikut mematikan semua layanan (bisa dimatikan di Pengaturan), dan menu **Keluar** di overlay bisa mematikan semuanya lewat peluncur
+- Kotak **Mesin suara VOICEVOX** (GPU atau CPU) di Pengaturan peluncur; bila folder `vv-engine` tidak ada, peluncur memakai unit `voicevox` di WSL (CPU)
 - `iris-doctor.ps1`: cek kesehatan seluruh sistem
 - `iris-start.ps1` dan `iris-stop.ps1`: start dan stop berurutan, aman dijalankan berulang
 - `9router.service`: 9Router berjalan sebagai layanan systemd di WSL
@@ -182,7 +183,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 | Windows 10/11 | Overlay berjalan di Windows |
 | Node.js 18+ | Untuk Electron |
 | Python 3.11+ | Untuk `server.py` |
-| VOICEVOX | Berjalan di port `50021` (opsional, tanpa ini Iris menjawab lewat teks saja) |
+| VOICEVOX Engine | Berjalan di port `50021` (opsional, tanpa ini Iris menjawab lewat teks saja). Peluncur menjalankan `vv-engine\run.exe` (build DirectML, mis. versi 0.25.2) dengan GPU yang mendukung DirectX 12; tanpa folder itu ia memakai unit `voicevox` di WSL (CPU). Folder `vv-engine` tidak ada di repositori, letakkan sendiri di folder proyek |
 | 9Router atau endpoint LLM kompatibel OpenAI | Berjalan di `localhost:20128` secara bawaan |
 | WSL2 + Hermes Agent | Opsional, hanya untuk fitur `/agen` |
 | faster-whisper | Opsional, hanya untuk bicara lewat mikrofon |
@@ -251,7 +252,7 @@ Semua pengaturan dibaca dari file `.env` (di folder proyek atau di folder user W
 | `HERMES_URL` | Alamat API server Hermes | `http://127.0.0.1:8642/v1` |
 | `HERMES_API_KEY` | Kunci API Hermes (harus sama dengan `API_SERVER_KEY` di Hermes) | kosong |
 | `HERMES_TIMEOUT` | Batas waktu tugas agen (detik) | `900` |
-| `HERMES_STREAM` | `1` memakai respons stream supaya Stop memutus koneksi eksplisit | `0` |
+| `HERMES_STREAM` | `1` memakai respons stream. **Disarankan `1`**: dengan ini tombol Stop memanggil `POST /v1/runs/{id}/stop` di Hermes sebelum koneksi ditutup | `0` (isi `1` di `.env`) |
 | `HERMES_WIN_HOME` | Folder user Windows dilihat dari WSL | `/mnt/c/Users/<user>` |
 
 ### Opsional (`IRIS_*`)
@@ -314,11 +315,18 @@ Cek kesehatan layanan di `http://127.0.0.1:8765/health`.
 | Berkas | Fungsi |
 |---|---|
 | `IrisLauncher.exe` | Antarmuka Start, Stop, dan Doctor dengan indikator hijau per layanan (WSL, VOICEVOX, 9Router, Hermes, server, overlay) |
-| `iris-start.ps1` | Menyalakan WSL, lalu hanya layanan yang belum menjawab (VOICEVOX, 9Router, Hermes) secara paralel, lalu `server.py` dan overlay. Idempoten dan tidak membuat server atau overlay kedua |
-| `iris-stop.ps1` | Menghentikan overlay dan server (opsi untuk menghentikan layanan lain dan sesi penjaga WSL) |
-| `iris-doctor.ps1` | Memeriksa folder proyek, `.venv`, Electron, `.env`, port, status WSL dan Hermes, `.wslconfig`, ruang disk, dan RAM. Tiap baris `OK`, `WARN`, atau `GAGAL` disertai cara memperbaiki. Nilai token tidak pernah dicetak |
+| `iris-start.ps1` | Menyalakan WSL, lalu hanya layanan yang belum menjawab (VOICEVOX, 9Router, Hermes) secara paralel, lalu `server.py` dan overlay. Idempoten dan tidak membuat server atau overlay kedua. VOICEVOX dijalankan dari `vv-engine\run.exe` di Windows (GPU; diulang tanpa GPU bila gagal, atau kembali ke unit WSL bila folder tidak ada). Log mesin: `iris-voicevox.out.log` dan `iris-voicevox.err.log` |
+| `iris-stop.ps1` | Menghentikan overlay dan server (opsi untuk menghentikan layanan lain dan sesi penjaga WSL). Mesin VOICEVOX Windows hanya dimatikan bila `run.exe` berasal dari folder `vv-engine` proyek ini |
+| `iris-doctor.ps1` | Memeriksa folder proyek, `.venv`, Electron, `.env`, port, status WSL dan Hermes, `.wslconfig`, ruang disk, dan RAM. Tiap baris `OK`, `WARN`, atau `GAGAL` disertai cara memperbaiki; `WARN` juga muncul bila unit `voicevox` di WSL masih aktif (bisa merebut port 50021). Nilai token tidak pernah dicetak |
 | `iris-hermes.ps1`, `iris-service.ps1` | Pembungkus untuk Hermes dan layanan WSL |
 | `9router.service` | Layanan systemd pengguna di WSL untuk 9Router |
+
+**Mesin suara VOICEVOX (GPU)**
+
+- Di Pengaturan peluncur ada kotak **Mesin suara VOICEVOX** untuk memilih GPU atau CPU (disimpan sebagai `vvgpu` di `settings.ini`). Chip VOICEVOX menyalakan atau mematikan mesin Windows tanpa membangunkan WSL.
+- Letakkan folder `vv-engine` (engine VOICEVOX build DirectML) di folder proyek. Folder ini dan `iris-voicevox.*.log` tidak ikut repositori.
+- Matikan unit lama di WSL supaya tidak merebut port: `wsl -d Ubuntu -- systemctl --user disable --now voicevox`.
+- Setelah Start, pemilik port harus `run` (mesin Windows), bukan `wslrelay`: `Get-Process -Id (Get-NetTCPConnection -LocalPort 50021 -State Listen).OwningProcess`.
 
 **Menutup peluncur dan menu Keluar**
 
@@ -513,7 +521,7 @@ Hermes Agent berjalan di WSL2 dan menjadi "tangan" Iris lewat `/agen`. Kemampuan
 
 Laporan Hermes ditampilkan apa adanya di kartu "Hasil tugas". Iris menyampaikannya secara netral dan bersumber, dan hanya menyatakan berhasil bila laporan Hermes jelas menyatakannya.
 
-> Tombol Stop memutus koneksi dari sisi Iris, tetapi belum terbukti menghentikan agen di sisi Hermes. Pesan pembatalan tetap menyebut "tugas mungkin masih berjalan". Skrip [`scripts/cek-cancel-hermes.py`](scripts/cek-cancel-hermes.py) mengukur mode mana yang benar-benar berhenti (jalankan dari folder proyek: `.\.venv\Scripts\python.exe scripts\cek-cancel-hermes.py`; opsi `--skip-health` melewati cek `/health` di awal).
+> **Tombol Stop.** Dengan `HERMES_STREAM=1`, Iris memanggil `POST /v1/runs/{id}/stop` di Hermes sebelum menutup koneksi. Diuji 7 November 2026: Hermes menjawab HTTP 200 `stopping`, status tugas `cancelled`, dan file baru berhenti terbentuk. Berhentinya tidak seketika (satu langkah yang sedang berjalan bisa selesai dulu), dan kegagalan memanggil stop hanya dicatat di terminal tanpa mengganggu pembatalan di sisi Iris. Dengan `HERMES_STREAM=0` (bawaan), Stop hanya memutus koneksi dan agen di Hermes tetap berjalan (terukur 7 November 2026). Periksa dengan [`scripts/cek-stop-hermes.py`](scripts/cek-stop-hermes.py), atau ukur perilaku tanpa stop dengan [`scripts/cek-cancel-hermes.py`](scripts/cek-cancel-hermes.py) (jalankan dari folder proyek, mis. `.\.venv\Scripts\python.exe scripts\cek-stop-hermes.py`; `cek-cancel-hermes.py` punya opsi `--skip-health`).
 
 ---
 
@@ -523,7 +531,7 @@ IRIS dirancang untuk berjalan lokal dan memberi agen akses ke komputermu, jadi b
 
 - Server hanya mendengar di `127.0.0.1`.
 - **`COMPANION_TOKEN` wajib** (minimal 16 karakter). Koneksi `/ws` dilindungi token lewat header `X-Iris-Token` (kode penolakan 1008), plus pengecekan `Origin`. Server menolak start bila token kosong atau terlalu pendek; satu-satunya pengecualian adalah `COMPANION_ALLOW_NO_TOKEN=1` untuk pengembangan. Karena agen bisa menjalankan perintah di komputermu, jangan pakai pengecualian itu untuk pemakaian sehari-hari
-- Perintah `/agen` yang berpotensi berbahaya (hapus, pindah, timpa, format file) meminta konfirmasi dulu. Daftar kata pemicu bisa disetel, `/health` menampilkan `agent_confirm`, dan konfirmasi sekali pakai kedaluwarsa dalam 120 detik
+- Perintah `/agen` yang berpotensi berbahaya (hapus, pindah, timpa, format file) meminta konfirmasi dulu. Daftar kata pemicu bisa disetel, `/health` menampilkan `agent_confirm`, dan konfirmasi sekali pakai kedaluwarsa dalam 120 detik. Batasnya: pemeriksaan hanya membaca teks permintaanmu, bukan tindakan yang dipilih agen, jadi ini jaring pengaman dan bukan sandbox
 - Semua jendela menolak navigasi, jendela baru, dan `<webview>`
 - Memori dan riwayat menolak menyimpan isi yang mirip rahasia (kata sandi dan sejenisnya)
 - Panel mini-browser berjalan terisolasi (sandbox, tanpa preload, tanpa akses kamera, mikrofon, atau notifikasi, navigasi hanya ke `https://`)
@@ -537,7 +545,7 @@ Hal yang perlu kamu jaga sendiri:
 - Riwayat obrolan dan memori tersimpan polos di disk. Jangan taruh folder proyek di drive yang tersinkron ke cloud
 - Log server memuat teks chat
 
-Berkas sensitif tidak pernah masuk repositori: `.env`, riwayat percakapan, memori, log, dan arsip dikecualikan lewat `.gitignore`.
+Berkas sensitif tidak pernah masuk repositori: `.env`, riwayat percakapan, memori, log, arsip, dan folder `vv-engine/` dikecualikan lewat `.gitignore`.
 
 Menemukan celah keamanan? Mohon jangan buka issue publik; hubungi pemilik repositori secara langsung.
 
@@ -553,10 +561,12 @@ Fitur di bawah sudah ditulis tetapi **belum lulus uji penuh di PC**. Anggap eksp
 | Bicara lewat mikrofon: penyetelan 6 Nov (model, kosakata bantu, perintah suara) | Perbaikan perilaku diuji dengan kalimat dari tangkapan layar; pemilik melaporkan tidak ada masalah. Akurasi tetap bergantung pada model dan mikrofon |
 | Mini-browser, fase 4 (pil akun, hemat RAM, tab diparkir) | Belum dites di Electron asli |
 | Tugas `/agen` ringan terasa lambat | Penyebab belum dipastikan |
-| Cancel yang benar-benar menghentikan agen | Belum terbukti |
+| Sambung ulang WebSocket bertahap (jeda 2, 4, 8, maksimal 15 detik) | Diterapkan di `index.html`, belum diuji dengan memutus server saat overlay jalan |
+| VOICEVOX di GPU (DirectML) | Mesin naik dan mendeteksi GPU (RTX 4060 Laptop, `/version` 0.25.2). Pemakaian GPU saat sintesis dan perbandingan latensi dengan CPU belum diukur |
+| Batas tunggu stop Hermes di peluncur | Masih sekitar 12 detik, padahal systemd memberi Hermes sampai 70 detik; chip Hermes bisa tampak gagal mati padahal berhenti sesudahnya |
 | Bubble dengan lampiran dekat tepi atas layar | Belum dites |
 
-Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kartu hasil), konfirmasi `/agen` berbahaya, token `/ws`, ganti baju, tema, fun fact, alarm dan jam, mood, seret file dan lampiran gambar, ekspor, pilihan bernomor, pil status koneksi, dan peluncur, termasuk menutup peluncur dan menu Keluar yang mematikan semua layanan (`--stop-all`, dilaporkan pemilik berfungsi), serta perbaikan v46 sampai v50 (jaga UI tetap di layar, panel pindah sisi, rambut dan bayangan setengah badan; dilaporkan pemilik sudah beres), serta pikiran batin (dilaporkan pemilik aman), serta pikiran batin (dilaporkan pemilik aman).
+Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kartu hasil), konfirmasi `/agen` berbahaya, token `/ws`, ganti baju, tema, fun fact, alarm dan jam, mood, seret file dan lampiran gambar, ekspor, pilihan bernomor, pil status koneksi, dan peluncur, termasuk menutup peluncur dan menu Keluar yang mematikan semua layanan (`--stop-all`, dilaporkan pemilik berfungsi), serta perbaikan v46 sampai v50 (jaga UI tetap di layar, panel pindah sisi, rambut dan bayangan setengah badan; dilaporkan pemilik sudah beres), serta pikiran batin (dilaporkan pemilik aman). Dari 7 November 2026: pembatalan tugas yang benar-benar menghentikan agen Hermes (HTTP 200 `stopping`, status `cancelled`) dan konversi path berspasi (`tests/test_path_berspasi.py`, 13 dari 13 tes proyek lulus).
 
 ---
 
@@ -595,12 +605,14 @@ Ide yang sudah disetujui atau dicatat, **belum ada kodenya**:
 ├── README.md                # dokumen ini
 ├── .github/workflows/       # CI (cek sintaks Python)
 ├── IrisLauncher-src/        # kode sumber peluncur (C# dan PowerShell)
+├── vv-engine/               # engine VOICEVOX (tidak ada di repositori, letakkan sendiri)
 ├── scripts/
 │   ├── buat_klip_vrma.py    # skrip pembuat klip animasi VRMA
-│   └── cek-cancel-hermes.py # skrip uji pembatalan tugas Hermes
+│   ├── cek-cancel-hermes.py # skrip ukur pembatalan tugas Hermes (tanpa stop)
+│   └── cek-stop-hermes.py   # skrip uji tombol Stop menghentikan agen Hermes
 ├── dev/
 │   └── test_client.html     # halaman tes koneksi (hanya untuk pengembangan, tanpa token)
-├── tests/                   # tes otomatis
+├── tests/                   # tes otomatis (mis. test_path_berspasi.py)
 └── docs/
     ├── QUICKSTART.md        # panduan mulai cepat
     └── img/                 # logo
@@ -631,7 +643,7 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 
 | Gejala | Kemungkinan penyebab dan solusi |
 |---|---|
-| Iris tidak bersuara, terminal penuh `VOICEVOX gagal` | VOICEVOX belum berjalan. Jalankan VOICEVOX dulu (port 50021) |
+| Iris tidak bersuara, terminal penuh `VOICEVOX gagal` | VOICEVOX belum berjalan. Nyalakan lewat chip VOICEVOX di peluncur, atau jalankan `vv-engine\run.exe` sendiri di port 50021. Cek pemilik port: `Get-Process -Id (Get-NetTCPConnection -LocalPort 50021 -State Listen).OwningProcess` (`run` = mesin Windows, `wslrelay` = unit WSL yang aktif) |
 | Balasan `401 Missing API key` | `NINEROUTER_API_KEY` kosong. Isi di `.env` lalu restart server |
 | Server langsung berhenti dengan `[FATAL] COMPANION_TOKEN wajib diisi` | Isi `COMPANION_TOKEN` (minimal 16 karakter) di `.env`, lalu start ulang. Hanya untuk pengembangan: `COMPANION_ALLOW_NO_TOKEN=1` |
 | Overlay tidak tersambung, log `/ws ditolak` | Token server dan overlay berbeda (mis. ada dua `.env` dengan token berbeda). Cek sidik token di terminal server dan terminal Electron, lalu restart keduanya |
@@ -647,6 +659,10 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 | Menu Keluar hanya menutup overlay | Overlay tidak dijalankan lewat peluncur (mis. `npm start`), atau peluncurnya belum versi terbaru. Bangun ulang `IrisLauncher.exe` dan mulai dari peluncur |
 | Whisper salah dengar nama atau perintah (mis. "agen" jadi "akun") | Naikkan `IRIS_STT_MODEL` (`small` atau `medium`), tambahkan kata itu ke `IRIS_STT_PROMPT`, dan dekatkan mikrofon. Lihat [Bicara lewat mikrofon](#bicara-lewat-mikrofon) |
 | Peluncur gagal di langkah WSL | Jalankan `iris-doctor.ps1` dan lihat log di `iris-start.log` |
+| Suara VOICEVOX lambat atau GPU tidak terpakai | Cek kotak **Mesin suara VOICEVOX** di Pengaturan peluncur, dan cari `DirectML (device_id=0): OK` di `iris-voicevox.err.log`. Bila unit `voicevox` di WSL masih aktif, matikan: `wsl -d Ubuntu -- systemctl --user disable --now voicevox` |
+| Server baru langsung mati dengan `Errno 10048` | Server lama masih memegang port 8765. Cek `Get-NetTCPConnection -LocalPort 8765 -State Listen`, matikan prosesnya (atau lewat peluncur), lalu start ulang |
+| Stop tidak menghentikan agen Hermes | Pastikan `HERMES_STREAM=1` di `.env`, restart server, dan buka ulang overlay. Satu langkah yang sedang berjalan bisa selesai dulu. Me-restart `hermes-gateway` di tengah tugas memunculkan "Server disconnected"; itu bukan hasil tombol Stop |
+| Chip Hermes tampak gagal mati | Systemd memberi Hermes sampai 70 detik, sedangkan peluncur menunggu sekitar 12 detik. Cek `systemctl --user status hermes-gateway` di WSL sebelum menyimpulkan gagal |
 
 Untuk diagnosis lebih lanjut, jalankan overlay dengan `npm start`, buka DevTools dengan `Ctrl+Alt+D`, dan cek tab Console (DevTools tidak tersedia di versi rilis).
 
