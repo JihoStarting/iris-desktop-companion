@@ -24,7 +24,7 @@ Proyek ini dibuat sebagai proyek pribadi dan masih terus dikembangkan.
 - Dipublikasikan di GitHub: 5 November 2026
 - Versi terbaru: v1.0.0 (peluncur `IrisLauncher.exe`)
 - Status: aktif dikembangkan sebagai proyek pribadi
-- Terakhir diperbarui: 8 November 2026 (agen Hermes kini berjalan di sandbox Docker dan setiap tindakan berisiko meminta persetujuan lewat kartu di overlay; tombol Stop menghentikan agen Hermes; status server di peluncur dicek lewat `/ping`; VOICEVOX bisa berjalan di GPU; jeda sambung ulang WebSocket bertahap; perbaikan path berspasi; terjemah layar OCR Jepang/Inggris dengan suara dan pratinjau besar; ikon tray berwarna; tawaran aksi saat menyalin; ekspor/impor konfigurasi; `/rangkum`; lihat [Keamanan](#keamanan) dan [Status pengujian](#status-pengujian))
+- Terakhir diperbarui: 8 November 2026 (statistik fokus `/statistik`, kuis kana `/kana`, dan sapaan sesuai waktu `/sapa`; tombol putar suara pada ucapan otomatis; bubble menghindari menu yang terbuka; penolakan lewat kartu izin tidak lagi disampaikan Iris sebagai "gagal"; sebelumnya: agen Hermes berjalan di sandbox Docker dan setiap tindakan berisiko meminta persetujuan lewat kartu di overlay; tombol Stop menghentikan agen Hermes; status server di peluncur dicek lewat `/ping`; VOICEVOX bisa berjalan di GPU; jeda sambung ulang WebSocket bertahap; perbaikan path berspasi; terjemah layar OCR Jepang/Inggris dengan suara dan pratinjau besar; ikon tray berwarna; tawaran aksi saat menyalin; ekspor/impor konfigurasi; `/rangkum`; lihat [Keamanan](#keamanan) dan [Status pengujian](#status-pengujian))
 
 Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan belum diuji penuh. Daftarnya ada di [Status pengujian](#status-pengujian).
 
@@ -71,7 +71,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - **Tema warna**: Iris (bawaan), empat musim, dan Otomatis, lengkap dengan efek jatuh musiman (`/tema`)
 - **Tampilan badan**: tubuh penuh sampai kaki atau setengah badan (`/badan`), kamera dihitung ulang tanpa restart
 - Bayangan siluet yang berubah per keadaan (diam, diangkat, mengintip, duduk), render HD (`/bayangan`)
-- Bubble di atas kepala dengan teks Indonesia, kalimat Jepang berlabel 日本語, dan garis aksen sesuai emosi. Bubble panjang bisa digulir dan tidak keluar jendela
+- Bubble di atas kepala dengan teks Indonesia, kalimat Jepang berlabel 日本語, dan garis aksen sesuai emosi. Bubble panjang bisa digulir dan tidak keluar jendela. Bubble juga bergeser ke kanan menjauhi menu, Pengaturan, Timer, dan popover lain yang sedang terbuka supaya tidak tertimpa
 - **Pikiran batin**: kadang Iris menampilkan satu baris bisikan hati berukuran kecil dan miring di atas bubble (tidak disuarakan dan tidak masuk riwayat). Saklar di Pengaturan
 - Klip gerak VRMA buatan sendiri (4 klip kecil: `angguk`, `geleng`, `miring`, `tunduk`; hanya punggung, dada, leher, dan kepala, tanpa lengan) yang diputar lewat gerbang emosi. Klip tari dan lengan belum ada
 - Kualitas gambar adaptif: `auto`, `tinggi`, `normal`, `hemat`. Mode auto turun sendiri kalau frame lambat (`/kualitas`)
@@ -100,7 +100,10 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - Sapaan menurut waktu (pagi, siang, sore, malam)
 - **Fun fact** acak bersuara di selang waktu yang bisa diatur. Diambil dari 30 fakta bawaan atau dibuat model sesuai topik (`/funfact`)
 - Alarm, jam (ucapan tiap jam), timer, Pomodoro, dan pengingat istirahat
+- **Statistik fokus** (`/statistik`): sesi Pomodoro "Fokus" yang selesai penuh dicatat per hari (hanya jumlah sesi dan menit, disimpan lokal maksimal 120 hari). Laporan 7 hari terakhir memuat batang, total, rata-rata per hari, dan rantai hari berturut-turut. Sesi yang dibatalkan dan `/timer` biasa tidak dihitung
+- **Sapaan sesuai waktu** (`/sapa`, bawaan mati): satu kalimat tetap per slot waktu (pagi, siang, sore, malam, larut) sekali sehari tanpa memanggil model, dengan jarak minimal 90 menit antar sapaan. Tidak muncul saat mode fokus, tidur, merekam, suara dibisukan, chat terbuka, atau terjemah berjalan
 - Panel chat dengan riwayat, tombol Hapus, "Mode jelaskan", tombol memanjangkan kotak chat, dan popup **Salin link**
+- Reaksi spontan Iris dan ucapan otomatis (sapaan, fun fact, pengingat istirahat, jam) tercatat di riwayat chat sebagai kotak sendiri dengan tombol salin, suka, dan tidak suka. Tombol putar ulang suara pada ucapan otomatis baru ditulis dan belum diuji
 - **Ekspor percakapan** ke satu berkas HTML mandiri (gelap di layar, terang saat dicetak) di folder Downloads (`/ekspor`)
 - **Pilihan bernomor**: perintah seperti `/baju`, `/tema`, `/alarm`, dan `/lokal daftar` menampilkan daftar, lalu cukup ketik angkanya
 - Pil status koneksi `V 9 H` (VOICEVOX, 9Router, Hermes) dan titik bar hijau, kuning, atau merah (`/status`)
@@ -116,13 +119,14 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - **Komentar layar otomatis** (`/pantau`, ditandai 👁)
 - **Bicara lewat mikrofon** (STT, opsional) dengan faster-whisper. Model, bahasa, dan kosakata bantu bisa disetel lewat `.env`; ucapan yang diawali kata kerja aksi (mis. "Cek ...", "Cari ...") tetap dijalankan sebagai tugas walau Whisper menambahkan tanda tanya, dan jawaban singkat seperti "iya" atau "lanjut aja" setelah Iris menawarkan `/agen` menjalankan tugasnya. Lihat [Bicara lewat mikrofon](#bicara-lewat-mikrofon)
 - **Mode belajar bahasa Jepang** (`/belajar`): Iris memberi kalimat Jepang, kamu menebak arti atau mengulang ucapannya, lalu dikoreksi. Ada opsi menyerah untuk melihat jawaban
+- **Kuis kana** (`/kana`): Iris menampilkan satu kana, kamu mengetik romaji. Diperiksa lokal tanpa model dan tanpa server; ejaan Hepburn dan Kunrei diterima. Pilih `hira`, `kata`, atau `campur`, tambahkan `lengkap` untuk dakuten dan handakuten, dan `kombinasi` untuk kana kombinasi (きゃ, しゅ, ちょ dan seterusnya). Satu ronde 10 soal; jawaban salah muncul lagi di ronde yang sama, dan ringkasan akhir memuat skor serta kana yang perlu diulang. Tanda panjang (ー) dan っ kecil belum ada
 - **Perintah aplikasi lokal** (`/lokal`): membuka aplikasi dari daftar putih yang ditetapkan di `main.js`
 
 ### Agen dan memori
 
 - **Jembatan Hermes Agent** (`/agen`, `/agent`, `/h`): memberi tugas ke agen di WSL, lengkap dengan indikator "sedang memproses" berhitung detik, heartbeat, tombol Stop (menghentikan agen di Hermes bila `HERMES_STREAM=1`), dan batas waktu
 - **Konfirmasi tugas berbahaya**: tugas `/agen` yang berbau hapus, pindah, timpa, atau format file ditahan dulu dan muncul kartu "Iris mau menjalankan ini. Lanjut?" dengan tombol Jalankan dan Batal
-- **Persetujuan tindakan agen**: bila Hermes menandai sebuah perintah berisiko, overlay menampilkan kartu izin dengan tombol **Izinkan sekali** atau **Tolak**. Tanpa jawaban, koneksi putus, atau Stop berarti ditolak; pilihan "selalu" dan "sesi" tidak pernah ditawarkan
+- **Persetujuan tindakan agen**: bila Hermes menandai sebuah perintah berisiko, overlay menampilkan kartu izin dengan tombol **Izinkan sekali** atau **Tolak**. Tanpa jawaban, koneksi putus, atau Stop berarti ditolak; pilihan "selalu" dan "sesi" tidak pernah ditawarkan. Bila kamu menekan Tolak, Iris menyampaikan bahwa perintah sengaja tidak dijalankan karena penolakanmu (baris `[Catatan Iris]`), bukan sebagai kegagalan agen
 - **Sandbox Docker**: terminal agen berjalan di kontainer yang hanya bisa menulis ke satu folder kerja. Tugas dengan path di luar folder itu ditolak sebelum dikirim, dan Iris memeriksa disk sendiri lalu menambahkan baris `[Verifikasi Iris]` pada hasil (karena laporan agen tidak selalu benar)
 - Kartu **Hasil tugas** dengan tombol Salin. Path WSL di laporan otomatis diubah menjadi path Windows, termasuk folder berspasi (`C:\Users\<user>\...`)
 - Hermes menerima konteks 10 pesan terakhir hanya bila tugas merujuk ke percakapan, dan tahu folder Windows lewat `HERMES_WIN_HOME`
@@ -289,6 +293,7 @@ Semua pengaturan dibaca dari file `.env` (di folder proyek atau di folder user W
 | `IRIS_TL_MAX_BLOCKS` | Batas blok teks per terjemah layar (bawaan 120) |
 | `IRIS_TL_FONT_JP` | Font Jepang untuk menggambar hasil (bawaan Meiryo, Yu Gothic, atau Noto CJK) |
 | `IRIS_TL_DEBUG=1` | Simpan `iris_tl_debug.png` dan `iris_tl_debug.json` (kotak hijau diterjemahkan, merah tidak) |
+| `IRIS_TL_VOICE=0` | Iris tidak bicara saat terjemah layar |
 | `IRIS_HEALTH_CONNECT` | Batas sambung (detik, bawaan 1,5) per layanan saat `/health` memeriksa VOICEVOX, 9Router, dan Hermes |
 
 Membuat token untuk `COMPANION_TOKEN`:
@@ -394,6 +399,8 @@ Ketik di kotak input overlay. Ketik `/help` untuk daftar lengkap di aplikasi. Pe
 | `/alarm HH:MM [nama]` | Pasang alarm (`/alarm` untuk daftar, `/alarm batal <no\|semua>` untuk menghapus) |
 | `/jam` | Iris mengucapkan jam (`/jam nyala` untuk tiap jam) |
 | `/istirahat N` | Pengingat istirahat tiap N menit aktif (15 sampai 240; `/istirahat mati` untuk mematikan) |
+| `/statistik [reset]` (alias `/stat`, `/stats`) | Statistik sesi Pomodoro 7 hari terakhir; `reset` menghapus catatan |
+| `/sapa [nyala\|mati\|sekarang]` | Sapaan sesuai waktu (bawaan mati); `sekarang` memaksa satu sapaan untuk slot saat ini tanpa mencatatnya |
 | `/funfact [sekarang\|10-30\|20\|mati\|nyala]` (alias `/ff`, `/tahukah`) | Atur fun fact acak; `/funfact topik <topik>`, `/funfact bawaan`, `/funfact model` |
 | `/fokus` | Mode fokus (karakter dan bubble hilang) |
 | `/bisu` | Matikan suara |
@@ -412,6 +419,7 @@ Ketik di kotak input overlay. Ketik `/help` untuk daftar lengkap di aplikasi. Pe
 | `/clip` | Tanya isi clipboard |
 | `/pantau` | Komentar layar otomatis (ditandai 👁) |
 | `/belajar [topik]` | Mode belajar bahasa Jepang, mis. `/belajar makanan` |
+| `/kana [hira\|kata\|campur] [lengkap] [kombinasi]` | Kuis kana lokal; `stop` atau `/kana stop` mengakhiri |
 
 ### Memori dan penampilan
 
@@ -486,7 +494,10 @@ Tekan `Ctrl+Alt+T`, klik "Terjemah layar" di menu, atau ketik `/terjemah`. Iris 
 - **OCR Inggris di Windows** butuh paket bahasa OCR Inggris (Settings, Language and region, English, Language options, OCR).
 - Teks yang sudah berbahasa Indonesia, nama, kode, dan URL dibiarkan. Blok yang terlewat diminta ulang ke model sampai 2 putaran.
 - Tombol berhenti (kotak) membatalkan OCR, terjemahan, dan suara.
-- Batas: tombol kecil, teks putih di atas gradasi, dan huruf sangat kecil masih bisa salah baca atau terlewat; halaman sangat padat dibatasi `IRIS_TL_MAX_BLOCKS` blok. Gunakan `IRIS_TL_DEBUG=1` untuk melihat blok mana yang diproses.
+- **Suara:** Iris mengucapkan kalimat pembuka selagi OCR berjalan dan kalimat penutup sesudah hasil tampil (semua blok, sebagian, atau gagal). Matikan dengan `IRIS_TL_VOICE=0`.
+- **Penyaring sampah OCR:** serpihan ikon dan gambar yang terbaca sebagai `0000` atau huruf acak dibuang dan jumlahnya dilaporkan, supaya model tidak mengarang kalimat dari sampah.
+- **Pertanyaan lanjutan:** Iris menyimpan daftar terjemahan (maksimal 1800 karakter) sebagai konteks, jadi pertanyaan seperti "isi terjemahan itu apa" dijawab dari teks yang terbaca, dan teks yang gagal dibaca tidak boleh dikarang. Baru ditulis, belum terbukti dengan model sungguhan.
+- Batas: tombol kecil, teks putih di atas gradasi, dan huruf sangat kecil masih bisa salah baca atau terlewat; halaman sangat padat dibatasi `IRIS_TL_MAX_BLOCKS` blok. Gunakan `IRIS_TL_DEBUG=1` untuk melihat blok mana yang diproses. Uji nyata terakhir pada halaman wiki Jepang menerjemahkan 42 dari 62 blok; paragraf pembuka yang besar masih tertinggal.
 
 ---
 
@@ -603,10 +614,10 @@ Fitur di bawah sudah ditulis tetapi **belum lulus uji penuh di PC**. Anggap eksp
 
 | Area | Catatan |
 |---|---|
-| Terjemah layar (OCR): Jepang, Inggris, Auto, suara, pratinjau besar, tombol berhenti | Perbaikan Jepang terbukti membaik lewat screenshot nyata (8 November 2026, "udah bisa"). Mode Inggris dan Auto baru diuji dengan OCR dan model palsu; pil bahasa di menu, penampil besar, tombol berhenti, font Jepang, dan penyaring teks sampah belum dilihat di overlay. Sisa gejala: teks merah, tebal, dan tombol kecil masih terlewat |
+| Terjemah layar (OCR): Jepang, Inggris, Auto, suara, pratinjau besar, tombol berhenti | Jepang terbukti membaik lewat screenshot nyata (8 November 2026): uji terakhir menerjemahkan 42 dari 62 blok tanpa teks sampah "0000"; paragraf pembuka besar masih Jepang dan ada potongan terjemahan yang menumpuk. Pil bahasa Auto / Jepang / Inggris di menu lulus di overlay. Mode Inggris dan Auto baru diuji dengan OCR dan model palsu; suara pembuka dan penutup, penampil besar, tombol berhenti, font Jepang, dan penyaring teks sampah belum dilaporkan dari overlay. Sisa gejala: teks merah, tebal, dan tombol kecil masih terlewat |
 | Jawaban Iris soal isi terjemahan (tidak boleh mengarang) | Ditulis, belum terbukti dengan model sungguhan; pernah mengarang isi halaman |
-| Ikon tray berwarna, tawaran aksi saat menyalin, ekspor/impor konfigurasi (v80) | Lolos tes logika dan `node --check`, belum dijalankan di Electron asli; pelukis titik tray bergantung pada `nativeImage` Electron |
-| `/rangkum` halaman, link, dan file (v81) | Lolos tes logika, belum dijalankan di Electron asli. Hanya teks DOM utama yang terbaca (PDF viewer, iframe, dan konten malas tidak); perilaku model terhadap injeksi di halaman belum terbukti |
+| `/rangkum`: bacaan halaman dan injeksi (v81) | Lulus di overlay (dilaporkan pemilik). Hanya teks DOM utama yang terbaca (PDF viewer, iframe, dan konten malas tidak); perilaku model terhadap injeksi di halaman belum terbukti |
+| Tombol putar suara pada ucapan otomatis: sapaan, fun fact, istirahat, jam (v89) | Ditulis dan lolos `node --check`, belum diuji di overlay. Uji: `/sapa sekarang`, `/funfact`, `/jam`, buka chat, lalu klik ikon speaker di kotaknya |
 | Bicara lewat mikrofon: penyetelan 6 Nov (model, kosakata bantu, perintah suara) | Perbaikan perilaku diuji dengan kalimat dari tangkapan layar; pemilik melaporkan tidak ada masalah. Akurasi tetap bergantung pada model dan mikrofon |
 | Mini-browser, fase 4 (pil akun, hemat RAM, tab diparkir) | Belum dites di Electron asli |
 | Tugas `/agen` ringan terasa lambat | Penyebab belum dipastikan |
@@ -620,7 +631,7 @@ Fitur di bawah sudah ditulis tetapi **belum lulus uji penuh di PC**. Anggap eksp
 | Jembatan baca-saja untuk Hermes | Kode ada, belum dites; belum ada skill Hermes yang memakainya |
 | Bubble dengan lampiran dekat tepi atas layar | Belum dites |
 
-Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kartu hasil), konfirmasi `/agen` berbahaya, token `/ws`, ganti baju, tema, fun fact, alarm dan jam, mood, seret file dan lampiran gambar, ekspor, pilihan bernomor, pil status koneksi, dan peluncur, termasuk menutup peluncur dan menu Keluar yang mematikan semua layanan (`--stop-all`, dilaporkan pemilik berfungsi), serta perbaikan v46 sampai v50 (jaga UI tetap di layar, panel pindah sisi, rambut dan bayangan setengah badan; dilaporkan pemilik sudah beres), serta pikiran batin (dilaporkan pemilik aman). Dari 7 November 2026: pembatalan tugas yang benar-benar menghentikan agen Hermes (HTTP 200 `stopping`, status `cancelled`) dan konversi path berspasi (`tests/test_path_berspasi.py`, 13 dari 13 tes proyek lulus).
+Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kartu hasil), konfirmasi `/agen` berbahaya, token `/ws`, ganti baju, tema, fun fact, alarm dan jam, mood, seret file dan lampiran gambar, ekspor, pilihan bernomor, pil status koneksi, dan peluncur, termasuk menutup peluncur dan menu Keluar yang mematikan semua layanan (`--stop-all`, dilaporkan pemilik berfungsi), serta perbaikan v46 sampai v50 (jaga UI tetap di layar, panel pindah sisi, rambut dan bayangan setengah badan; dilaporkan pemilik sudah beres), serta pikiran batin (dilaporkan pemilik aman). Dari 8 November 2026 malam, lulus di overlay: ikon tray berwarna, ekspor/impor konfigurasi (dengan tangkapan layar), tawaran aksi saat menyalin, `/rangkum`, `/statistik`, `/kana`, dan `/sapa` (dilaporkan pemilik, sebagian tanpa tangkapan layar rinci), bubble yang menghindari menu, reaksi Iris di riwayat chat, serta pesan Iris saat Tolak ditekan (dengan model sungguhan: tidak lagi menyebut "gagal"). Dari 7 November 2026: pembatalan tugas yang benar-benar menghentikan agen Hermes (HTTP 200 `stopping`, status `cancelled`) dan konversi path berspasi (`tests/test_path_berspasi.py`, 13 dari 13 tes proyek lulus).
 
 ---
 
@@ -628,7 +639,8 @@ Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kart
 
 Ide yang sudah disetujui atau dicatat, **belum ada kodenya**:
 
-- Statistik fokus (catatan sesi Pomodoro dan jam fokus mingguan), mini-game kana, dan sapaan proaktif
+- Perluasan yang sudah dicatat: statistik fokus lebih rinci (mis. jam fokus mingguan dan `/timer` biasa ikut dihitung) dan kana lanjutan (tanda panjang ー dan っ kecil)
+- Ide yang menunggu keputusan: terjemah langsung (subtitle) di area layar tertentu, reaksi ke suara sistem, pencarian file bahasa alami (butuh keputusan akses folder untuk agen), dan pengingat berbasis aplikasi aktif (bentrok dengan prinsip privasi)
 - Skill Hermes `cek-elearning` dan skill yang memakai jembatan baca-saja
 - Memori otomatis ringan (ringkasan fakta baru yang kamu setujui dulu sebelum disimpan)
 - Auto-start bersama Windows dan skrip setup untuk PC baru
@@ -671,7 +683,7 @@ Ide yang sudah disetujui atau dicatat, **belum ada kodenya**:
 │   └── cek-stop-hermes.py   # skrip uji tombol Stop menghentikan agen Hermes
 ├── dev/
 │   └── test_client.html     # halaman tes koneksi (hanya untuk pengembangan, tanpa token)
-├── tests/                   # tes otomatis (mis. test_path_berspasi.py)
+├── tests/                   # tes otomatis (mis. test_path_berspasi.py, test_approval_gate.py)
 └── docs/
     ├── QUICKSTART.md        # panduan mulai cepat
     └── img/                 # logo
