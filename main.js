@@ -547,6 +547,15 @@ async function webReadText(max) {
   const text = (typeof t === 'string' ? t : '').replace(/\n{3,}/g, '\n\n').trim();
   return { ...webReadState(), text: text.slice(0, n), chars: text.length, truncated: text.length > n };
 }
+// v81: /rangkum halaman. Hanya dipanggil renderer atas perintah pengguna; mengembalikan teks yang tampak di panel /chrome (maks 8000 karakter, URL tanpa query).
+// Teks dikirim ke model sebagai balasan chat biasa (bukan tugas agen), jadi isi halaman tidak bisa menjalankan alat apa pun.
+ipcMain.handle('web-page-text', async (e) => {
+  if (!win || win.isDestroyed() || e.sender !== win.webContents) return { ok: false, error: 'pengirim tidak dikenal' };
+  try {
+    const r = await webReadText(8000);
+    return { ok: true, url: r.url, host: r.host, title: r.title, text: r.text, truncated: r.truncated, loading: r.loading };
+  } catch (err) { return { ok: false, error: String((err && err.message) || err) }; }
+});
 const WEB_ELEMS_JS = `(function(){try{
 var out=[],q=document.querySelectorAll('a[href],button,input,select,textarea,[role=button],[role=link],[contenteditable=true]');
 for(var i=0;i<q.length&&out.length<120;i++){var e=q[i];
@@ -1416,6 +1425,99 @@ function pollActivity() {
   if (win.isVisible()) win.webContents.send('activity', activeMin);
 }
 
+// v80: ikon tray berwarna menurut status layanan. Renderer mengirim {worst, svc} lewat ipc 'health-state' (dari pesan 'health' server).
+// Titik di pojok kanan bawah ikon: hijau = semua aktif, kuning = ada yang bermasalah, merah = ada yang tidak merespons, abu = server Iris tidak terhubung.
+const TRAY_DOT = { ok: [46, 204, 113], warn: [241, 196, 15], down: [231, 76, 60], off: [149, 165, 166] };
+const TRAY_SVC = [
+  ['voicevox', 'VOICEVOX', 'Nyalakan lewat chip VOICEVOX di IrisLauncher (port 50021).'],
+  ['ninerouter', '9Router', 'Nyalakan 9Router, lalu cek internet dan kunci providernya.'],
+  ['hermes', 'Hermes', 'Nyalakan lewat chip H di IrisLauncher; tunggu sekitar 60 dtk.'],
+];
+let trayHealth = null, trayMuted = false, traySig = '';
+
+function trayDotIcon(rgb) {
+  const base = nativeImage.createFromPath(TRAY_ICON);
+  if (!rgb) return base;
+  try {
+    const size = base.getSize(), width = size.width, height = size.height;
+    const src = base.toBitmap();   // BGRA
+    if (!width || !height || !src || src.length < width * height * 4) return base;
+    const buf = Buffer.from(src);
+    const r = Math.max(3, Math.round(Math.min(width, height) * 0.2));
+    const cx = width - r - 1, cy = height - r - 1;
+    for (let y = Math.max(0, cy - r - 1); y < height; y++) {
+      for (let x = Math.max(0, cx - r - 1); x < width; x++) {
+        const d = Math.hypot(x - cx, y - cy);
+        if (d > r + 0.5) continue;
+        const o = (y * width + x) * 4, ring = d > r - 1.2;   // cincin putih tipis supaya titik terbaca di taskbar gelap maupun terang
+        buf[o] = ring ? 255 : rgb[2]; buf[o + 1] = ring ? 255 : rgb[1]; buf[o + 2] = ring ? 255 : rgb[0]; buf[o + 3] = 255;
+      }
+    }
+    const out = nativeImage.createFromBitmap(buf, { width, height });
+    return out.isEmpty() ? base : out;
+  } catch (e) { return base; }
+}
+
+function buildTrayMenu() {
+  const items = [];
+  const h = trayHealth;
+  if (h) {
+    if (h.worst === 'off') {
+      items.push({ label: '✕ Server Iris tidak terhubung', click: () => sendAction('status') });
+      items.push({ label: '     Jalankan server.py lewat IrisLauncher.', enabled: false });
+    } else if (h.worst === 'ok') {
+      items.push({ label: '✓ Semua layanan aktif', click: () => sendAction('status') });
+    } else {
+      for (const [k, name, hint] of TRAY_SVC) {
+        const s = h.svc[k];
+        if (s === 'ok') continue;
+        items.push({ label: (s === 'down' ? '✕ ' : '! ') + name + (s === 'down' ? ': tidak merespons' : ': bermasalah'), click: () => sendAction('status') });
+        items.push({ label: '     ' + hint, enabled: false });
+      }
+    }
+    items.push({ type: 'separator' });
+  }
+  items.push(
+    { label: 'Tampilkan / sembunyikan', click: toggleWin },
+    { label: 'Buka chat', click: openChatFromHotkey },
+    { label: 'Ambil screenshot layar', click: screenshotFromHotkey },
+    { label: 'Bicara (mulai / berhenti rekam)', click: () => sendAction('talk') },
+    { label: 'Terjemahkan layar', click: () => sendAction('translate') },
+    { label: 'Tanya isi clipboard', click: () => sendAction('clipboard') },
+    { label: 'Menu aksi cepat', click: () => sendAction('menu') },
+    { label: 'Mini-browser /chrome (buka / tutup)', click: toggleWebPanel },
+    { label: 'Mode fokus (nyala / mati)', click: () => sendAction('focus') },
+    { label: 'Sembunyi di tepi layar (nyala / mati)', click: () => sendAction('peek') },
+    { label: 'Bisukan suara', type: 'checkbox', checked: trayMuted, click: (item) => { trayMuted = !!item.checked; setMuted(item.checked); } },
+    { label: 'Pindah ke pojok kanan bawah', click: moveToCorner },
+    { type: 'separator' },
+    { label: 'Keluar', click: quitAll },
+  );
+  return items;
+}
+
+function applyTrayHealth(h) {
+  if (!tray || tray.isDestroyed()) return;   // belum ada tray: renderer mengirim lagi di denyut health berikutnya
+  const worst = h && typeof h.worst === 'string' && TRAY_DOT[h.worst] ? h.worst : null;
+  if (!worst) return;
+  const svc = {};
+  for (const [k] of TRAY_SVC) { const v = h.svc && h.svc[k]; svc[k] = v === 'ok' || v === 'down' ? v : 'warn'; }
+  const sig = worst + '|' + TRAY_SVC.map(([k]) => svc[k]).join(',');
+  if (sig === traySig) return;
+  traySig = sig;
+  trayHealth = { worst, svc };
+  try {
+    tray.setImage(trayDotIcon(TRAY_DOT[worst]));
+    const bad = TRAY_SVC.filter(([k]) => svc[k] !== 'ok').map(([, n]) => n);
+    tray.setToolTip(worst === 'off' ? 'Iris: server tidak terhubung' : bad.length ? 'Iris: ' + bad.join(', ') + ' bermasalah' : 'Iris: semua layanan aktif');   // Windows memotong tooltip ~127 karakter: tetap pendek
+    tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenu()));
+  } catch (e) { console.warn('Ikon tray (status) gagal:', e.message || e); }
+}
+ipcMain.on('health-state', (e, h) => {
+  if (!win || win.isDestroyed() || e.sender !== win.webContents) return;
+  applyTrayHealth(h);
+});
+
 function setupTray() {
   if (!fs.existsSync(TRAY_ICON)) {
     console.warn('Ikon tray tidak ditemukan (' + TRAY_ICON + '), tray dilewati. Letakkan tray.png di folder assets.');
@@ -1424,27 +1526,54 @@ function setupTray() {
   try {
     tray = new Tray(nativeImage.createFromPath(TRAY_ICON));
     tray.setToolTip('Iris');
-    tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'Tampilkan / sembunyikan', click: toggleWin },
-      { label: 'Buka chat', click: openChatFromHotkey },
-      { label: 'Ambil screenshot layar', click: screenshotFromHotkey },
-      { label: 'Bicara (mulai / berhenti rekam)', click: () => sendAction('talk') },
-      { label: 'Terjemahkan layar', click: () => sendAction('translate') },
-      { label: 'Tanya isi clipboard', click: () => sendAction('clipboard') },
-      { label: 'Menu aksi cepat', click: () => sendAction('menu') },
-      { label: 'Mini-browser /chrome (buka / tutup)', click: toggleWebPanel },
-      { label: 'Mode fokus (nyala / mati)', click: () => sendAction('focus') },
-      { label: 'Sembunyi di tepi layar (nyala / mati)', click: () => sendAction('peek') },
-      { label: 'Bisukan suara', type: 'checkbox', checked: false, click: (item) => setMuted(item.checked) },
-      { label: 'Pindah ke pojok kanan bawah', click: moveToCorner },
-      { type: 'separator' },
-      { label: 'Keluar', click: quitAll },
-    ]));
+    tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenu()));
     tray.on('click', toggleWin);
   } catch (e) {
     console.warn('Tray gagal dibuat:', e.message || e);
   }
 }
+
+/* v80: tawaran aksi saat teks disalin. Bawaan MATI; renderer menyalakannya lewat ipc 'clip-watch' (Pengaturan atau /tawar).
+   Hanya TEKS yang dibaca, tiap ~1,5 dtk, tanpa disimpan ke disk. Yang tampak seperti kata sandi, token, kunci, nomor kartu, atau URL polos dibuang di sini
+   dan tidak pernah dikirim ke overlay. Teks yang sudah ada saat dinyalakan dijadikan acuan (tidak ditawarkan). Tidak berjalan saat jendela disembunyikan. */
+let clipWatchTimer = null, clipBase = null;
+function clipLooksSecret(t) {
+  const s = String(t || '').trim();
+  if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(s)) return true;
+  if (/(?:password|passwd|pwd|token|secret|api[_-]?key|otp)\s*[:=]/i.test(s)) return true;
+  if (/[?&](?:token|key|password|access_token|auth)=/i.test(s)) return true;
+  if (!/\s/.test(s)) {   // satu "kata" tanpa spasi: kata sandi, token, kunci, URL polos
+    if (/^(?:sk-|ghp_|gho_|xox[abp]-|AKIA|eyJ)/.test(s)) return true;
+    if (/^[\x21-\x7e]{8,}$/.test(s)) return true;   // semua ASCII tercetak tanpa spasi
+  }
+  if (/^\d[\d \-]{11,22}\d$/.test(s)) return true;   // mirip nomor kartu atau rekening
+  return false;
+}
+function clipWorthOffer(t) {
+  const s = String(t || '').trim();
+  if (/[\u3040-\u30ff\u4e00-\u9fff]/.test(s)) return s.length >= 6;   // kalimat Jepang tanpa spasi
+  return s.length >= 20 && /\s/.test(s);                               // teks biasa: minimal dua kata dan 20 karakter
+}
+function clipPoll() {
+  try {
+    if (typeof clipboard.readText !== 'function') return;
+    const t = clipboard.readText();
+    if (typeof t !== 'string') return;
+    if (clipBase === null) { clipBase = t; return; }
+    if (t === clipBase) return;
+    clipBase = t;   // acuan diperbarui meski jendela tersembunyi, supaya salinan lama tidak ditawarkan saat Iris muncul lagi
+    if (!win || win.isDestroyed() || !win.isVisible()) return;
+    const s = t.trim();
+    if (s.length < 6 || s.length > 3000 || clipLooksSecret(s) || !clipWorthOffer(s)) return;
+    win.webContents.send('clip-offer', s);
+  } catch { /* abaikan */ }
+}
+function clipWatchStop() { if (clipWatchTimer) { clearInterval(clipWatchTimer); clipWatchTimer = null; } clipBase = null; }
+ipcMain.on('clip-watch', (e, on) => {
+  if (!win || win.isDestroyed() || e.sender !== win.webContents) return;
+  if (on) { if (!clipWatchTimer) { clipBase = null; clipPoll(); clipWatchTimer = setInterval(clipPoll, 1500); } }
+  else clipWatchStop();
+});
 
 function registerShortcut(accel, fn) {
   if (!globalShortcut.register(accel, fn)) {
@@ -1917,6 +2046,23 @@ ipcMain.handle('save-html', (_e, payload) => {
     return { ok: false, error: String((e && e.message) || e) };
   }
 });
+// v80: simpan konfigurasi Iris (JSON, maks 64 KB) ke folder Downloads; nama dibersihkan dan file lama tidak ditimpa
+ipcMain.handle('save-config', (_e, payload) => {
+  try {
+    const { name, json } = payload || {};
+    const text = String(json || '');
+    if (text.length > 65536) return { ok: false, error: 'konfigurasi terlalu besar' };
+    JSON.parse(text);
+    const dir = app.getPath('downloads');
+    const base = String(name || 'Iris-config').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').replace(/\.json$/i, '').slice(0, 80) || 'Iris-config';
+    let file = path.join(dir, base + '.json');
+    for (let i = 1; fs.existsSync(file); i++) file = path.join(dir, base + ' (' + i + ').json');
+    fs.writeFileSync(file, text, 'utf8');
+    return { ok: true, path: file };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+});
 // Tampilkan file hasil ekspor di Explorer (hanya file di dalam folder Downloads)
 ipcMain.handle('reveal-file', (_e, p) => {
   try {
@@ -2001,6 +2147,7 @@ app.whenReady().then(() => console.log('Daftar aplikasi untuk perintah suara tam
 
 app.whenReady().then(startWebBridge);   // v51: jembatan baca saja (mati kecuali IRIS_WEB_BRIDGE=1 dan COMPANION_TOKEN terisi)
 app.on('will-quit', () => {
+  clipWatchStop();
   try { if (bridgeSrv) bridgeSrv.close(); } catch { /* abaikan */ }
   try { for (const ss of webSessions) ss.flushStorageData(); } catch { /* abaikan */ }
   clearTimeout(saveTimer);
