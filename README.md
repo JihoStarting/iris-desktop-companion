@@ -581,12 +581,12 @@ Fitur di bawah sudah ditulis tetapi **belum lulus uji penuh di PC**. Anggap eksp
 | Mini-browser, fase 4 (pil akun, hemat RAM, tab diparkir) | Belum dites di Electron asli |
 | Tugas `/agen` ringan terasa lambat | Penyebab belum dipastikan |
 | Sambung ulang WebSocket bertahap (jeda 2, 4, 8, maksimal 15 detik) | Diuji 1 kali (server dimatikan sekitar 12 detik, overlay tersambung lagi dan riwayat dipulihkan tanpa dibuka ulang) |
-| VOICEVOX di GPU (DirectML) | Mesin naik dan mendeteksi GPU (RTX 4060 Laptop, DirectML OK, `/version` 0.25.2). Satu lonjakan kecil pemakaian GPU terlihat saat Iris bicara; perbandingan latensi dengan CPU belum diukur |
+| VOICEVOX di GPU (DirectML) | Mesin naik dan mendeteksi GPU (RTX 4060 Laptop, DirectML OK, `/version` 0.25.2). Lulus 8 November 2026 lewat perbandingan latensi (kalimat sekitar 75 karakter, `audio_query` + `synthesis`, mesin yang sama): GPU 720, 483, 601 ms lawan CPU 2939 (pemanasan), 1972, 2003, 1899 ms, jadi sekitar 3,6 kali lebih cepat. Baris perintah mesin yang melayani port 50021 memuat `--use_gpu`. Batas: penghitung `GPU Engine` per proses tidak bisa dijadikan bukti di mesin ini, dan pengukuran satu kalimat saja |
 | Batas tunggu stop Hermes di peluncur | Lulus 8 November 2026: chip Hermes dimatikan (4 detik) dan dinyalakan lagi (12 detik) tanpa tampak gagal; batas stop systemd 75 detik |
 | Status server di peluncur lewat `/ping` | Lulus 8 November 2026: chip server tetap Hidup saat Hermes dimatikan, dan `/ping` menjawab 2 sampai 15 ms (`/health` sekitar 2 detik saat ada layanan mati). Sisa kecil: log start masih menulis "menunggu /health" |
-| Persetujuan tindakan agen dan sandbox Docker | Izinkan sekali dan Tolak terbukti di Hermes sungguhan, satu uji per kasus; `rm` file tunggal di sandbox belum diuji ulang. Tes otomatis memakai Hermes palsu (28 dan 26 tes lulus) |
+| Persetujuan tindakan agen dan sandbox Docker | Izinkan sekali dan Tolak terbukti di Hermes sungguhan, satu uji per kasus; `rm` file tunggal di sandbox kini juga diuji sekali (8 November 2026: satu kartu Hermes, Izinkan sekali menghapus, Tolak menjaga file). Tes otomatis memakai Hermes palsu (28 dan 26 tes lulus) |
 | Perlindungan injeksi prompt | Lulus 2 uji (`curl` dan file lokal), belum dengan halaman web sungguhan |
-| Tombol kartu izin yang aktif setelah 0,7 detik (cegah klik ganda) dan peringkasan hasil agen yang lebih tepat (v72) | Ditulis 8 November 2026, belum diuji |
+| Tombol kartu izin yang aktif setelah 0,7 detik (cegah klik ganda) dan peringkasan hasil agen yang lebih tepat (v72) | Peringkasan hasil agen lulus 8 November 2026 (resep dirangkum, peringatan injeksi disampaikan). Tombol kartu: Tolak dan Izinkan sekali berfungsi; efek jeda 0,7 detik terhadap klik ganda belum terbukti dari log |
 | Jembatan baca-saja untuk Hermes | Kode ada, belum dites; belum ada skill Hermes yang memakainya |
 | Bubble dengan lampiran dekat tepi atas layar | Belum dites |
 
