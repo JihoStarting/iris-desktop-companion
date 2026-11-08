@@ -24,7 +24,7 @@ Proyek ini dibuat sebagai proyek pribadi dan masih terus dikembangkan.
 - Dipublikasikan di GitHub: 5 November 2026
 - Versi terbaru: v1.0.0 (peluncur `IrisLauncher.exe`)
 - Status: aktif dikembangkan sebagai proyek pribadi
-- Terakhir diperbarui: 8 November 2026 (status server di peluncur dicek lewat `/ping`, belum diuji; tombol Stop kini menghentikan agen Hermes, VOICEVOX bisa berjalan di GPU, jeda sambung ulang WebSocket bertahap, perbaikan path berspasi; lihat [Status pengujian](#status-pengujian))
+- Terakhir diperbarui: 8 November 2026 (agen Hermes kini berjalan di sandbox Docker dan setiap tindakan berisiko meminta persetujuan lewat kartu di overlay; tombol Stop menghentikan agen Hermes; status server di peluncur dicek lewat `/ping`; VOICEVOX bisa berjalan di GPU; jeda sambung ulang WebSocket bertahap; perbaikan path berspasi; lihat [Keamanan](#keamanan) dan [Status pengujian](#status-pengujian))
 
 Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan belum diuji penuh. Daftarnya ada di [Status pengujian](#status-pengujian).
 
@@ -72,7 +72,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - Bayangan siluet yang berubah per keadaan (diam, diangkat, mengintip, duduk), render HD (`/bayangan`)
 - Bubble di atas kepala dengan teks Indonesia, kalimat Jepang berlabel 日本語, dan garis aksen sesuai emosi. Bubble panjang bisa digulir dan tidak keluar jendela
 - **Pikiran batin**: kadang Iris menampilkan satu baris bisikan hati berukuran kecil dan miring di atas bubble (tidak disuarakan dan tidak masuk riwayat). Saklar di Pengaturan
-- Klip gerak VRMA buatan sendiri (14 klip, hanya punggung, dada, leher, dan kepala) yang diputar lewat gerbang emosi
+- Klip gerak VRMA buatan sendiri (4 klip kecil: `angguk`, `geleng`, `miring`, `tunduk`; hanya punggung, dada, leher, dan kepala, tanpa lengan) yang diputar lewat gerbang emosi. Klip tari dan lengan belum ada
 - Kualitas gambar adaptif: `auto`, `tinggi`, `normal`, `hemat`. Mode auto turun sendiri kalau frame lambat (`/kualitas`)
 - Seluruh UI (menu, bubble, bar input, panel) dijaga tetap di dalam layar; jendela yang dilepas jauh dari tepi meluncur balik ke area kerja
 
@@ -119,6 +119,8 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 
 - **Jembatan Hermes Agent** (`/agen`, `/agent`, `/h`): memberi tugas ke agen di WSL, lengkap dengan indikator "sedang memproses" berhitung detik, heartbeat, tombol Stop (menghentikan agen di Hermes bila `HERMES_STREAM=1`), dan batas waktu
 - **Konfirmasi tugas berbahaya**: tugas `/agen` yang berbau hapus, pindah, timpa, atau format file ditahan dulu dan muncul kartu "Iris mau menjalankan ini. Lanjut?" dengan tombol Jalankan dan Batal
+- **Persetujuan tindakan agen**: bila Hermes menandai sebuah perintah berisiko, overlay menampilkan kartu izin dengan tombol **Izinkan sekali** atau **Tolak**. Tanpa jawaban, koneksi putus, atau Stop berarti ditolak; pilihan "selalu" dan "sesi" tidak pernah ditawarkan
+- **Sandbox Docker**: terminal agen berjalan di kontainer yang hanya bisa menulis ke satu folder kerja. Tugas dengan path di luar folder itu ditolak sebelum dikirim, dan Iris memeriksa disk sendiri lalu menambahkan baris `[Verifikasi Iris]` pada hasil (karena laporan agen tidak selalu benar)
 - Kartu **Hasil tugas** dengan tombol Salin. Path WSL di laporan otomatis diubah menjadi path Windows, termasuk folder berspasi (`C:\Users\<user>\...`)
 - Hermes menerima konteks 10 pesan terakhir hanya bila tugas merujuk ke percakapan, dan tahu folder Windows lewat `HERMES_WIN_HOME`
 - Iris dilarang mengaku bisa membuat, mengubah, atau menghapus file di obrolan biasa; ia menyuruh memakai `/agen`. Laporan agen disampaikan netral dan bersumber
@@ -253,13 +255,17 @@ Semua pengaturan dibaca dari file `.env` (di folder proyek atau di folder user W
 | `HERMES_API_KEY` | Kunci API Hermes (harus sama dengan `API_SERVER_KEY` di Hermes) | kosong |
 | `HERMES_TIMEOUT` | Batas waktu tugas agen (detik) | `900` |
 | `HERMES_STREAM` | `1` memakai respons stream. **Disarankan `1`**: dengan ini tombol Stop memanggil `POST /v1/runs/{id}/stop` di Hermes sebelum koneksi ditutup | `0` (isi `1` di `.env`) |
-| `HERMES_WIN_HOME` | Folder user Windows dilihat dari WSL | `/mnt/c/Users/<user>` |
+| `HERMES_WIN_HOME` | Folder user Windows dilihat dari WSL (wajib diisi per PC) | `/mnt/c/Users/<user>` |
+| `HERMES_SANDBOX` | `1` bila terminal Hermes memakai sandbox Docker: path di luar folder kerja ditolak di Iris, path dipetakan dua arah, dan hasil diverifikasi ke disk | kosong (isi `1` bila sandbox dipakai) |
 
 ### Opsional (`IRIS_*`)
 
 | Variabel | Fungsi |
 |---|---|
 | `COMPANION_ALLOW_NO_TOKEN=1` | **Khusus pengembangan**: izinkan server jalan tanpa token (mis. untuk `dev/test_client.html`). Jangan dipakai untuk pemakaian sehari-hari |
+| `AGENT_CONFIRM_ALWAYS=1` | Tetap tampilkan kartu konfirmasi Iris walau gerbang persetujuan Hermes aktif (jaring cadangan) |
+| `AGENT_APPROVAL=0` | Matikan kartu izin Hermes (semua izin ditolak otomatis) |
+| `AGENT_APPROVAL_TTL` | Batas menunggu klik kartu izin (detik, bawaan 120, maksimal 280) |
 | `IRIS_VOICE_STYLE=0` | Matikan gaya suara per emosi |
 | `IRIS_THOUGHTS=0` | Matikan pikiran batin dari sisi server |
 | `IRIS_HISTORY=0` | Matikan riwayat obrolan persisten |
@@ -459,16 +465,16 @@ Batas: Whisper tetap bisa salah dengar total pada suara pelan atau bising, dan p
 
 ## Mini-browser `/chrome`
 
-Panel browser kecil di samping karakter dengan **lima slot akun** yang masing-masing punya sesi login terpisah. Panel berjalan di proses terpisah dan tanpa akses ke fungsi Electron.
+Panel browser kecil di samping karakter dengan **sepuluh slot akun** yang masing-masing punya sesi login terpisah. Panel berjalan di proses terpisah dan tanpa akses ke fungsi Electron.
 
 | Perintah | Fungsi |
 |---|---|
-| `/chrome 1` sampai `/chrome 5` | Ganti ke akun nomor itu dan buka link awalnya |
+| `/chrome 1` sampai `/chrome 10` | Ganti ke akun nomor itu dan buka link awalnya |
 | `/chrome` | Buka akun terakhir |
 | `/chrome <nama>` | Sama, memakai nama akun |
 | `/chrome 3 https://situs.com` | Akun 3 dengan alamat lain |
 | `/chrome tutup` | Tutup panel dan buang prosesnya |
-| `/chrome daftar` atau `/akun` | Tampilkan lima slot |
+| `/chrome daftar` atau `/akun` | Tampilkan semua slot |
 | `/chrome mundur`, `maju`, `muat`, `beranda` | Navigasi (juga `Alt+←`, `Alt+→`, `F5`) |
 | `/chrome ram` | RAM dan CPU renderer panel, GPU, dan total proses |
 | `/chrome elemen` | Daftar elemen yang terlihat (uji jembatan baca-saja) |
@@ -527,6 +533,8 @@ Hermes Agent berjalan di WSL2 dan menjadi "tangan" Iris lewat `/agen`. Kemampuan
 
 Laporan Hermes ditampilkan apa adanya di kartu "Hasil tugas". Iris menyampaikannya secara netral dan bersumber, dan hanya menyatakan berhasil bila laporan Hermes jelas menyatakannya.
 
+> **Catatan Hermes di Docker.** Setelah `systemctl --user restart hermes-gateway`, tunggu `http://127.0.0.1:8642/health` menjawab (bisa puluhan detik) sebelum mengirim `/agen`; tugas yang terlalu cepat gagal dengan "Hermes tidak aktif" atau `runtime_draining`. Kontainer sandbox berhenti sendiri setelah 300 detik tanpa aktivitas.
+
 > **Tombol Stop.** Dengan `HERMES_STREAM=1`, Iris memanggil `POST /v1/runs/{id}/stop` di Hermes sebelum menutup koneksi. Diuji 7 November 2026: Hermes menjawab HTTP 200 `stopping`, status tugas `cancelled`, dan file baru berhenti terbentuk. Berhentinya tidak seketika (satu langkah yang sedang berjalan bisa selesai dulu), dan kegagalan memanggil stop hanya dicatat di terminal tanpa mengganggu pembatalan di sisi Iris. Dengan `HERMES_STREAM=0` (bawaan), Stop hanya memutus koneksi dan agen di Hermes tetap berjalan (terukur 7 November 2026). Periksa dengan [`scripts/cek-stop-hermes.py`](scripts/cek-stop-hermes.py), atau ukur perilaku tanpa stop dengan [`scripts/cek-cancel-hermes.py`](scripts/cek-cancel-hermes.py) (jalankan dari folder proyek, mis. `.\.venv\Scripts\python.exe scripts\cek-stop-hermes.py`; `cek-cancel-hermes.py` punya opsi `--skip-health`).
 
 ---
@@ -537,7 +545,12 @@ IRIS dirancang untuk berjalan lokal dan memberi agen akses ke komputermu, jadi b
 
 - Server hanya mendengar di `127.0.0.1`.
 - **`COMPANION_TOKEN` wajib** (minimal 16 karakter). Koneksi `/ws` dilindungi token lewat header `X-Iris-Token` (kode penolakan 1008), plus pengecekan `Origin`. Server menolak start bila token kosong atau terlalu pendek; satu-satunya pengecualian adalah `COMPANION_ALLOW_NO_TOKEN=1` untuk pengembangan. Karena agen bisa menjalankan perintah di komputermu, jangan pakai pengecualian itu untuk pemakaian sehari-hari
-- Perintah `/agen` yang berpotensi berbahaya (hapus, pindah, timpa, format file) meminta konfirmasi dulu. Daftar kata pemicu bisa disetel, `/health` menampilkan `agent_confirm`, dan konfirmasi sekali pakai kedaluwarsa dalam 120 detik. Batasnya: pemeriksaan hanya membaca teks permintaanmu, bukan tindakan yang dipilih agen, jadi ini jaring pengaman dan bukan sandbox
+- Perintah `/agen` yang berpotensi berbahaya (hapus, pindah, timpa, format file) meminta konfirmasi dulu. Daftar kata pemicu bisa disetel, `/health` menampilkan `agent_confirm`, dan konfirmasi sekali pakai kedaluwarsa dalam 120 detik. Batasnya: pemeriksaan ini hanya membaca teks permintaanmu, bukan tindakan yang dipilih agen, jadi ini jaring pengaman untuk salah ketik dan salah paham
+- **Persetujuan tindakan agen.** Perintah yang ditandai Hermes menunggu klik **Izinkan sekali** atau **Tolak** di overlay. Sistemnya gagal-aman (tanpa jawaban = tolak), hanya `once` dan `deny` yang pernah dikirim ke Hermes, dan mode persetujuan Hermes diset `manual`. Perintah yang tidak ditandai detektor Hermes tidak menghasilkan kartu
+- **Sandbox Docker** (8 November 2026). Terminal agen berjalan di kontainer; yang bisa ditulis hanya satu folder kerja dan home sandbox, sedangkan drive dan folder lain di komputermu tidak terlihat. Dengan `HERMES_SANDBOX=1`, Iris menolak tugas dengan path di luar sandbox. Batasnya: agen tetap bisa menghapus atau mengubah isi folder kerjanya, dan jaringan kontainer aktif, jadi isi yang terbaca di sana tetap bisa dikirim keluar bila agen terkena injeksi
+- **Laporan agen tidak selalu benar.** Agen pernah melaporkan "berhasil dihapus" padahal tidak ada tindakan sama sekali. Jangan percaya laporan begitu saja; cek dengan `dir` atau `ls`. Iris menambah `[Verifikasi Iris]` hanya untuk path di folder kerja agen
+- **Injeksi prompt dari isi web.** Isi halaman diperlakukan sebagai data, bukan perintah (aturan di prompt agen dan pembersih di `iris_web.py`). Perlindungan ini bergantung pada kepatuhan model dan baru lulus 2 uji, jadi jangan menganggapnya pagar teknis
+- Kunci API dan token tidak pernah ditulis di dokumen atau chat; bila ada yang bocor, ganti dan restart layanan terkait. Jangan beri `sudo` tanpa password di WSL
 - Semua jendela menolak navigasi, jendela baru, dan `<webview>`
 - Memori dan riwayat menolak menyimpan isi yang mirip rahasia (kata sandi dan sejenisnya)
 - Panel mini-browser berjalan terisolasi (sandbox, tanpa preload, tanpa akses kamera, mikrofon, atau notifikasi, navigasi hanya ke `https://`)
@@ -567,10 +580,14 @@ Fitur di bawah sudah ditulis tetapi **belum lulus uji penuh di PC**. Anggap eksp
 | Bicara lewat mikrofon: penyetelan 6 Nov (model, kosakata bantu, perintah suara) | Perbaikan perilaku diuji dengan kalimat dari tangkapan layar; pemilik melaporkan tidak ada masalah. Akurasi tetap bergantung pada model dan mikrofon |
 | Mini-browser, fase 4 (pil akun, hemat RAM, tab diparkir) | Belum dites di Electron asli |
 | Tugas `/agen` ringan terasa lambat | Penyebab belum dipastikan |
-| Sambung ulang WebSocket bertahap (jeda 2, 4, 8, maksimal 15 detik) | Diterapkan di `index.html`, belum diuji dengan memutus server saat overlay jalan |
-| VOICEVOX di GPU (DirectML) | Mesin naik dan mendeteksi GPU (RTX 4060 Laptop, `/version` 0.25.2). Pemakaian GPU saat sintesis dan perbandingan latensi dengan CPU belum diukur |
-| Batas tunggu stop Hermes di peluncur | Systemd Hermes sudah diperbaiki (batas stop 75 detik, 7 November 2026) dan skrip peluncur menunggu 75 detik; exe dibangun ulang 8 November. Belum diuji: matikan lalu nyalakan chip Hermes, chip tidak boleh tampak gagal |
-| Status server di peluncur lewat `/ping` (chip server tidak lagi tampak Mati saat Hermes dimatikan) | Patch di-commit 8 November 2026 (`server.py`, peluncur, `iris-start.ps1`, `iris-service.ps1`). Perlu `build.bat` ulang dan belum diuji: matikan chip Hermes, chip server harus tetap Hidup |
+| Sambung ulang WebSocket bertahap (jeda 2, 4, 8, maksimal 15 detik) | Diuji 1 kali (server dimatikan sekitar 12 detik, overlay tersambung lagi dan riwayat dipulihkan tanpa dibuka ulang) |
+| VOICEVOX di GPU (DirectML) | Mesin naik dan mendeteksi GPU (RTX 4060 Laptop, DirectML OK, `/version` 0.25.2). Satu lonjakan kecil pemakaian GPU terlihat saat Iris bicara; perbandingan latensi dengan CPU belum diukur |
+| Batas tunggu stop Hermes di peluncur | Lulus 8 November 2026: chip Hermes dimatikan (4 detik) dan dinyalakan lagi (12 detik) tanpa tampak gagal; batas stop systemd 75 detik |
+| Status server di peluncur lewat `/ping` | Lulus 8 November 2026: chip server tetap Hidup saat Hermes dimatikan, dan `/ping` menjawab 2 sampai 15 ms (`/health` sekitar 2 detik saat ada layanan mati). Sisa kecil: log start masih menulis "menunggu /health" |
+| Persetujuan tindakan agen dan sandbox Docker | Izinkan sekali dan Tolak terbukti di Hermes sungguhan, satu uji per kasus; `rm` file tunggal di sandbox belum diuji ulang. Tes otomatis memakai Hermes palsu (28 dan 26 tes lulus) |
+| Perlindungan injeksi prompt | Lulus 2 uji (`curl` dan file lokal), belum dengan halaman web sungguhan |
+| Tombol kartu izin yang aktif setelah 0,7 detik (cegah klik ganda) dan peringkasan hasil agen yang lebih tepat (v72) | Ditulis 8 November 2026, belum diuji |
+| Jembatan baca-saja untuk Hermes | Kode ada, belum dites; belum ada skill Hermes yang memakainya |
 | Bubble dengan lampiran dekat tepi atas layar | Belum dites |
 
 Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kartu hasil), konfirmasi `/agen` berbahaya, token `/ws`, ganti baju, tema, fun fact, alarm dan jam, mood, seret file dan lampiran gambar, ekspor, pilihan bernomor, pil status koneksi, dan peluncur, termasuk menutup peluncur dan menu Keluar yang mematikan semua layanan (`--stop-all`, dilaporkan pemilik berfungsi), serta perbaikan v46 sampai v50 (jaga UI tetap di layar, panel pindah sisi, rambut dan bayangan setengah badan; dilaporkan pemilik sudah beres), serta pikiran batin (dilaporkan pemilik aman). Dari 7 November 2026: pembatalan tugas yang benar-benar menghentikan agen Hermes (HTTP 200 `stopping`, status `cancelled`) dan konversi path berspasi (`tests/test_path_berspasi.py`, 13 dari 13 tes proyek lulus).
@@ -581,7 +598,10 @@ Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kart
 
 Ide yang sudah disetujui atau dicatat, **belum ada kodenya**:
 
+- Skill Hermes `cek-elearning` dan skill yang memakai jembatan baca-saja
 - Memori otomatis ringan (ringkasan fakta baru yang kamu setujui dulu sebelum disimpan)
+- Auto-start bersama Windows dan skrip setup untuk PC baru
+- Mini-browser fase 5b dan 5c (Hermes beraksi dengan konfirmasi dan batas domain)
 - Menari mengikuti musik dan perintah `/nari` (butuh klip `.vrma` lengan)
 - Angin dari kecepatan kursor (`/angin`)
 - `/catat` dan `/todo`, statistik Pomodoro, jurnal mood harian
@@ -668,6 +688,9 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 | Peluncur gagal di langkah WSL | Jalankan `iris-doctor.ps1` dan lihat log di `iris-start.log` |
 | Suara VOICEVOX lambat atau GPU tidak terpakai | Cek kotak **Mesin suara VOICEVOX** di Pengaturan peluncur, dan cari `DirectML (device_id=0): OK` di `iris-voicevox.err.log`. Bila unit `voicevox` di WSL masih aktif, matikan: `wsl -d Ubuntu -- systemctl --user disable --now voicevox` |
 | Server baru langsung mati dengan `Errno 10048` | Server lama masih memegang port 8765. Cek `Get-NetTCPConnection -LocalPort 8765 -State Listen`, matikan prosesnya (atau lewat peluncur), lalu start ulang |
+| Agen melapor "berhasil" tetapi file atau folder tidak berubah | Laporan agen tidak selalu benar, dan di sandbox path di luar folder kerja tidak terjangkau. Cek langsung dengan `dir`, dan kirim path penuh pada `/agen` |
+| `/agen` ditolak dengan pesan path di luar sandbox | `HERMES_SANDBOX=1` aktif: hanya folder kerja agen yang bisa disentuh. Letakkan berkasnya di sana, atau matikan sandbox sadar akan risikonya |
+| Tugas agen menggantung tanpa kartu izin | Pastikan `HERMES_STREAM=1` dan `approvals.mode` Hermes `manual`; restart server dan buka ulang overlay |
 | Stop tidak menghentikan agen Hermes | Pastikan `HERMES_STREAM=1` di `.env`, restart server, dan buka ulang overlay. Satu langkah yang sedang berjalan bisa selesai dulu. Me-restart `hermes-gateway` di tengah tugas memunculkan "Server disconnected"; itu bukan hasil tombol Stop |
 | Chip Hermes tampak gagal mati | Hermes bisa butuh sampai sekitar 70 detik untuk berhenti; peluncur menunggu 75 detik. Kalau tetap tampak gagal, cek `systemctl --user status hermes-gateway` di WSL. Peluncur lama (sebelum build ulang 8 November) hanya menunggu sekitar 12 detik, jadi bangun ulang `IrisLauncher.exe` |
 | Chip server.py tampak Mati padahal server jalan, atau server tidak bisa dinyalakan saat Hermes mati | Peluncur lama menilai server lewat `/health`, yang melambat saat Hermes mati. Perbarui `server.py`, bangun ulang `IrisLauncher.exe` (peluncur kini memakai `/ping`), lalu cek `http://127.0.0.1:8765/ping`. Bila masih salah, lihat di Task Manager apakah `python.exe` benar-benar hilang |
