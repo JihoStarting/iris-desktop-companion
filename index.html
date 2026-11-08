@@ -314,6 +314,17 @@
   #linkPop.show { display: flex; animation: pop .12s ease-out; }
   #linkPop .pill { padding: 2px 10px; font-size: 12px; }
   .msg .ts { display: block; margin-top: 2px; font-size: 10px; opacity: 0.55; text-align: right; }
+  /* v80: baris aksi di bawah balasan Iris: salin, putar suara, puji, tidak suka (kiri) + jam (kanan) */
+  .msg .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; }
+  .msg .foot .ts { margin-top: 0; }
+  .msg .acts { display: flex; gap: 2px; margin-left: -5px; }
+  .msg .act { width: 24px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; opacity: .5; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: opacity .12s, background .12s, color .12s; }
+  .msg .act:hover { opacity: 1; background: rgba(255, 255, 255, 0.12); }
+  .msg .act.on { opacity: 1; color: var(--acc); }
+  .msg .act.neg.on { color: #ff8b9a; }
+  .msg .act[hidden] { display: none; }
+  .msg .act svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+  .msg .act.neg svg { transform: rotate(180deg); }
   .msg p { margin: 0 0 4px; }
   .msg p:last-child { margin: 0; }
   .msg img { display: block; max-width: 100%; max-height: 110px; border-radius: 9px; margin-top: 5px; cursor: zoom-in; transition: filter .15s; }
@@ -322,7 +333,11 @@
   #imgView { position: fixed; z-index: 60; display: none; flex-direction: column; align-items: center; gap: 10px; box-sizing: border-box; padding: 10px; width: fit-content;
     left: calc(12px + var(--webx, 0px)); right: 212px; bottom: 70px; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55); }
   #imgView.open { display: flex; animation: pop .16s ease-out; }
-  #imgView img { max-width: 100%; max-height: calc(var(--ivmax, 420px) - 74px); object-fit: contain; border-radius: 10px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45); cursor: default; }
+  #imgView img { max-width: 100%; max-height: calc(var(--ivmax, 420px) - 100px); object-fit: contain; border-radius: 10px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45); cursor: default; }
+  /* v76: hasil terjemah layar tampil BESAR (hampir seluruh jendela overlay) kalau jendela besar Electron tidak tersedia */
+  #imgView:not(.big) img { width: 100%; }   /* v84: gambar mengisi lebar kartu (tinggi dibatasi --ivmax) */
+  #imgView.big { left: calc(12px + var(--webx, 0px)); right: 212px; top: 12px; bottom: 70px; width: auto; }   /* v79: kiri/kanan diatur ulang lewat JS supaya tidak menutupi karakter */
+  #imgView.big img { flex: 1 1 0; min-height: 0; width: 100%; max-height: none; object-fit: contain; cursor: zoom-in; }
   #imgView .bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
 
   /* Lampiran gambar */
@@ -368,6 +383,12 @@
   #menu.cols2 .mi[data-act="focus"] { margin-top: 0; }
   #menu.cols2 .mi[data-act="focus"]::before { display: none; }
   .mi.on { color: var(--acc); background: rgba(var(--acc-rgb), 0.1); }
+  /* v78: pilihan bahasa Terjemah layar tepat di bawah item menunya (bukan di Pengaturan) */
+  .tlgrp { display: flex; flex-direction: column; gap: 2px; }
+  .tlsub { display: flex; gap: 3px; padding: 0 3px 3px 9px; }   /* v86: tiga pil harus muat di lebar menu (164px): dulu padding kiri 34px mendorong 'Inggris' keluar dan terpotong */
+  .tlp { border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink-dim); font: inherit; font-size: 10px; line-height: 1.2; padding: 2px 3px; flex: 1 1 auto; min-width: 0; text-align: center; white-space: nowrap; cursor: pointer; transition: background .15s, color .15s; }
+  .tlp:hover { background: rgba(var(--acc-rgb), 0.16); color: var(--ink); }
+  .tlp.on { color: var(--acc); border-color: var(--acc); background: rgba(var(--acc-rgb), 0.12); }
   .mi .e { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--acc); }
   .mi .e svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
   .mi { white-space: nowrap; }
@@ -644,7 +665,10 @@
     <button data-w="tutup" title="Tutup panel dan buang tab (/chrome tutup)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
   <div id="menu" class="interactive">
-    <button class="mi" data-act="translate"><span class="e"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M8.5 4v2M6 6c.5 3 2.5 5.5 5.5 7M12 6c-.5 3-3 5.8-7 7.5"/><path d="M13 20l4-9 4 9M14.5 17h5"/></svg></span>Terjemah layar</button>
+    <div class="tlgrp">
+      <button class="mi" data-act="translate"><span class="e"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M8.5 4v2M6 6c.5 3 2.5 5.5 5.5 7M12 6c-.5 3-3 5.8-7 7.5"/><path d="M13 20l4-9 4 9M14.5 17h5"/></svg></span>Terjemah layar</button>
+      <div class="tlsub" title="Bahasa teks di layar yang diterjemahkan ke Indonesia. Otomatis = Jepang dulu, kalau tidak ada coba Inggris (juga lewat /terjemah en, ja, auto)"><button class="tlp" data-tl="auto">Auto</button><button class="tlp" data-tl="ja">Jepang</button><button class="tlp" data-tl="en">Inggris</button></div>
+    </div>
     <button class="mi" data-act="clip"><span class="e"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 5V3h6v2M9 11h6M9 15h6"/></svg></span>Clipboard</button>
     <button class="mi" data-act="timer"><span class="e"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9.5 3h5"/></svg></span>Timer</button>
     <button class="mi" data-act="focus"><span class="e"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.8"/></svg></span>Mode fokus</button>
@@ -923,7 +947,7 @@ function updateGaze(dt) {
   gazeX += (gazeTX - gazeX) * g; gazeY += (gazeTY - gazeY) * g;
 
   bn.head.getWorldPosition(_hp);
-  const follow = SET.follow && !asleep && performance.now() - cursor.t < 4000;
+  const follow = SET.follow && !asleep && performance.now() - cursor.t < 4000 && Number.isFinite(cursor.x) && Number.isFinite(cursor.y);
   let ox = gazeX, oy = gazeY, yawT = 0, pitchT = 0, dist = 2.0;
   if (follow) {
     // arah kursor relatif terhadap posisi kepala di layar
@@ -947,6 +971,8 @@ function updateGaze(dt) {
   sox += (ox - sox) * k; soy += (oy - soy) * k;
   headYaw += (yawT - headYaw) * Math.min(1, dt * 3);
   headPitch += (pitchT - headPitch) * Math.min(1, dt * 3);
+  if (!Number.isFinite(headYaw)) headYaw = 0;
+  if (!Number.isFinite(headPitch)) headPitch = 0;
   lookTarget.position.set(_hp.x + sox, _hp.y + soy, _hp.z + dist);
 }
 
@@ -1321,7 +1347,7 @@ function animate(now) {
 
 let talk = 0;   // 0..1, naik saat Iris sedang bicara
 // ---- Pengaturan (disimpan di localStorage) + keadaan interaksi; dipakai frame() dan blok 'v6' di bawah ----
-const SET = { vol: 100, op: 100, follow: true, idle: true, fx: true, sleep: true, sleepMin: 5, sleepMax: 20, arms: false, voiceTimer: true, breakOn: false, breakMin: 60, mood: true, top: true, hourly: false, shadow: true, sit: false, dragChar: true, dragGrip: true, watchOn: false, watchMin: 5, watchMax: 60, funOn: true, localCmd: true, funMin: 5, funMax: 60, peekHide: 3, fullBody: true, funGen: true, funTopic: '', theme: 'iris', outfitSeason: false, outfitSituasi: false, seasonFx: true, connPill: false, thoughts: true };
+const SET = { tlLang: 'auto', vol: 100, op: 100, follow: true, idle: true, fx: true, sleep: true, sleepMin: 5, sleepMax: 20, arms: false, voiceTimer: true, breakOn: false, breakMin: 60, mood: true, top: true, hourly: false, shadow: true, sit: false, dragChar: true, dragGrip: true, watchOn: false, watchMin: 5, watchMax: 60, funOn: true, localCmd: true, funMin: 5, funMax: 60, peekHide: 3, fullBody: true, funGen: true, funTopic: '', theme: 'iris', outfitSeason: false, outfitSituasi: false, seasonFx: true, connPill: false, thoughts: true };
 let peekTalkUntil = 0;   // v35: sampai kapan ucapan otomatis (fun fact, istirahat, jam) boleh keluar dari tepi layar tanpa memunculkan Iris
 let watchBusy = false, watchSpeak = false;   // v23: komentar layar otomatis sedang diproses server / sedang diucapkan (tidak memunculkan Iris dari tepi layar)
 try { Object.assign(SET, JSON.parse(localStorage.getItem('iris.set') || '{}')); } catch { /* abaikan */ }
@@ -1416,6 +1442,8 @@ const MOTION = {
   torso: { max: 1.2, st: 0.34 },   // pinggul, tulang belakang, dada
 };
 window.MOTION = MOTION;
+window.dbgHead = () => ({ klip: clipAct && clipAct.name, gerak: gest && gest.name, tidur: sleepW, seret: dragW, mikir: thinkW, duduk: sitW, headYaw, headPitch,
+  sudut: Object.fromEntries(['head', 'neck', 'spine', 'chest'].map((n) => [n, bn[n] ? +(2 * Math.acos(Math.min(1, Math.abs(bn[n].quaternion.w))) * 57.2958).toFixed(1) : null])) });
 const BONE_GROUP = { hips: 'torso', spine: 'torso', chest: 'torso', neck: 'head', head: 'head' };
 const vel = {};      // kecepatan sudut tiap tulang [x, y, z]
 const offInv = {};   // kebalikan offset prosedural yang ditambahkan ke tiap tulang di atas pose VRMA frame lalu (lihat frame())
@@ -1430,6 +1458,24 @@ function smoothDamp(cur, tgt, v, i, st, maxSpeed, dt) {
   let out = goal + (change + tmp) * e;
   if ((tgt - cur > 0) === (out > tgt)) { out = tgt; v[i] = 0; }    // jangan melewati target
   return out;
+}
+/* by: KangJiho. Pengaman kepala: rotasi lokal head/neck/spine/chest dibatasi (radian dari pose diam), apa pun sumbernya
+   (klip VRMA, gerakan prosedural, atau nilai NaN). Tanpa ini satu klip/angka rusak bisa memutar kepala sampai membelakangi kamera. */
+const _qp = new THREE.Quaternion(), _qid = new THREE.Quaternion();
+const BONE_LIMIT = { head: 1.0, neck: 0.8, spine: 0.7, chest: 0.7 };
+let limitLogAt = 0;
+function limitBone(n, q) {
+  const lim = BONE_LIMIT[n]; if (!lim) return;
+  if (!(q.x === q.x && q.y === q.y && q.z === q.z && q.w === q.w)) { q.identity(); return; }   // NaN -> pose diam
+  const ang = 2 * Math.acos(Math.min(1, Math.abs(q.w)));
+  if (ang <= lim) return;
+  q.copy(_qid.identity().slerp(q, lim / ang));
+  const now = performance.now();
+  if (now - limitLogAt > 3000) {
+    limitLogAt = now;
+    console.warn('[pengaman kepala] ' + n + ' ' + (ang * 57.2958).toFixed(0) + '° dibatasi ke ' + (lim * 57.2958).toFixed(0) + '°. klip=' + (clipAct ? clipAct.name : '-') +
+      ' gerak=' + (gest ? gest.name : '-') + ' tidur=' + sleepW.toFixed(2) + ' seret=' + dragW.toFixed(2) + ' mikir=' + thinkW.toFixed(2) + ' duduk=' + sitW.toFixed(2));
+  }
 }
 let dragging = false, dragW = 0, dragVX = 0, dragVXt = 0;   // v22: kecepatan seret (-1..1) untuk ayunan badan
 let sitting = false, sitW = 0, SIT_LEAN = 0.06, headRestY = 1.3;   // v22: duduk di tepi jendela
@@ -1562,10 +1608,14 @@ function frame(dt, t) {
     const P = MOTION[BONE_GROUP[n] || 'arm'];
     if (snap || sdt <= 0) { r[0] = tg[0]; r[1] = tg[1]; r[2] = tg[2]; v[0] = v[1] = v[2] = 0; }
     else { r[0] = smoothDamp(r[0], tg[0], v, 0, P.st, P.max, sdt); r[1] = smoothDamp(r[1], tg[1], v, 1, P.st, P.max, sdt); r[2] = smoothDamp(r[2], tg[2], v, 2, P.st, P.max, sdt); }
+    if (!isFinite(r[0] + r[1] + r[2])) { r[0] = r[1] = r[2] = 0; v[0] = v[1] = v[2] = 0; }   // by: KangJiho. angka rusak tidak boleh menetap
     if (vrmaOn) {
+      _qp.copy(node.quaternion);                                                // pose VRMA sebelum offset prosedural
       node.quaternion.multiply(_qe.setFromEuler(_ee.set(r[0], r[1], r[2])));   // tambahan di atas pose VRMA
-      (offInv[n] || (offInv[n] = new THREE.Quaternion())).copy(_qe).invert();  // dibatalkan di awal frame berikutnya
-    } else node.rotation.set(r[0], r[1], r[2]);
+      limitBone(n, node.quaternion);
+      // pembatalan frame berikutnya = (rotasi akhir)^-1 * pose, jadi tetap benar walau rotasi akhir ikut dibatasi
+      (offInv[n] || (offInv[n] = new THREE.Quaternion())).copy(node.quaternion).invert().multiply(_qp);
+    } else { node.rotation.set(r[0], r[1], r[2]); limitBone(n, node.quaternion); }
   }
 
   if (em) {
@@ -1983,7 +2033,7 @@ function connect() {
   ws.onmessage = (e) => {
     let m;
     try { m = JSON.parse(e.data); } catch { return; }
-    if (m.type === 'segment') { fixSegmentOrder(m); lastSegAt = performance.now(); if (m.local && m.audio) vcSet(m.jp, { audio: m.audio, moras: m.moras }); queue.push(m); pump(); if (m.text && !m.local) logIris(m.text); }
+    if (m.type === 'segment') { fixSegmentOrder(m); lastSegAt = performance.now(); if (m.audio && m.jp) vcSet(m.jp, { audio: m.audio, moras: m.moras }); queue.push(m); pump(); if (m.text && !m.local) logIris(m.text, m.jp, m.emotion); }
     else if (m.type === 'voice_cache') vcSet(m.jp, { audio: m.audio, moras: m.moras });
     else if (m.type === 'funfact') onFunFact(m);
     else if (m.type === 'agent_result') logTask(m.text);
@@ -1996,6 +2046,7 @@ function connect() {
     else if (m.type === 'status') onStatus(m);
     else if (m.type === 'done') { irisBlock = null; watchBusy = false; watchSpeak = false; }
     else if (m.type === 'error') showError(m.message || 'error');
+    else if (m.type === 'translate_image_result') onTranslateImage(m);
   };
 }
 
@@ -2159,6 +2210,21 @@ function placeBubble() {
       }
     }
   }
+  if (!side) {   // v87: menu / popover yang terbuka tidak boleh menimpa bubble: bubble bergeser ke kanan sampai lepas dari tepi kanan menu (ekor ikut menyesuaikan lewat rumus tail di bawah)
+    try {
+      const bt = top + dy, bb = bt + h;
+      let shift = 0;
+      for (const id of ['menu', 'setPop', 'timerPop', 'outfitPop']) {
+        const el = document.getElementById(id);
+        if (!el || !el.classList.contains('open')) continue;
+        const rm = el.getBoundingClientRect();
+        if (rm.width < 20 || rm.bottom <= bt || rm.top >= bb) continue;   // tidak sejajar secara vertikal
+        const bl = right - w + dx;
+        if (bl < rm.right + 8 && right + dx > rm.left) shift = Math.max(shift, rm.right + 8 - bl);
+      }
+      if (shift > 0) dx = Math.min(dx + shift, Math.max(dx, (V.r - M) - right));
+    } catch { /* abaikan */ }
+  }
   bubble.style.setProperty('--bdx', Math.round(dx) + 'px'); bubble.style.setProperty('--bdy', Math.round(dy) + 'px');
   console.log('[bubble v31b]', { mode: side ? 'samping' : (roomAbove < SIDE_MIN_ABOVE ? 'bawah-dagu/atas-mentok' : 'atas'), roomAbove: Math.round(roomAbove), dx: Math.round(dx), dy: Math.round(dy), V });
   const tail = 146 + dx;   // ekor tetap di bawah kepala: geser relatif ke tepi kanan bubble
@@ -2311,7 +2377,75 @@ function addStamp(el) {
   const t = document.createElement('span');
   t.className = 'ts';
   t.textContent = jam();
+  if (el.classList && (el.classList.contains('iris') || el.classList.contains('user')) && !el.querySelector(':scope > .foot')) {   // v80: balasan Iris dapat baris aksi di kiri jam; v85: pesan kita sendiri dapat tombol Salin
+    const foot = document.createElement('div'); foot.className = 'foot';
+    foot.append(makeActs(el, el.classList.contains('user')), t);
+    el.appendChild(foot);
+    return;
+  }
   el.appendChild(t);
+}
+/* v80: aksi di bawah balasan Iris (salin, putar ulang suara, puji, tidak suka). Isi dibaca saat tombol diklik, jadi blok yang masih bertambah kalimat tetap benar. */
+const ACT_ICON = {
+  copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>',
+  voice: '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></svg>',
+  up: '<svg viewBox="0 0 24 24"><path d="M7 11v9H4v-9h3z"/><path d="M7 11l4-7c1.7 0 2.5 1.2 2.2 2.8L12.7 10H19a2 2 0 0 1 2 2.3l-1.1 6A2 2 0 0 1 17.9 20H7"/></svg>',
+};
+function irisMsgText(el) {
+  const ps = [...el.querySelectorAll(':scope > p')];
+  if (ps.length) return ps.map((p) => p.textContent.trim()).filter(Boolean).join('\n');
+  const c = el.cloneNode(true); c.querySelectorAll('.foot, img').forEach((n) => n.remove());
+  return c.textContent.trim();
+}
+function irisMsgVoice(el) {
+  return [...el.querySelectorAll(':scope > p[data-jp]')].map((p) => ({ text: p.textContent.trim(), jp: p.dataset.jp, emo: p.dataset.emo || 'neutral' })).filter((x) => x.jp);
+}
+function copyPlain(text, btn) {
+  const ok = () => flashBtn(btn, '✓');
+  const fb = () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); ok(); } catch { /* abaikan */ } ta.remove(); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok, fb); else fb();
+}
+function replayIrisVoice(items, btn) {
+  if (!items.length) return;
+  if (muted) { flashBtn(btn, 'Bisu'); return; }
+  if (playing && !curLocal) return;   // balasan asli sedang diputar: jangan disela
+  if (playing) stopLocal();
+  queue = [];
+  const hits = items.map((it) => voiceCache.get(it.jp));
+  if (hits.every((h) => h && h.audio)) {   // semua ada di cache: putar langsung, urutan terjaga
+    items.forEach((it, i) => queue.push({ text: it.text, jp: it.jp, emotion: it.emo, audio: hits[i].audio, moras: hits[i].moras, local: true }));
+    pump();
+  } else if (ws && ws.readyState === WebSocket.OPEN) {   // ada yang belum: minta server menyintesis semuanya (server punya cache sendiri)
+    items.forEach((it) => send({ type: 'speak', jp: it.jp, id: it.text, emotion: it.emo }));
+  } else flashBtn(btn, 'Offline');
+}
+const RATE_LINES = {
+  up: [['Eh, makasih! Jadi malu...', 'えっ、ありがとう！照れちゃうな…', 'shy'], ['Yay, dipuji! Aku jadi semangat~', 'やった、褒められた！がんばっちゃう〜', 'happy']],
+  down: [['Hmm... maaf ya, nanti kuperbaiki.', 'うぅ…ごめんね、次はがんばるよ。', 'sad'], ['Oke, aku catat. Maaf ya...', 'わかった…気をつけるね。ごめん。', 'sad']],
+};
+function rateIris(el, kind, bUp, bDown) {
+  if (el.dataset.rate === kind) return;
+  el.dataset.rate = kind;
+  bUp.classList.toggle('on', kind === 'up'); bDown.classList.toggle('on', kind === 'down');
+  if (kind === 'up') { moodAdd('praise', 4, 12); fx('💗', 2); try { playGesture('shy'); } catch { /* abaikan */ } }
+  else { moodAdd('dislike', -4, 12); fx('💧', 1); }
+  const L = RATE_LINES[kind], [t, jp, e] = L[Math.floor(Math.random() * L.length)];
+  say(t, e, 3500, jp, { force: true });
+  { const prev = irisReplyText; irisBlock = null; logIris(t, jp, e); irisBlock = null; irisReplyText = prev; }   // v88: reaksi Iris juga masuk riwayat chat (kotak sendiri, tombol suara aktif)
+}
+function makeActs(el, userOnly) {
+  const acts = document.createElement('div'); acts.className = 'acts';
+  const mk = (cls, title, svg) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'act ' + cls; b.title = title; b.innerHTML = svg; acts.appendChild(b); return b; };
+  const bCopy = mk('copy', 'Salin', ACT_ICON.copy);
+  bCopy.addEventListener('click', () => copyPlain(irisMsgText(el), bCopy));
+  if (userOnly) return acts;   // v85: pesan sendiri: hanya Salin
+  const bVoice = mk('voice', 'Putar suara', ACT_ICON.voice);
+  const bUp = mk('up', 'Puji Iris', ACT_ICON.up), bDown = mk('down neg', 'Tidak suka', ACT_ICON.up);
+  bVoice.hidden = !el.querySelector(':scope > p[data-jp]');   // tanpa kalimat Jepang (pesan sistem) tidak ada suara untuk diputar
+  bVoice.addEventListener('click', () => replayIrisVoice(irisMsgVoice(el), bVoice));
+  bUp.addEventListener('click', () => rateIris(el, 'up', bUp, bDown));
+  bDown.addEventListener('click', () => rateIris(el, 'down', bUp, bDown));
+  return acts;
 }
 /* v32: isi teks dengan URL yang dikenali (https://...) dibungkus span.lnk; teks lain tetap teks biasa (aman dari HTML) */
 const URL_RE = /https?:\/\/[^\s<>"'`]+/g;
@@ -2503,7 +2637,7 @@ function onApprovalEnd(m) {   // server menutup kartu: approved/denied (sudah di
   closeApprovalCard(String(m.id || ''), text, m.state === 'approved' ? '#7ee2a0' : '');
 }
 function logErr(text) { irisBlock = null; addStamp(logAdd('err', text)); }
-function logIris(text) {
+function logIris(text, jp, emo) {
   irisReplyText = (irisReplyText + ' ' + String(text || '')).slice(-800);
   if (!irisBlock) {
     irisBlock = document.createElement('div');
@@ -2513,7 +2647,8 @@ function logIris(text) {
   }
   const p = document.createElement('p');
   setLinked(p, text);
-  irisBlock.insertBefore(p, irisBlock.querySelector('.ts'));
+  if (jp) { p.dataset.jp = String(jp); p.dataset.emo = String(emo || 'neutral'); const bv = irisBlock.querySelector('.act.voice'); if (bv) bv.hidden = false; }   // v80: dipakai tombol putar suara
+  irisBlock.insertBefore(p, irisBlock.querySelector(':scope > .foot') || irisBlock.querySelector('.ts'));
   logScroll();
 }
 const canGrow = !!(window.companion && typeof window.companion.setChatOpen === 'function');
@@ -2839,6 +2974,10 @@ input.addEventListener('keyup', (e) => { if (e.key === 'Enter') slashHide(); });
 document.getElementById('stop').addEventListener('click', () => {
   send({ type: 'cancel' });
   stopAll();
+  if (typeof tlImgPending !== 'undefined' && tlImgPending) {   // v79: terjemah layar yang sedang jalan ikut dibatalkan
+    clearTimeout(tlImgTimer); tlImgPending.remove(); tlImgPending = null; tlImgCancelled = true;
+    addStamp(logAdd('iris', 'Terjemah layar dibatalkan.'));
+  }
 });
 
 /* =====================================================
@@ -3226,6 +3365,7 @@ function setQuiet(v) {
 }
 menuEl.addEventListener('click', (e) => {
   e.stopPropagation(); lastInteract = performance.now();
+  const tp = e.target.closest('.tlp'); if (tp) { setTlLang(tp.dataset.tl); return; }   // v78: pilih bahasa terjemah, menu tetap terbuka
   const b = e.target.closest('.mi'); if (!b) return;
   const act = b.dataset.act;
   if (act !== 'timer' && act !== 'set' && act !== 'outfit') closePops();
@@ -3357,6 +3497,10 @@ gid('outfitChips').addEventListener('click', (e) => {
 refreshOutfitPop();
 function applyBody() { try { document.getElementById('root').classList.toggle('half', SET.fullBody === false); } catch { /* abaikan */ } const el = gid('sBody'); if (el) el.value = SET.fullBody !== false ? 'full' : 'half'; if (vrm) { fitCamera(true); setPeekDrop(); } }
 gid('sBody').addEventListener('change', () => { SET.fullBody = gid('sBody').value === 'full'; saveSet(); applyBody(); });
+/* v78: pilihan bahasa sumber Terjemah layar: tiga pil di bawah item "Terjemah layar" di menu (disimpan di Pengaturan lokal 'iris.set'). /terjemah en|ja|auto memakai pilihan itu hanya untuk satu kali jalan. */
+function refreshTlPills() { try { for (const b of menuEl.querySelectorAll('.tlp')) b.classList.toggle('on', b.dataset.tl === (SET.tlLang === 'ja' || SET.tlLang === 'en' ? SET.tlLang : 'auto')); } catch { /* abaikan */ } }
+function setTlLang(v) { SET.tlLang = (v === 'ja' || v === 'en') ? v : 'auto'; saveSet(); refreshTlPills(); }
+refreshTlPills();
 applyBody();
 function setQuality(a) {   // v43
   a = String(a || '').toLowerCase().trim();
@@ -3622,6 +3766,49 @@ const TRANSLATE_PROMPT =
   'Jangan menambah komentar sendiri, kecuali satu baris singkat di akhir kalau ada nuansa penting (honorifik, permainan kata). ' +
   'Kalau tidak ada teks yang bisa dibaca, bilang singkat dalam satu baris.';
 let translating = false;
+/* v73: terjemah layar berupa GAMBAR. Server (iris_translate_img.py) membaca teks Jepang di screenshot dengan OCR, menerjemahkannya, lalu
+   mengembalikan screenshot yang teksnya sudah diganti bahasa Indonesia di posisi yang sama. Hasilnya muncul di chat dan dibuka besar. */
+let tlImgPending = null, tlImgTimer = 0, tlImgCancelled = false;
+const TL_LANG_NAME = { ja: 'Jepang', en: 'Inggris', auto: 'Jepang atau Inggris' };
+function startImageTranslate(u, lang = 'auto') {
+  if (tlImgPending) { showError('Terjemah layar sebelumnya masih berjalan.'); return; }
+  if (!ws || ws.readyState !== WebSocket.OPEN) { showError('Belum tersambung ke server Iris.'); return; }
+  tlImgCancelled = false;
+  stopAll(); openChat();
+  logUser('🈯 Terjemahkan layar (hasil berupa gambar' + (lang === 'auto' ? '' : ', ' + (TL_LANG_NAME[lang] || lang)) + ')', [u]);
+  tlImgPending = logAdd('iris', 'Membaca teks ' + (TL_LANG_NAME[lang] || 'Jepang') + ' di layar lalu menerjemahkannya… (beberapa detik)');
+  tlImgTimer = setTimeout(() => {
+    if (!tlImgPending) return;
+    tlImgPending.remove(); tlImgPending = null;
+    addStamp(logAdd('err', 'Terjemah gambar terlalu lama (lebih dari 3 menit). Cek terminal server.'));
+  }, 180000);
+  send({ type: 'translate_image', images: [u], lang });
+}
+function onTranslateImage(m) {
+  if (m.code === 'cancelled' || tlImgCancelled) { tlImgCancelled = false; return; }   // v79: dibatalkan pengguna: jangan tampilkan hasil/galat
+  clearTimeout(tlImgTimer);
+  if (tlImgPending) { tlImgPending.remove(); tlImgPending = null; }
+  openChat();
+  if (!m.ok) { addStamp(logAdd('err', m.message || 'Terjemah gambar gagal.')); return; }
+  const d = logAdd('iris', 'Layarnya sudah kuganti ke bahasa Indonesia: ' + m.translated + ' dari ' + m.blocks + ' blok teks ' + (TL_LANG_NAME[m.lang] || 'Jepang') + ' (OCR ' + m.ocr + ', ' + m.secs + ' dtk)' + (m.dropped ? '; ' + m.dropped + ' serpihan ikon/gambar yang terbaca sebagai sampah dilewati' : '') + '. Klik dua kali gambar untuk membuka besar. Tanya saja isinya, aku ingat teks terjemahannya.');
+  const im = document.createElement('img');
+  im.src = m.image;
+  im.addEventListener('load', logScroll);
+  d.appendChild(im);
+  addStamp(d);
+  // v76: jendela besar Electron (zoom + geser) dulu; kalau tidak ada atau gagal, pratinjau di overlay dibuka BESAR (bukan kartu kecil) dan alasannya dikatakan
+  const fallback = (why) => {
+    try { openImgView(m.image, true); } catch { /* abaikan */ }
+    if (why && !onTranslateImage.hinted) { onTranslateImage.hinted = true; addStamp(logAdd('err', why)); }
+  };
+  try {
+    if (window.companion && typeof window.companion.openImage === 'function') {
+      Promise.resolve(window.companion.openImage(m.image))
+        .then((ok) => { if (!ok) fallback('Jendela gambar besar gagal dibuka (cek terminal Electron: baris \'open-image gagal\'). Hasilnya kutampilkan di overlay.'); })
+        .catch(() => fallback('Jendela gambar besar gagal dibuka. Hasilnya kutampilkan di overlay.'));
+    } else fallback('Jendela gambar besar belum aktif: tambahkan baris \'openImage: (d) => ipcRenderer.invoke(\'open-image\', d),\' di preload.js, lalu restart Iris. Sementara hasilnya kutampilkan di overlay.');
+  } catch { fallback(); }
+}
 async function translateScreen(extra = '') {
   if (translating) return;
   if (!window.companion || typeof window.companion.captureScreen !== 'function') {
@@ -3633,6 +3820,16 @@ async function translateScreen(extra = '') {
     let u = null;
     try { u = await window.companion.captureScreen(); } catch { /* gagal */ }
     if (!u) { showError('Screenshot gagal. Game fullscreen eksklusif bisa tidak terpotret; pakai mode windowed atau borderless.'); return; }
+    extra = String(extra || '');
+    let tlLang = (SET.tlLang === 'ja' || SET.tlLang === 'en') ? SET.tlLang : 'auto';   // v77: bawaan dari pilihan di menu (pil Auto / Jepang / Inggris di bawah Terjemah layar); "/terjemah en|ja|auto" menimpanya untuk satu kali jalan
+    const lm = extra.match(/^(en|eng|inggris|english|ja|jp|jepang|auto|otomatis)\b[:\s]*/i);
+    if (lm) {
+      const k = lm[1].toLowerCase();
+      tlLang = /^(en|eng|inggris|english)$/.test(k) ? 'en' : /^(ja|jp|jepang)$/.test(k) ? 'ja' : 'auto';
+      extra = extra.slice(lm[0].length);
+    }
+    if (!/^teks\b/i.test(extra)) { startImageTranslate(u, tlLang); return; }   // by: KangJiho. bawaan Ctrl+Alt+T = gambar; "/terjemah teks ..." = balasan teks seperti dulu
+    extra = extra.replace(/^teks\b[:\s]*/i, '');
     const body = TRANSLATE_PROMPT + (extra ? '\nCatatan dari pengguna: ' + extra : '');
     submitText(body, '🈯 Terjemahkan layar' + (extra ? ': ' + extra : ''), [u]);
   } finally { translating = false; }
@@ -4417,11 +4614,78 @@ setInterval(() => {
 
 /* ---- v16b: klik gambar di chat = lihat besar + Salin / Simpan ---- */
 const imgView = document.getElementById('imgView'), ivImg = imgView.querySelector('img');
-function openImgView(src) {
-  ivImg.src = src; imgView.classList.add('open'); placeFloat(imgView); setIgnore(false);
-  const mh = parseInt(imgView.style.maxHeight, 10); imgView.style.setProperty('--ivmax', (mh > 0 ? mh : 420) + 'px'); imgView.style.maxHeight = '';   // tinggi gambar dibatasi lewat --ivmax; kartu tidak perlu max-height sendiri
+function openImgView(src, big = false) {
+  imgView.classList.toggle('big', !!big);
+  imgView.style.left = ''; imgView.style.right = ''; imgView.style.maxWidth = ''; imgView.style.width = '';
+  if (big) {
+    imgView.style.top = ''; imgView.style.bottom = ''; imgView.style.maxHeight = '';
+    try {   // v79: kartu besar berdiri di sisi karakter yang lebih lapang, tidak pernah menimpa kotak karakter
+      const cr = charBox.getBoundingClientRect(), W = window.innerWidth;
+      if (cr.width > 0) {
+        if (cr.left - 12 >= W - cr.right - 12) imgView.style.right = Math.max(12, Math.round(W - cr.left + 8)) + 'px';
+        else { imgView.style.left = Math.round(cr.right + 8) + 'px'; imgView.style.right = '12px'; }
+      }
+    } catch { /* pakai CSS bawaan */ }
+    ivImg.src = src; imgView.classList.add('open'); setIgnore(false); return;
+  }
+  ivImg.src = src; imgView.classList.add('open'); setIgnore(false);
+  placeImgCard(); requestAnimationFrame(placeImgCard); setTimeout(placeImgCard, 350);   // v82: dihitung ulang setelah layout dan jendela settle
 }
-function closeImgView() { imgView.classList.remove('open'); ivImg.removeAttribute('src'); }
+/* v82: kartu kecil SELALU di tempat yang sama relatif ke karakter (sisi lapang, setinggi dada), bukan relatif ke bar input yang berpindah saat panel chat dibuka / ditutup
+   atau saat bar muncul / hilang. Dihitung ulang saat gambar selesai dimuat dan saat jendela berubah ukuran. Tepi bawahnya tidak melewati bar input atau pil di bawahnya. */
+function placeImgCard() {
+  if (!imgView.classList.contains('open') || imgView.classList.contains('big')) return;
+  let avail = 300;
+  try {
+    const cr = charBox.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight;
+    const OVER_R = 96, OVER_L = 32, webx = parseFloat(getComputedStyle(imgView).getPropertyValue('--webx')) || 0;
+    let x0 = 12 + webx, x1 = W - 12;
+    if (cr.width > 0) {
+      const leftRoom = cr.left + OVER_L - 8 - (12 + webx), rightRoom = W - 12 - (cr.right - OVER_R + 8);
+      if (leftRoom > rightRoom) {
+        x1 = Math.round(cr.left + OVER_L - 8);
+        imgView.style.left = 'auto'; imgView.style.right = Math.max(12, W - x1) + 'px'; imgView.style.maxWidth = Math.max(140, Math.round(leftRoom)) + 'px'; imgView.style.width = Math.max(140, Math.min(300, Math.round(leftRoom))) + 'px'; x0 = Math.max(x0, x1 - Math.round(leftRoom));
+      } else {
+        x0 = Math.round(cr.right - OVER_R + 8);
+        imgView.style.left = x0 + 'px'; imgView.style.right = 'auto'; imgView.style.maxWidth = Math.max(140, Math.round(rightRoom)) + 'px'; imgView.style.width = Math.max(140, Math.min(300, Math.round(rightRoom))) + 'px';
+      }
+    }
+    const pref = cr.height > 0 ? cr.top + cr.height * 0.6 : H - 70;   // idealnya: tepi bawah kartu setinggi dada karakter
+    let cap = H - 8;                                                  // batas bawah keras: bar input dan pil di bawah kartu (V 9 H, status, lampiran) tidak ditimpa
+    try { const b = gid('bar').getBoundingClientRect(); if (b.height && b.top > 0 && b.top < H) cap = Math.min(cap, b.top - 10); } catch { /* abaikan */ }
+    for (const id of ['dock', 'webpill', 'status', 'conn', 'attach']) {
+      try {
+        const n = gid(id); if (!n) continue;
+        const cs = getComputedStyle(n); if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) continue;
+        const r = n.getBoundingClientRect();
+        if (r.height >= 4 && r.width >= 4 && r.top > 60 && r.right > x0 && r.left < x1) cap = Math.min(cap, r.top - 8);
+      } catch { /* abaikan */ }
+    }
+    let bottomY = Math.min(pref, cap);
+    // v83: bubble ucapan di atas kepala Iris tidak boleh tertimpa: kartu berdiri di bawah bubble (kalau bubble sedang tampil dan sejajar secara horizontal)
+    let topLimit = 12;
+    try {
+      if (bubble.classList.contains('show')) {
+        const rb = bubble.getBoundingClientRect();
+        if (rb.height > 0 && rb.right > x0 && rb.left < x1) topLimit = Math.max(topLimit, Math.round(rb.bottom + 16));   // 16 = ekor bubble + jarak
+      }
+    } catch { /* abaikan */ }
+    if (topLimit > 12) bottomY = Math.max(bottomY, Math.min(cap, topLimit + 224));   // turun secukupnya supaya kartu masih muat di bawah bubble
+    bottomY = Math.max(190, Math.min(H - 8, bottomY));
+    imgView.style.top = 'auto'; imgView.style.bottom = Math.round(H - bottomY) + 'px';
+    avail = Math.max(190, Math.min(520, Math.round(bottomY - topLimit)));   // 104 = padding + jarak + dua baris tombol; kartu tidak melewati bubble atau tepi atas jendela
+  } catch { /* pakai CSS bawaan */ }
+  imgView.style.maxHeight = ''; imgView.style.setProperty('--ivmax', avail + 'px');
+}
+ivImg.addEventListener('load', placeImgCard);
+try {   // v87: menu / popover dibuka atau ditutup: susun ulang bubble (menghindari menu)
+  const moMenu = new MutationObserver(() => { placeBubbleSoon(); setTimeout(placeBubbleSoon, 380); });
+  for (const id of ['menu', 'setPop', 'timerPop', 'outfitPop']) { const n = document.getElementById(id); if (n) moMenu.observe(n, { attributes: true, attributeFilter: ['class'] }); }
+} catch { /* abaikan */ }
+window.addEventListener('resize', () => { if (imgView.classList.contains('open')) requestAnimationFrame(placeImgCard); });
+try { new MutationObserver(() => { if (imgView.classList.contains('open')) { placeImgCard(); setTimeout(placeImgCard, 400); } }).observe(document.getElementById('root'), { attributes: true, attributeFilter: ['class'] }); } catch { /* abaikan */ }
+try { new MutationObserver(() => { if (imgView.classList.contains('open')) { placeImgCard(); setTimeout(placeImgCard, 300); } }).observe(bubble, { attributes: true, attributeFilter: ['class', 'style'] }); } catch { /* abaikan */ }   // v83: bubble muncul / hilang / pindah
+function closeImgView() { imgView.classList.remove('open', 'big'); imgView.style.left = ''; imgView.style.right = ''; imgView.style.maxWidth = ''; imgView.style.width = ''; ivImg.removeAttribute('src'); }
 async function imgToPngBlob(src) {
   const im = new Image(); im.src = src; await im.decode();
   const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight;
@@ -4447,7 +4711,13 @@ function saveViewedImage() {
   document.body.appendChild(a); a.click(); a.remove();
   flashBtn(document.getElementById('ivSave'), 'Menyimpan…');
 }
-logBody.addEventListener('click', (e) => { const t = e.target; if (t && t.tagName === 'IMG' && t.closest('.msg')) openImgView(t.src); });
+let ivClickT = 0;
+logBody.addEventListener('click', (e) => { const t = e.target; if (t && t.tagName === 'IMG' && t.closest('.msg')) { clearTimeout(ivClickT); const src = t.src; ivClickT = setTimeout(() => openImgView(src), 260); } });   // v80: tunda sebentar supaya klik dua kali tidak memunculkan kartu kecil dulu
+async function openBigSrc(src) {
+  try { if (window.companion && typeof window.companion.openImage === 'function' && await window.companion.openImage(src)) return; } catch (err) { console.warn('open-image:', err); }
+  openImgView(src, true);   // jendela besar Electron tidak ada / gagal: pratinjau besar di overlay
+}
+logBody.addEventListener('dblclick', (e) => { const t = e.target; if (t && t.tagName === 'IMG' && t.closest('.msg')) { clearTimeout(ivClickT); closeImgView(); openBigSrc(t.src); } });
 document.getElementById('ivCopy').addEventListener('click', copyViewedImage);
 async function openBigImage() {
   const btn = document.getElementById('ivBig');
@@ -4476,7 +4746,8 @@ const HELP = [
   '/clip             tanya isi clipboard (teks atau gambar)',
   '/ekspor           simpan percakapan sebagai HTML ke Downloads',
   '/layar [tanya]    foto layar lalu langsung tanya',
-  '/terjemah [catatan]  foto layar lalu terjemahkan teksnya (Ctrl+Alt+T)',
+  '/terjemah [en|ja|auto]  foto layar lalu ganti teks Jepang/Inggris jadi gambar berbahasa Indonesia (Ctrl+Alt+T; tanpa pilihan = sesuai pilihan di menu, di bawah Terjemah layar)',
+  '/terjemah teks [catatan]  foto layar lalu terjemahkan sebagai balasan teks',
   '/fokus            mode fokus (diam dan transparan)',
   '/atas [mati|nyala]  Iris selalu di atas jendela lain (nyala/mati)',
   '/bayangan [mati|nyala]  bayangan karakter di latar',
@@ -4720,7 +4991,7 @@ function buildExportHtml(now) {
   const msgs = [...logBody.querySelectorAll('.msg')].filter((m) => !m.dataset.noexport);
   const items = msgs.map((m) => {
     const c = m.cloneNode(true);
-    c.querySelectorAll('button').forEach((b) => b.remove());   // tombol Salin tidak berguna di file statis
+    c.querySelectorAll('button, .acts').forEach((b) => b.remove());   // tombol Salin tidak berguna di file statis
     return '<div class="' + escHtml(c.className) + '">' + c.innerHTML + '</div>';
   }).join('\n');
   const nUser = msgs.filter((m) => m.classList.contains('user')).length;

@@ -126,6 +126,14 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse
 from dotenv import load_dotenv
 
+# by: KangJiho. v73: terjemah layar berupa GAMBAR. Kalau Pillow belum terpasang, server tetap jalan dan hanya fitur ini yang menolak.
+try:
+    import iris_translate_img as tlimg
+    _TLIMG_ERR = ""
+except Exception as _e:   # noqa: BLE001
+    tlimg = None
+    _TLIMG_ERR = f"{type(_e).__name__}: {_e}"
+
 ENV_PATH = Path.home() / ".env"
 LOCAL_ENV_PATH = Path(".env")
 ENV_LOADED = None   # v39b: file .env yang benar-benar dipakai (dicetak saat start, untuk mencocokkan dengan sisi Electron)
@@ -145,6 +153,8 @@ else:
 NINEROUTER_URL = os.getenv("NINEROUTER_URL", "http://localhost:20128/v1")
 NINEROUTER_KEY = os.getenv("NINEROUTER_API_KEY", "")  # isi kalau 9Router-mu minta API key
 MODEL = os.getenv("NINEROUTER_MODEL", "Iris")
+TL_VOICE = os.getenv("IRIS_TL_VOICE", "1").strip() != "0"   # v74: Iris bicara saat menerjemahkan layar (0 = diam)
+TL_MODEL = os.getenv("IRIS_TL_MODEL", "").strip()   # v73: model khusus terjemah gambar (kosong = pakai MODEL)
 # Model/combo yang menerima gambar. Kosong = pakai MODEL (error kalau model itu tidak mendukung gambar).
 VISION_MODEL = os.getenv("NINEROUTER_VISION_MODEL", "").strip() or MODEL
 
@@ -1901,6 +1911,9 @@ async def handle_user_text(ws: WebSocket, client: httpx.AsyncClient, history: li
             + ls + "\". Kalau pengguna menyuruh mengulang atau menanyakan hal itu, rujuk ucapan ini, bukan jawabanmu yang lama."
         )
     user_content = build_user_content(llm_text or text, images)
+    if isinstance(user_content, str) and history.screen.startswith("Layar barusan diterjemahkan") and not auto:
+        # v78: jawaban lama yang ngarang ada di riwayat dan ditiru model; tempel teks terjemahan LANGSUNG di pesan ini
+        user_content += "\n\n(Catatan sistem, abaikan jawabanmu sebelumnya soal isi layar kalau berbeda. " + history.screen + ")"
     if isinstance(user_content, str):   # v29: pengingat format di giliran terakhir, tidak ikut tersimpan di riwayat
         user_content += "\n\n(Ingat: balas hanya baris berformat [emosi] kalimat Jepang ||| arti Indonesia" + (
             "; boleh satu baris [thought] di awal kalau pas." if use_thoughts else ".") + ")"
@@ -1991,6 +2004,72 @@ async def handle_user_text(ws: WebSocket, client: httpx.AsyncClient, history: li
             trim_history(history)
             hist_save(history)
         await safe_send(ws, {"type": "done", "interrupted": interrupted})
+
+
+async def handle_translate_image(ws: WebSocket, client: httpx.AsyncClient, data_url: str, lang: str = "ja", history=None) -> None:
+    """v73: screenshot -> OCR -> terjemah per blok -> gambar baru dengan teks Indonesia. Tidak menyentuh `current` (balasan chat tetap jalan)."""
+    def fail(code: str, message: str) -> dict:
+        return {"type": "translate_image_result", "ok": False, "code": code, "message": message}
+
+    if tlimg is None:
+        await safe_send(ws, fail("module_missing", f"Modul terjemah gambar belum bisa dimuat ({_TLIMG_ERR}). Pastikan iris_translate_img.py satu folder dengan server.py dan jalankan: pip install pillow winocr"))
+        return
+
+    async def complete(msgs: list[dict]) -> str:
+        return "\n".join([ln async for ln in stream_lines(client, msgs, TL_MODEL or None, read_timeout=120.0)])
+
+    async def say(jp: str, idn: str, emo: str = "neutral", err: bool = False) -> None:
+        if TL_VOICE:
+            await handle_speak(ws, client, jp, idn, emo, False, err)
+
+    t0 = time.time()
+    try:
+        await _translate_image_body(ws, client, data_url, lang, history, say, fail, complete, t0)
+    except asyncio.CancelledError:
+        print(f"[{stamp()}] terjemah layar dibatalkan pengguna", flush=True)
+        raise
+
+
+async def _translate_image_body(ws, client, data_url, lang, history, say, fail, complete, t0):
+    # v74: suara langsung berbunyi selagi OCR dan terjemahan berjalan (tidak menunda prosesnya)
+    intro = asyncio.create_task(say("ちょっと待ってね、画面を翻訳するよ。", "Tunggu sebentar ya, Iris terjemahkan layarnya."))
+    try:
+        res = await tlimg.translate_image(data_url, complete, lang)
+    except asyncio.CancelledError:
+        intro.cancel()
+        raise
+    except tlimg.TranslateImageError as e:
+        print(f"[{stamp()}] terjemah gambar gagal ({e.code}): {e.message}", flush=True)
+        await safe_send(ws, fail(e.code, e.message))
+        await asyncio.gather(intro, return_exceptions=True)
+        if e.code == "no_text":
+            await say("文字が見つからなかったよ。", "Iris nggak menemukan teks yang bisa diterjemahkan di layar ini.", "sad")
+        else:
+            await say("ごめん、翻訳できなかった。", "Maaf, terjemahnya gagal.", "sad", True)
+        return
+    except Exception as e:   # noqa: BLE001
+        print(f"[{stamp()}] terjemah gambar galat: {e!r}", flush=True)
+        await safe_send(ws, fail("error", f"Terjemah gambar gagal: {e}"))
+        await asyncio.gather(intro, return_exceptions=True)
+        await say("ごめん、翻訳できなかった。", "Maaf, terjemahnya gagal.", "sad", True)
+        return
+    print(f"[{stamp()}] terjemah gambar selesai: {res.translated}/{res.blocks} blok, OCR {res.ocr}, {time.time() - t0:.1f} dtk", flush=True)
+    if history is not None and res.text:
+        # v77: ingat ISI terjemahan supaya pertanyaan lanjutan ("isi terjemahan itu apa?") dijawab dari teks nyata, bukan karangan
+        history.screen = ("Layar barusan diterjemahkan ke Indonesia lewat OCR (hanya teks yang terbaca; ikon, gambar, dan teks yang gagal dibaca TIDAK ada di sini, "
+                          "jangan mengarang isi di luar daftar ini). Terjemahan dari atas ke bawah: " + res.text.replace("\n", " | "))[:1800]
+    await safe_send(ws, {"type": "translate_image_result", "ok": True, "image": res.image, "blocks": res.blocks,
+                         "translated": res.translated, "ocr": res.ocr, "lang": res.lang, "secs": round(time.time() - t0, 1),
+                         "dropped": res.dropped, "text": res.text[:4000]})
+    try:
+        await asyncio.gather(intro, return_exceptions=True)   # kalimat pembuka selesai dulu, baru penutup
+        if res.translated >= res.blocks:
+            await say("翻訳できたよ！", "Sudah selesai, layarnya sudah kuterjemahkan!", "happy")
+        else:
+            await say("だいたい翻訳できたよ。", f"Sudah, tapi baru {res.translated} dari {res.blocks} blok yang berhasil.", "neutral")
+    except asyncio.CancelledError:
+        intro.cancel()
+        raise
 
 
 async def heartbeat(ws: WebSocket, t0: float):
@@ -2177,6 +2256,7 @@ async def ws_endpoint(ws: WebSocket):
     current: asyncio.Task | None = None
     current_is_agent = False
     speak_tasks: set[asyncio.Task] = set()
+    tl_tasks: set[asyncio.Task] = set()   # v79: terjemah layar yang sedang jalan (tombol berhenti membatalkannya)
     pending: dict | None = None   # v34: tugas agen yang ditahan menunggu konfirmasi {id, task, at}
     hub = ApprovalHub(ws)         # v66: kartu persetujuan tindakan agen dari Hermes
 
@@ -2185,6 +2265,15 @@ async def ws_endpoint(ws: WebSocket):
         if pending:
             old, pending = pending, None
             await safe_send(ws, {"type": "confirm_end", "id": old["id"], "state": state})
+
+    async def cancel_translate():
+        """v79: batalkan terjemah layar yang sedang berjalan (OCR, LLM, dan suara pembuka/penutup) dan beri tahu overlay."""
+        tasks = [t for t in tl_tasks if not t.done()]
+        for t in tasks:
+            t.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await safe_send(ws, {"type": "translate_image_result", "ok": False, "code": "cancelled", "message": "Terjemah layar dibatalkan."})
 
     async def cancel_current():
         nonlocal current
@@ -2303,6 +2392,20 @@ async def ws_endpoint(ws: WebSocket):
                     t = asyncio.create_task(handle_stt(ws, msg.get("audio")))
                     speak_tasks.add(t)
                     t.add_done_callback(speak_tasks.discard)
+                elif kind == "translate_image":   # v73: Ctrl+Alt+T = gambar layar yang teksnya sudah diganti ke Indonesia
+                    tl_imgs = clean_images(msg.get("images"))[:1]
+                    if not tl_imgs:
+                        await safe_send(ws, {"type": "translate_image_result", "ok": False, "code": "bad_image",
+                                             "message": "Screenshot tidak valid atau terlalu besar."})
+                    else:
+                        tl_lang = str(msg.get("lang") or "ja").lower()
+                        if tl_lang not in ("ja", "en", "auto"):
+                            tl_lang = "ja"
+                        t = asyncio.create_task(handle_translate_image(ws, client, tl_imgs[0], tl_lang, history))
+                        speak_tasks.add(t)
+                        t.add_done_callback(speak_tasks.discard)
+                        tl_tasks.add(t)
+                        t.add_done_callback(tl_tasks.discard)
                 elif kind == "speak":
                     jp = str(msg.get("jp") or "").strip()[:SPEAK_MAX_JP]
                     idn = str(msg.get("id") or "").strip()[:SPEAK_MAX_ID]
@@ -2348,9 +2451,11 @@ async def ws_endpoint(ws: WebSocket):
                 elif kind == "cancel":
                     await drop_pending("cancelled")
                     await cancel_current()
+                    await cancel_translate()
                 elif kind == "reset":
                     await drop_pending("cancelled")
                     await cancel_current()
+                    await cancel_translate()
                     history.clear()
                     hist_wipe()
                     history.note = ""
