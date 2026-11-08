@@ -51,3 +51,7 @@ iris-memory.json
 screens/
 *.log
 vv-engine/
+
+iris_tl_debug.json
+iris_tl_last.txt
+tests/Iris-config_*.json

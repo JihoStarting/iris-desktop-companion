@@ -710,6 +710,7 @@
     <label class="dup row sw">Tidur otomatis <input type="checkbox" id="sSleep"></label>
     <div class="dup row" title="Iris tidur setelah kamu diam selama waktu acak di antara dua angka ini (diundi ulang tiap kali dia tidur)"><span>Tidur setelah (menit, acak)</span><span class="pair"><input type="number" id="sSleepMin" class="num" min="1" max="120"> – <input type="number" id="sSleepMax" class="num" min="1" max="120"></span></div>
     <label class="row sw">Timer diucapkan Iris <input type="checkbox" id="sVoice"></label>
+    <label class="dup row sw" title="Iris menyapa satu kali per waktu (pagi, siang, sore, malam, larut) dengan kalimat tetap; tidak saat fokus, tidur, bicara, chat terbuka, atau sedang mengetik. Bawaan mati">Sapaan sesuai waktu <input type="checkbox" id="sGreet"></label>
     <label class="dup row sw" title="Iris menyebut jam setiap pukul pas (tidak saat fokus, tidur, atau bicara)">Ucapkan jam tiap jam <input type="checkbox" id="sHourly"></label>
     <label class="dup row sw">Ingatkan istirahat <input type="checkbox" id="sBreak"></label>
     <label class="dup row">Setiap (menit aktif) <input type="number" id="sBreakMin" class="num" min="15" max="240"></label>
@@ -1356,7 +1357,7 @@ function animate(now) {
 
 let talk = 0;   // 0..1, naik saat Iris sedang bicara
 // ---- Pengaturan (disimpan di localStorage) + keadaan interaksi; dipakai frame() dan blok 'v6' di bawah ----
-const SET = { tlLang: 'auto', vol: 100, op: 100, follow: true, idle: true, fx: true, sleep: true, sleepMin: 5, sleepMax: 20, arms: false, voiceTimer: true, breakOn: false, breakMin: 60, mood: true, top: true, hourly: false, shadow: true, sit: false, dragChar: true, dragGrip: true, watchOn: false, watchMin: 5, watchMax: 60, funOn: true, localCmd: true, funMin: 5, funMax: 60, peekHide: 3, fullBody: true, funGen: true, funTopic: '', theme: 'iris', outfitSeason: false, outfitSituasi: false, seasonFx: true, connPill: false, thoughts: true, clipOffer: false };
+const SET = { tlLang: 'auto', vol: 100, op: 100, follow: true, idle: true, fx: true, sleep: true, sleepMin: 5, sleepMax: 20, arms: false, voiceTimer: true, breakOn: false, breakMin: 60, mood: true, top: true, hourly: false, greetOn: false, shadow: true, sit: false, dragChar: true, dragGrip: true, watchOn: false, watchMin: 5, watchMax: 60, funOn: true, localCmd: true, funMin: 5, funMax: 60, peekHide: 3, fullBody: true, funGen: true, funTopic: '', theme: 'iris', outfitSeason: false, outfitSituasi: false, seasonFx: true, connPill: false, thoughts: true, clipOffer: false };
 const SET_DEFAULT = Object.assign({}, SET);   // v80: acuan jenis dan nama kunci untuk impor konfigurasi
 let clipSelf = '';   // v80: teks yang baru disalin oleh Iris sendiri (tombol salin), tidak ditawarkan lagi
 let peekTalkUntil = 0;   // v35: sampai kapan ucapan otomatis (fun fact, istirahat, jam) boleh keluar dari tepi layar tanpa memunculkan Iris
@@ -2881,6 +2882,7 @@ input.addEventListener('keydown', (e) => {
   const text = input.value.trim();
   if (!text && !attachments.length) return;
   bumpSlash(text);   // v36c: hitung pemakaian perintah untuk urutan menu "/"
+  if (kanaGame && !attachments.length && !text.startsWith('/') && kanaAnswer(text)) { input.value = ''; return; }   // v83: jawaban kuis kana
   if (!attachments.length) {
     const ch = takeChoice(text);
     if (ch && ch.it) { input.value = ''; stopAll(); logUser(text); ch.it.run(); return; }
@@ -2914,7 +2916,7 @@ const SLASH_ALIAS = {   // ketik alias, perintah aslinya yang muncul (semua alia
   '/web': '/chrome', '/outfit': '/baju', '/ganti': '/baju', '/theme': '/tema', '/local': '/lokal',
   '/clipboard': '/clip', '/screen': '/layar', '/tl': '/terjemah', '/translate': '/terjemah', '/summarize': '/ringkas',
   '/break': '/istirahat', '/watch': '/pantau', '/body': '/badan', '/quality': '/kualitas', '/gpu': '/kualitas',
-  '/ff': '/funfact', '/tahukah': '/funfact', '/intip': '/sembunyi', '/peek': '/sembunyi', '/time': '/jam', '/export': '/ekspor', '/konfig': '/config', '/offer': '/tawar'
+  '/ff': '/funfact', '/tahukah': '/funfact', '/intip': '/sembunyi', '/peek': '/sembunyi', '/time': '/jam', '/export': '/ekspor', '/konfig': '/config', '/offer': '/tawar', '/stat': '/statistik', '/stats': '/statistik'
 };
 const SLASH_ALIAS_OF = {}; for (const [a, c] of Object.entries(SLASH_ALIAS)) (SLASH_ALIAS_OF[c] = SLASH_ALIAS_OF[c] || []).push(a);
 let slashUse = {}; try { slashUse = JSON.parse(localStorage.getItem('iris.slashUse') || '{}') || {}; } catch { slashUse = {}; }
@@ -3413,7 +3415,7 @@ function bind(id, key, cb) {
 bind('sVol', 'vol', () => { if (current) current.volume = audioVol(); });
 bind('sOp', 'op', applyOpacity);
 bind('sFollow', 'follow'); bind('sThought', 'thoughts'); bind('sIdle', 'idle'); bind('sFx', 'fx'); bind('sSleep', 'sleep'); bind('sSleepMin', 'sleepMin', rollSleep); bind('sSleepMax', 'sleepMax', rollSleep);
-bind('sVoice', 'voiceTimer'); bind('sHourly', 'hourly');
+bind('sVoice', 'voiceTimer'); bind('sHourly', 'hourly'); bind('sGreet', 'greetOn');
 bind('sBreak', 'breakOn'); bind('sBreakMin', 'breakMin');
 bind('sWatch', 'watchOn', () => watchArm(true)); bind('sWatchMin', 'watchMin', () => watchArm(true)); bind('sWatchMax', 'watchMax', () => watchArm(true));
 bind('sMood', 'mood', moodApply);
@@ -3654,8 +3656,110 @@ applyDragWays();
 applyOpacity();
 if (SET.arms) window.setArmGest(0.3);
 
+/* ---- v83: /kana: kuis kana lokal, tanpa model dan tanpa server ----
+   Iris menampilkan satu kana, kamu mengetik romaji-nya. Satu ronde = 10 soal; yang salah muncul lagi di ronde yang sama. Jawaban diperiksa di sini (huruf kecil, ejaan Hepburn dan Kunrei diterima).
+   Jawaban memakai pesan chat biasa, tapi selama kuis jalan teks tanpa awalan / TIDAK dikirim ke model. "?" = tampilkan jawaban (dihitung salah), "stop" = selesai. Tanpa jawaban 10 menit = kuis berakhir sendiri. Skor tidak disimpan. */
+const KANA_BASIC = 'あ a|い i|う u|え e|お o|か ka|き ki|く ku|け ke|こ ko|さ sa|し shi si|す su|せ se|そ so|た ta|ち chi ti|つ tsu tu|て te|と to|な na|に ni|ぬ nu|ね ne|の no|は ha|ひ hi|ふ fu hu|へ he|ほ ho|ま ma|み mi|む mu|め me|も mo|や ya|ゆ yu|よ yo|ら ra|り ri|る ru|れ re|ろ ro|わ wa|を wo o|ん n nn';
+const KANA_VOICED = 'が ga|ぎ gi|ぐ gu|げ ge|ご go|ざ za|じ ji zi|ず zu|ぜ ze|ぞ zo|だ da|ぢ ji di|づ zu du|で de|ど do|ば ba|び bi|ぶ bu|べ be|ぼ bo|ぱ pa|ぴ pi|ぷ pu|ぺ pe|ぽ po';
+const KANA_COMBO = 'きゃ kya|きゅ kyu|きょ kyo|しゃ sha sya|しゅ shu syu|しょ sho syo|ちゃ cha tya|ちゅ chu tyu|ちょ cho tyo|にゃ nya|にゅ nyu|にょ nyo|ひゃ hya|ひゅ hyu|ひょ hyo|みゃ mya|みゅ myu|みょ myo|りゃ rya|りゅ ryu|りょ ryo|ぎゃ gya|ぎゅ gyu|ぎょ gyo|じゃ ja jya zya|じゅ ju jyu zyu|じょ jo jyo zyo|びゃ bya|びゅ byu|びょ byo|ぴゃ pya|ぴゅ pyu|ぴょ pyo';   // v86: kana kombinasi (yoon)
+const kanaToKata = (str) => str.replace(/[\u3041-\u3096]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+function kanaPool(script, full, combo) {
+  const src = KANA_BASIC + (full ? '|' + KANA_VOICED : '') + (combo ? '|' + KANA_COMBO : ''), out = [];
+  for (const it of src.split('|')) {
+    const [k, ...r] = it.split(' ');
+    if (script !== 'kata') out.push({ k, r, s: 'hira' });
+    if (script !== 'hira') out.push({ k: kanaToKata(k), r, s: 'kata' });
+  }
+  return out;
+}
+let kanaGame = null;
+const KANA_ROUND = 10, KANA_IDLE_MS = 600000;
+function kanaNext() {
+  const g = kanaGame; if (!g) return;
+  let q = null;
+  if (g.retry.length && (g.asked - g.lastRetry >= 2 || g.asked >= g.total - g.retry.length)) { q = g.retry.shift(); g.lastRetry = g.asked; }
+  if (!q) { do { q = g.pool[Math.floor(Math.random() * g.pool.length)]; } while (g.pool.length > 1 && g.cur && q.k === g.cur.k); }
+  g.cur = q; g.asked++; g.last = performance.now();
+  logAdd('task', '【 ' + q.k + ' 】  (' + g.asked + '/' + g.total + ')  romaji?');
+}
+function kanaEnd(why) {
+  const g = kanaGame; kanaGame = null; if (!g) return;
+  const n = g.right + g.wrong;
+  let t = '🎌 Kuis kana ' + (why || 'selesai') + ': benar ' + g.right + ' dari ' + n + (n ? ' (' + Math.round(g.right / n * 100) + '%)' : '') + (g.best > 2 ? ', rantai terbaik ' + g.best : '') + '.';
+  const bad = [...new Map(g.missed.map((m) => [m.k, m])).values()];
+  if (bad.length) t += '\nPerlu diulang: ' + bad.map((m) => m.k + '=' + m.r[0]).join('  ');
+  logAdd('task', t);
+  if (n && g.right === n && n >= 5) { try { fx('✨', 4); playGesture('cheer'); } catch { /* abaikan */ } }
+}
+function kanaStart(arg) {
+  const a = String(arg || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (a.includes('stop') || a.includes('selesai') || a.includes('berhenti')) { if (kanaGame) kanaEnd('dihentikan'); else logAdd('task', 'Tidak ada kuis kana yang jalan.'); return; }
+  const script = a.includes('kata') || a.includes('katakana') ? 'kata' : (a.includes('campur') ? 'both' : 'hira'), full = a.includes('lengkap'), combo = a.includes('kombinasi') || a.includes('yoon');
+  if (kanaGame) kanaEnd('diganti');
+  openChat();
+  kanaGame = { pool: kanaPool(script, full, combo), retry: [], missed: [], asked: 0, lastRetry: 0, right: 0, wrong: 0, streak: 0, best: 0, total: KANA_ROUND, cur: null, last: performance.now() };
+  logAdd('task', '🎌 Kuis kana (' + (script === 'hira' ? 'hiragana' : script === 'kata' ? 'katakana' : 'hiragana + katakana') + (full ? ', lengkap dengan dakuten' : '') + (combo ? ', ditambah kana kombinasi' : '') + '). Ketik romaji-nya. "?" = lihat jawaban, "stop" = selesai.');
+  kanaNext();
+}
+// true = teks sudah ditangani kuis (tidak dikirim ke model)
+function kanaAnswer(text) {
+  const g = kanaGame; if (!g) return false;
+  if (performance.now() - g.last > KANA_IDLE_MS) { kanaEnd('berakhir (lama tidak dijawab)'); return false; }
+  const t = text.trim().toLowerCase();
+  if (/^(stop|selesai|berhenti)$/.test(t)) { logUser(text); kanaEnd('dihentikan'); return true; }
+  logUser(text);
+  const q = g.cur;
+  if (t === '?') { g.wrong++; g.streak = 0; g.missed.push(q); g.retry.push(q); logAdd('task', '→ ' + q.k + ' = ' + q.r[0]); }
+  else if (q.r.includes(t)) { g.right++; g.streak++; g.best = Math.max(g.best, g.streak); logAdd('task', '✓ benar' + (g.streak >= 3 ? ' (' + g.streak + ' berturut-turut)' : '') + (q.r.length > 1 ? '  [' + q.r.join(' / ') + ']' : '')); }
+  else { g.wrong++; g.streak = 0; g.missed.push(q); g.retry.push(q); logAdd('task', '✗ ' + q.k + ' = ' + q.r[0]); }
+  if (g.asked >= g.total && !g.retry.length) { kanaEnd(); return true; }
+  if (g.asked >= g.total) g.total = g.asked + 1;   // sisa soal ulang tetap ditanyakan
+  kanaNext(); return true;
+}
+
 /* ---- timer + pomodoro ---- */
 let timer = null, pomoCount = 0;
+/* v82: statistik fokus. Tiap sesi Pomodoro "Fokus" yang selesai penuh dicatat di localStorage 'iris.focus' ({'YYYY-MM-DD': {n, min}}, tanggal lokal, maks 120 hari).
+   Hanya angka sesi dan menit; tidak ada isi layar atau judul jendela. Sesi yang dibatalkan tidak dihitung. Tidak ikut ekspor konfigurasi. */
+const FOCUS_KEY = 'iris.focus', FOCUS_KEEP_DAYS = 120;
+const dayKey = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+function focusLoad() {
+  try { const o = JSON.parse(localStorage.getItem(FOCUS_KEY) || '{}'); return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {}; } catch { return {}; }
+}
+function focusSave(o) {
+  const keys = Object.keys(o).sort();
+  while (keys.length > FOCUS_KEEP_DAYS) delete o[keys.shift()];
+  try { localStorage.setItem(FOCUS_KEY, JSON.stringify(o)); } catch { /* abaikan */ }
+}
+function focusLog(min) {
+  const o = focusLoad(), k = dayKey(new Date()), d = o[k] || { n: 0, min: 0 };
+  d.n = (Number(d.n) || 0) + 1; d.min = (Number(d.min) || 0) + Math.max(1, Math.round(min));
+  o[k] = d; focusSave(o);
+}
+const fmtMin = (m) => m >= 60 ? Math.floor(m / 60) + ' j ' + String(m % 60).padStart(2, '0') + ' m' : m + ' m';
+function focusReport() {
+  const o = focusLoad(), now = new Date(), rows = [], names = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+  let total = 0, sessions = 0, maxMin = 0;
+  for (let i = 6; i >= 0; i--) {
+    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i), d = o[dayKey(dt)] || { n: 0, min: 0 };
+    rows.push({ name: i === 0 ? 'Hari ini' : names[dt.getDay()], n: Number(d.n) || 0, min: Number(d.min) || 0 });
+    total += Number(d.min) || 0; sessions += Number(d.n) || 0; maxMin = Math.max(maxMin, Number(d.min) || 0);
+  }
+  let streak = 0;   // hari berturut-turut dengan minimal satu sesi; hari ini yang masih kosong tidak memutus rantai
+  for (let i = 0; i < 120; i++) {
+    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i), d = o[dayKey(dt)];
+    if (d && d.n > 0) streak++; else if (i > 0) break;
+  }
+  const lines = ['📊 Fokus 7 hari terakhir:'];
+  for (const r of rows) {
+    const bar = maxMin ? '█'.repeat(Math.round(r.min / maxMin * 12)) : '';
+    lines.push(r.name.padEnd(8, ' ') + ' ' + (r.n ? fmtMin(r.min) + ' (' + r.n + ' sesi) ' + bar : '-'));
+  }
+  lines.push('Total: ' + fmtMin(total) + ' dalam ' + sessions + ' sesi' + (sessions ? ', rata-rata ' + fmtMin(Math.round(total / 7)) + ' per hari' : '') + '.');
+  if (streak > 1) lines.push('Rantai: ' + streak + ' hari berturut-turut.');
+  if (!sessions) lines.push('Belum ada sesi selesai. Mulai dengan /pomodoro; yang dibatalkan tidak dihitung.');
+  return lines.join('\n');
+}
 const fmt = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
 function chime() {
   if (muted) return;
@@ -3688,7 +3792,7 @@ function positionPill() {
 function startTimer(min, label, pomo) {
   min = Math.max(0.05, Math.min(240, Number(min) || 0));
   if (!min) return;
-  timer = { end: performance.now() + min * 60000, label: label || (Math.round(min * 10) / 10 + ' menit'), pomo: pomo || null };
+  timer = { min, end: performance.now() + min * 60000, label: label || (Math.round(min * 10) / 10 + ' menit'), pomo: pomo || null };
   closePops(); tickTimer();
   say('Oke, timer ' + timer.label + ' mulai.', 'happy', 2500, 'うん、タイマー、スタート！');
 }
@@ -3697,7 +3801,7 @@ function finishTimer() {
   peekReveal(); wakeUp(true); lastInteract = performance.now();
   moodAdd('timer', 2, 4); chime(); fx('✨', 4); playGesture('cheer');
   let msg, jp, next = false;
-  if (t.pomo === 'work') { pomoCount++; msg = 'Sesi fokus #' + pomoCount + ' selesai! Istirahat 5 menit dulu ya.'; jp = 'フォーカス、おわり！五分だけ休憩しよう。'; next = true; }
+  if (t.pomo === 'work') { pomoCount++; try { focusLog(t.min || 25); } catch { /* abaikan */ } msg = 'Sesi fokus #' + pomoCount + ' selesai! Istirahat 5 menit dulu ya.'; jp = 'フォーカス、おわり！五分だけ休憩しよう。'; next = true; }
   else if (t.pomo === 'break') { msg = 'Istirahat selesai. Siap lanjut fokus lagi?'; jp = '休憩おわり。また頑張れる？'; }
   else { msg = 'Timer ' + t.label + ' selesai!'; jp = 'タイマー、終わったよ！'; }
   addStamp(logAdd('iris', '⏱ ' + msg));
@@ -4273,7 +4377,7 @@ function onActivity(min) {
   lastBreakAt = min;
   const [id, jp] = BREAK_LINES[Math.floor(Math.random() * BREAK_LINES.length)](min);
   say(id, 'neutral', 7000, jp, { ambient: true });
-  logAuto('☕ ' + id);
+  logAuto('☕ ' + id, jp, 'neutral');
   fx('☕', 2);
 }
 if (window.companion && typeof window.companion.onActivity === 'function') window.companion.onActivity(onActivity);
@@ -4433,11 +4537,14 @@ function funRemember(t) {
   try { localStorage.setItem(FUN_HIST_KEY, JSON.stringify(funHist)); } catch { /* abaikan */ }
 }
 /* v38: ucapan otomatis (fun fact, pengingat istirahat, jam) ikut ditulis di panel chat, walau panel sedang tertutup */
-function logAuto(text) { irisBlock = null; addStamp(logAdd('iris', text)); }
+function logAuto(text, jp, emo) {
+  if (!jp) { irisBlock = null; addStamp(logAdd('iris', text)); return; }
+  const prev = irisReplyText; irisBlock = null; logIris(text, jp, emo || 'neutral'); irisBlock = null; irisReplyText = prev;   // v89: ucapan otomatis yang punya kalimat Jepang ikut membawa tombol putar suara
+}
 function funShow(id, jp) {
   funRemember(id);
   say('💡 Fun fact: ' + id, 'happy', 11000, '豆知識だよ。' + jp, { force: true, ambient: true });
-  logAuto('💡 Fun fact: ' + id);
+  logAuto('💡 Fun fact: ' + id, '豆知識だよ。' + jp, 'happy');
   fx('💡', 1);
 }
 function funSayBuiltin(manual) {
@@ -4631,7 +4738,7 @@ function timeJp(d) {
 function sayTime() {
   const d = new Date();
   say(`Sekarang jam ${pad2(d.getHours())}.${pad2(d.getMinutes())}.`, 'neutral', 4500, timeJp(d), { ambient: true });
-  logAuto(`🕐 Sekarang jam ${pad2(d.getHours())}.${pad2(d.getMinutes())}.`);
+  logAuto(`🕐 Sekarang jam ${pad2(d.getHours())}.${pad2(d.getMinutes())}.`, timeJp(d), 'neutral');
 }
 function setHourly(arg) {
   const a = arg.trim().toLowerCase();
@@ -4651,6 +4758,72 @@ function checkHour() {
   sayTime();
 }
 setInterval(() => { checkAlarms(); checkHour(); }, 1000);
+/* ---- v84: sapaan proaktif ----
+   Bawaan MATI (Pengaturan "Sapaan sesuai waktu" atau /sapa nyala|mati|sekarang). Satu kalimat tetap (tanpa model, tanpa server) per slot waktu per hari:
+   pagi 05-10, siang 11:30-13:30, sore 16-18, malam 21-23, larut 23-04 (hanya "jangan begadang"). Syarat: tidak saat mode fokus, tidur, bicara, rekaman, suara dibisukan,
+   chat terbuka, sedang mengetik, atau ada lampiran; jarak minimal 90 menit antar sapaan; tidak dalam 20 detik pertama setelah overlay dibuka. Kalau syarat belum terpenuhi dicoba lagi tiap 30 detik
+   sampai slotnya lewat. Slot yang sudah disapa dicatat di localStorage 'iris.greet' ({tanggal, slot: [..], last}); hanya nama slot dan jam, tanpa isi apa pun. */
+const GREET_SLOTS = [
+  { id: 'pagi', from: [5, 0], to: [10, 59], lines: [
+    ['Selamat pagi! Semoga hari ini lancar.', 'おはよう！今日もいい一日になるといいね。'],
+    ['Pagi! Jangan lupa sarapan ya.', 'おはよう！朝ごはん、忘れずにね。'] ] },
+  { id: 'siang', from: [11, 30], to: [13, 30], lines: [
+    ['Sudah waktunya makan siang. Jangan sampai terlewat ya.', 'お昼の時間だよ。ちゃんと食べてね。'],
+    ['Siang! Istirahat dulu sambil makan, yuk.', 'お昼だね。ごはん休憩にしよう。'] ] },
+  { id: 'sore', from: [16, 0], to: [18, 0], lines: [
+    ['Sudah sore. Minum air dulu, yuk.', 'もう夕方だね。お水を飲もう。'],
+    ['Sore! Regangkan badan sebentar, ya.', '夕方だよ。ちょっと体を伸ばそう。'] ] },
+  { id: 'malam', from: [21, 0], to: [22, 59], lines: [
+    ['Sudah malam. Kerjaan hari ini dicicil saja, jangan dipaksa semua.', 'もう夜だね。今日の分は無理しないでね。'],
+    ['Malam! Hari ini sudah cukup bagus, kok.', 'こんばんは。今日はよくがんばったね。'] ] },
+  { id: 'larut', from: [23, 0], to: [4, 0], lines: [
+    ['Sudah larut. Jangan begadang ya, besok capek.', 'もう遅いよ。夜更かししないでね。'],
+    ['Udah lewat tengah malam. Simpan dulu kerjaannya, tidur yuk.', '夜中だよ。そろそろ保存して寝よう。'] ] },
+];
+const GREET_GAP_MS = 90 * 60000, GREET_BOOT_MS = 20000, greetBootAt = Date.now();
+const greetKey = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+function greetLoad() {
+  try { const o = JSON.parse(localStorage.getItem('iris.greet') || '{}'); return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {}; } catch { return {}; }
+}
+function greetSlotNow(d) {   // slot yang berlaku sekarang atau null; slot lewat tengah malam (larut) dihitung ke tanggal sebelum jam 05
+  const m = d.getHours() * 60 + d.getMinutes();
+  for (const sl of GREET_SLOTS) {
+    const a = sl.from[0] * 60 + sl.from[1], b = sl.to[0] * 60 + sl.to[1];
+    if (a <= b ? (m >= a && m <= b) : (m >= a || m <= b)) return sl;
+  }
+  return null;
+}
+function greetDate(d, sl) { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); if (sl.from[0] > sl.to[0] && d.getHours() < 12) x.setDate(x.getDate() - 1); return greetKey(x); }
+function greetCheck(force) {
+  if (!SET.greetOn && !force) return;
+  const now = new Date(), sl = greetSlotNow(now);
+  if (!sl) { if (force) say('Belum ada jam sapaan sekarang. Slotnya pagi, siang, sore, malam, dan larut.', 'neutral', 4000); return; }
+  const g = greetLoad(), day = greetDate(now, sl);
+  if (!force) {
+    if (Date.now() - greetBootAt < GREET_BOOT_MS) return;
+    if (g.day === day && Array.isArray(g.slots) && g.slots.includes(sl.id)) return;
+    if (Date.now() - (Number(g.last) || 0) < GREET_GAP_MS) return;
+    const chatOpen = logEl.classList.contains('open');
+    if (quiet || asleep || playing || muted || rec || chatOpen || input.value.trim() || attachments.length || translating) return;
+  }
+  const [id, jp] = sl.lines[Math.floor(Math.random() * sl.lines.length)];
+  say(id, 'happy', 6500, jp, { ambient: true });
+  logAuto('👋 ' + id, jp, 'happy');
+  if (!force) {
+    const slots = g.day === day && Array.isArray(g.slots) ? g.slots.slice() : [];
+    slots.push(sl.id);
+    try { localStorage.setItem('iris.greet', JSON.stringify({ day, slots, last: Date.now() })); } catch { /* abaikan */ }
+  }
+}
+function setGreet(arg) {
+  const a = String(arg || '').trim().toLowerCase();
+  if (a === 'sekarang') { greetCheck(true); return; }
+  SET.greetOn = (a === 'mati' || a === 'off') ? false : (a === 'nyala' || a === 'on') ? true : !SET.greetOn;
+  saveSet(); gid('sGreet').checked = !!SET.greetOn;
+  say(SET.greetOn ? 'Oke, Iris menyapa sesuai waktu: pagi, siang, sore, malam. Sekali per waktu.' : 'Sapaan sesuai waktu dimatikan.', 'neutral', 4500,
+      SET.greetOn ? '了解、時間帯ごとに声をかけるね。' : '時間帯のあいさつ、オフにしたよ。');
+}
+setInterval(() => { try { greetCheck(false); } catch { /* abaikan */ } }, 30000);
 
 /* ---- v21: sembunyi di tepi layar (mengintip) ----
    peekMode = pengguna menyalakan mode ini (/sembunyi, menu klik kanan, atau tray); peeking = jendela sedang di tepi layar (dari main.js).
@@ -4860,6 +5033,7 @@ const HELP = [
   '/timer 10 [nama]  timer N menit',
   '/pomodoro         25 menit fokus lalu 5 istirahat',
   '/batal            batalkan timer',
+  '/statistik [reset]  jam fokus 7 hari terakhir dari sesi Pomodoro yang selesai (disimpan lokal; reset = hapus catatan)',
   '/clip             tanya isi clipboard (teks atau gambar)',
   '/tawar [nyala|mati]  tawarkan Terjemah / Rangkum / Perbaiki saat kamu menyalin teks (bawaan mati; kata sandi dan token diabaikan)',
   '/config ekspor|impor  simpan atau muat pengaturan (tema, baju, kualitas, dll.) sebagai berkas JSON di Downloads',
@@ -4886,12 +5060,14 @@ const HELP = [
   '/pantau [5-60|30|mati|sekarang]  Iris melirik layarmu di waktu acak (rentang menit, 2-120) dan berkomentar; kirim ke model, tidak disimpan (bawaan mati)',
   '/funfact [sekarang|10-30|mati]  Iris menyebut fun fact di waktu acak (5-60 menit, bawaan nyala; bisa juga diatur di Pengaturan)',
   '/funfact topik <topik>  fakta dibuat model sesuai topik (game, luar angkasa, ...); /funfact bawaan = hanya daftar bawaan; /funfact model = kembali ke buatan model',
+  '/kana [hira|kata|campur] [lengkap] [kombinasi]  kuis kana lokal: Iris menampilkan satu huruf, kamu ketik romaji-nya (10 soal per ronde; ? = lihat jawaban; /kana stop = selesai; lengkap = ikut dakuten; kombinasi = ikut きゃ, しゅ, ちょ dst.)',
   '/belajar [topik]  latihan Jepang: Iris mengucapkan satu kalimat, kamu menebak artinya',
   '/mood [reset|mati|nyala]  lihat suasana hati Iris (bertahan antarhari)',
   '/ingat <hal>      suruh Iris mengingat sesuatu (disimpan lokal)',
   '/memori           lihat yang Iris ingat',
   '/lupa <no|semua>  hapus satu hal atau semuanya',
   '/alarm HH:MM [nama]  alarm jam tertentu (/alarm = daftar, /alarm batal <no|semua>)',
+  '/sapa [nyala|mati|sekarang]  sapaan sesuai waktu (pagi, siang, sore, malam, larut), sekali per waktu dengan kalimat tetap (bawaan mati; sekarang = coba satu sapaan untuk waktu ini)',
   '/jam [nyala|mati]  ucapkan jam sekarang (nyala/mati = ucapkan tiap jam)',
   '/sembunyi [nyala|mati|detik]  mengintip dari tepi layar (dekati atau klik untuk memunculkan); angka = berapa detik sebelum balik ke tepi (bawaan 3)',
   '/muncul           keluar dari tepi layar dan matikan mode mengintip',
@@ -4920,6 +5096,16 @@ function slashCmd(text) {
       startTimer(n, arg.replace(/^[\d.,]+\s*(menit|mnt|m)?\s*/i, '')); return true;
     }
     case 'pomodoro': case 'pomo': startTimer(25, 'Fokus', 'work'); return true;
+    case 'statistik': case 'stat': case 'stats': {
+      openChat();
+      if (/^(reset|hapus)$/i.test(arg)) {
+        try { localStorage.removeItem(FOCUS_KEY); } catch { /* abaikan */ }
+        logAdd('task', 'Catatan fokus dihapus.'); return true;
+      }
+      logAdd('task', focusReport()); return true;
+    }
+    case 'kana': kanaStart(arg); return true;
+    case 'sapa': setGreet(arg); return true;
     case 'batal': timer = null; tickTimer(); say('Timer dibatalkan.', 'neutral', 2000, 'タイマー、止めたよ。'); return true;
     case 'bisu': case 'mute': toggleMute(); return true;
     case 'fokus': setQuiet(!quiet); return true;

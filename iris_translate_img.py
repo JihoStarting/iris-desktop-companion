@@ -1,4 +1,4 @@
-"""Terjemah layar berupa GAMBAR (v73; v75: Jepang/Inggris/auto; v77: penyaring sampah OCR + teks hasil untuk konteks chat; v78: font Jepang untuk nama sisa): screenshot dikembalikan dengan teks sumber diganti teks Indonesia di posisinya.
+"""Terjemah layar berupa GAMBAR (v73; v75: Jepang/Inggris/auto; v77: penyaring sampah OCR + teks hasil untuk konteks chat; v78: font Jepang untuk nama sisa; v90-v92: terjemah paragraf panjang lebih andal, ulang dengan jeda bila model menolak, laporan otomatis iris_tl_last.txt): screenshot dikembalikan dengan teks sumber diganti teks Indonesia di posisinya.
 
 Alur: OCR (teks + kotak posisi) -> kelompokkan baris jadi blok -> terjemahkan per blok lewat LLM (teks saja)
       -> tutup teks asli dengan warna latar -> tulis teks Indonesia di kotak yang sama (Pillow).
@@ -13,7 +13,9 @@ Pengaturan .env (semua opsional):
   IRIS_TL_FONT=C:\\Windows\\Fonts\\segoeui.ttf
   IRIS_TL_MAX_BLOCKS=120
   IRIS_TL_MULTIPASS=1        (0 = matikan OCR pass cadangan negatif/kontras; lebih cepat)
-  IRIS_TL_DEBUG=1            (simpan iris_tl_debug.png dan .json: kotak OCR hijau/merah + teks terbaca)
+  IRIS_TL_DEBUG=1            (simpan juga iris_tl_debug.png: kotak OCR hijau/merah). v92: iris_tl_debug.json dan iris_tl_last.txt SELALU ditulis tiap terjemah (ringkasan, waktu, alasan gagal, log tiap permintaan model)
+  IRIS_TL_PAR=2              (v91: jumlah permintaan model yang boleh jalan bersamaan; turunkan ke 1 bila 9Router sering menolak/429)
+  IRIS_TL_BUDGET=100         (v90: detik maksimum untuk putaran ulang terjemah)
 
 Modul ini tidak mengimpor apa pun dari server.py. `complete` (pemanggil LLM) diberikan oleh pemanggil, jadi bisa diuji sendiri.
 """
@@ -25,6 +27,7 @@ import io
 import json
 import os
 import re
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -135,13 +138,14 @@ def encode_data_url(img: Image.Image, quality: int = 90) -> str:
 # ----------------------------------------------------------------------------
 # OCR
 # ----------------------------------------------------------------------------
+_GLYPH_RE = re.compile(r"[\u25a0-\u25ff]")   # v90: bulatan radio, kotak centang, dll. menempel di label dan lolos sebagai "teks"
 _NOISE_TOK = re.compile(r"^[0OoDQIl|\\/_\-\.,:;'\"`~^*#<>()\[\]{}\u25a1\u25cb\u25cf\u3000\u00b7]+$")
 
 
 def _denoise(text: str, lang: str) -> str:
     """v77: ikon, avatar, dan gambar sering terbaca winocr sebagai \"0000 wo 0 0 on0\". Buang token sampah (hanya 0/O/o/l/|/simbol)
     dan, untuk bahasa Jepang, token Latin pendek yang diapit sampah. Hasil kosong = baris dibuang seluruhnya."""
-    toks = [t for t in (text or "").split() if not _NOISE_TOK.match(t)]
+    toks = [t for t in _GLYPH_RE.sub(" ", text or "").split() if not _NOISE_TOK.match(t)]
     if lang == "ja":
         # serpihan ikon di baris Jepang: huruf kecil <= 3 (wo, on, bi, gua) atau campuran angka dan huruf (0n0, b0).
         # Singkatan huruf besar (BGM, PC, HP) dan kata Latin >= 4 huruf tetap dipertahankan.
@@ -307,6 +311,34 @@ def filter_noise(lines: list[Line], lang: str) -> tuple[list[Line], int]:
     return out, dropped
 
 
+def merge_row_fragments(lines: list[Line]) -> list[Line]:
+    """v90: potongan baris yang sebaris dan nyaris bersambung digabung lagi. Pass OCR cadangan atau pemecahan celah sering menyisakan
+    separuh baris sebagai blok sendiri: terjemahannya menimpa separuh baris, sisanya tetap Jepang. Celah >= 0,8x tinggi tidak digabung
+    (tombol dan label di sebelahnya, kolom tabel)."""
+    ls = list(lines)
+    while True:
+        found = None
+        for i, a in enumerate(ls):
+            for j, b in enumerate(ls):
+                if i == j or b.x < a.x:
+                    continue
+                oy = min(a.y + a.h, b.y + b.h) - max(a.y, b.y)
+                gap = b.x - (a.x + a.w)
+                if oy >= 0.6 * min(a.h, b.h) and -2 <= gap <= 0.8 * max(a.h, b.h) and 0.5 <= a.h / max(1, b.h) <= 2.0:
+                    found = (i, j)
+                    break
+            if found:
+                break
+        if not found:
+            return ls
+        i, j = found
+        a, b = ls[i], ls[j]
+        x, y = min(a.x, b.x), min(a.y, b.y)
+        r_, b_ = max(a.x + a.w, b.x + b.w), max(a.y + a.h, b.y + b.h)
+        ls[i] = Line(_clean_jp(a.text + " " + b.text), x, y, r_ - x, b_ - y)
+        del ls[j]
+
+
 async def _ocr_lines_raw(img: Image.Image, lang: str = "ja") -> tuple[list[Line], str]:
     backend = os.getenv("IRIS_TL_OCR", "auto").strip().lower() or "auto"
     problems: list[str] = []
@@ -394,30 +426,107 @@ def _parse_json_array(text: str) -> list:
     return data
 
 
+def _parse_items(text: str) -> list:
+    """v90: balasan model yang terpotong (batas token) tetap menghasilkan objek yang sudah lengkap, bukan gagal seluruhnya."""
+    text = re.sub(r"^```(?:json)?|```$", "", (text or "").strip(), flags=re.M).strip()
+    try:
+        return _parse_json_array(text)
+    except Exception:
+        pass
+    dec = json.JSONDecoder()
+    items: list = []
+    pos = 0
+    while True:
+        a = text.find("{", pos)
+        if a < 0:
+            break
+        try:
+            obj, end = dec.raw_decode(text, a)
+        except ValueError:
+            pos = a + 1
+            continue
+        if isinstance(obj, dict) and "id" in obj:
+            items.append(obj)
+        pos = end
+    if not items:
+        raise ValueError("balasan bukan JSON array")
+    return items
+
+
+# tanda baca lebar penuh dan simbol bentuk tidak ada di font Latin (tampil sebagai kotak kosong): ganti atau buang
+_TR_MAP = {c: chr(c - 0xFEE0) for c in range(0xFF01, 0xFF5F)}
+_TR_MAP.update({0x3000: " ", 0x300C: '"', 0x300D: '"', 0x300E: '"', 0x300F: '"', 0x3010: "[", 0x3011: "]", 0x301C: "~", 0x30FB: "\u00b7", 0x3001: ",", 0x3002: "."})
+_TR_DROP = re.compile(r"[\u25a0-\u25ff]")
+
+
+def _clean_tr(t: str) -> str:
+    t = _TR_DROP.sub("", (t or "").translate(_TR_MAP))
+    return re.sub(r"\s{2,}", " ", t).strip()
+
+
+_LAST: dict = {"why": {}, "errors": 0, "err_msgs": [], "reqs": []}   # v90: alasan blok yang tidak terjemah pada panggilan terakhir (untuk log dan debug)
+
+
 async def translate_blocks(blocks: list[Block], complete, lang: str = "ja") -> dict[int, str]:
-    """Kembalikan {indeks_blok: terjemahan}. Blok yang gagal diterjemahkan tidak ada di hasil (dibiarkan asli)."""
+    """Kembalikan {indeks_blok: terjemahan}. Blok yang gagal diterjemahkan tidak ada di hasil (dibiarkan asli).
+    v90: batch lebih kecil (paragraf panjang membuat balasan JSON terlalu besar/terpotong), paralel dibatasi, balasan terpotong
+    tetap dipakai sebagian, putaran ulang makin kecil (sampai 2 blok), dan alasan gagal per blok dicatat di _LAST['why']."""
     out: dict[int, str] = {}
-    batches: list[list[int]] = []
-    cur: list[int] = []
-    size = 0
-    for i, b in enumerate(blocks):
-        n = len(b.text)
-        if cur and (len(cur) >= 40 or size + n > 3500):
+    why: dict[int, str] = {}
+    errors: list = []
+    _LAST["reqs"] = []
+    _LAST["why"] = {}
+    sem = asyncio.Semaphore(max(1, int(os.getenv("IRIS_TL_PAR", "2") or 2)))
+    t_start = time.monotonic()
+    budget = float(os.getenv("IRIS_TL_BUDGET", "100") or 100)
+
+    def make_batches(idx_list: list[int], max_n: int, max_chars: int) -> list[list[int]]:
+        batches: list[list[int]] = []
+        cur: list[int] = []
+        size = 0
+        for i in idx_list:
+            n = len(blocks[i].text)
+            if cur and (len(cur) >= max_n or size + n > max_chars):
+                batches.append(cur)
+                cur, size = [], 0
+            cur.append(i)
+            size += n
+        if cur:
             batches.append(cur)
-            cur, size = [], 0
-        cur.append(i)
-        size += n
-    if cur:
-        batches.append(cur)
+        return batches
 
     async def run(idx: list[int], extra: str = ""):
         payload = json.dumps([{"id": i, "t": blocks[i].text} for i in idx], ensure_ascii=False)
         system = TL_SYSTEMS.get(lang, TL_SYSTEM) + extra
         msgs = [{"role": "system", "content": system}, {"role": "user", "content": payload}]
-        try:
-            data = _parse_json_array(await complete(msgs))
-        except Exception as e:
-            return idx, e
+        data = None
+        err: Exception | None = None
+        rec = {"n": len(idx), "chars_in": len(payload), "tries": 0, "secs": 0.0, "reply_chars": 0, "items": None, "err": None, "think": False}
+        _LAST["reqs"].append(rec)
+        for attempt in range(3):   # v91: galat sementara (429, waktu habis, jaringan) diulang dengan jeda 1,5 dan 3 detik
+            rec["tries"] = attempt + 1
+            t0 = time.monotonic()
+            try:
+                async with sem:
+                    raw = await complete(msgs)
+                rec["secs"] = round(rec["secs"] + time.monotonic() - t0, 1)
+                rec["reply_chars"] = len(raw or "")
+                rec["think"] = "<think>" in (raw or "")
+                raw = re.sub(r"<think>.*?(?:</think>|$)", "", raw or "", flags=re.S)   # v92: sisa pikiran model di dalam content
+                data = _parse_items(raw)
+                rec["items"] = len(data)
+                rec["err"] = None
+                break
+            except Exception as e:   # noqa: BLE001 (CancelledError bukan Exception, tetap lewat)
+                err = e
+                rec["secs"] = round(rec["secs"] + time.monotonic() - t0, 1)
+                rec["err"] = f"{type(e).__name__}: {str(e)[:120]}"
+                if isinstance(e, ValueError):
+                    break   # v92: balasan bukan JSON / terpotong: mengulang permintaan yang sama tidak menolong; putaran berikutnya lebih kecil
+                if attempt < 2 and time.monotonic() - t_start < budget:
+                    await asyncio.sleep(1.5 * (attempt + 1))
+        if data is None:
+            return idx, err
         got = {}
         for it in data:
             if isinstance(it, dict) and isinstance(it.get("t"), str) and it["t"].strip():
@@ -428,49 +537,63 @@ async def translate_blocks(blocks: list[Block], complete, lang: str = "ja") -> d
                 got[k] = it["t"].strip()
         return idx, got
 
-    partial: dict[int, str] = {}   # v78: terjemahan yang masih menyisakan nama berhuruf Jepang (mis. 「セルロイド」); dipakai bila font Jepang ada
-    same: set[int] = set()   # balasan identik dengan aslinya (sudah Indonesia / nama / kode): tidak digambar ulang dan tidak diulang
+    partial: dict[int, str] = {}   # v78: terjemahan yang masih menyisakan nama berhuruf Jepang; dipakai bila font Jepang ada
+    same: set[int] = set()   # balasan identik dengan aslinya (sudah Indonesia / nama / kode) atau ditandai sampah: tidak digambar ulang dan tidak diulang
 
     def accept(idx, got):
+        for i in idx:
+            if i not in got and i not in out and i not in same:
+                why[i] = "hilang dari balasan"
         for i, t in got.items():
             if i not in idx or not (0 <= i < len(blocks)):
                 continue
-            if t.strip() in ("-", "\u2014", "\u2013"):
+            t = _clean_tr(t)
+            if not t or t in ("-", "\u2014", "\u2013"):
                 same.add(i)   # v77: model menandai blok ini sampah OCR: dibiarkan apa adanya, tidak diulang
                 continue
-            if t.strip().lower() == blocks[i].text.strip().lower():
+            if t.lower() == blocks[i].text.strip().lower():
                 if lang == "ja" and JP_RE.search(blocks[i].text):
-                    continue   # kanji saja: model menganggapnya bukan Jepang dan mengembalikannya apa adanya -> ulangi, jangan dianggap selesai
+                    why[i] = "dikembalikan apa adanya"
+                    continue   # kanji saja: model menganggapnya bukan Jepang -> ulangi, jangan dianggap selesai
                 same.add(i)
-            elif not JP_RE.search(t):   # yang masih berhuruf Jepang tidak bisa digambar dengan font Latin: dianggap belum selesai
+            elif not JP_RE.search(t):
                 out[i] = t
+                why.pop(i, None)
             elif len(JP_RE.findall(t)) < 0.5 * len(JP_RE.findall(blocks[i].text)):
                 partial[i] = t   # kebanyakan sudah Indonesia, tinggal nama; cadangan
+                why[i] = "masih ada huruf Jepang"
+            else:
+                why[i] = "masih berhuruf Jepang"
 
-    errors = []
-    for idx, got in await asyncio.gather(*(run(b) for b in batches)):
-        if isinstance(got, Exception):
-            errors.append(got)
-            continue
-        accept(idx, got)
-
-    # Putaran ulang: blok yang hilang dari balasan atau masih memuat huruf Jepang, dalam batch kecil dan dengan penegasan.
     strict = (" PENTING: balas SEMUA id yang diberikan. Jangan menyisakan satu huruf Jepang pun; tulis nama dalam romaji.")
     romaji = strict + " Untuk istilah, nama, atau judul yang tidak punya padanan Indonesia, tulis cara bacanya dalam romaji (huruf Latin); jangan dikembalikan berhuruf Jepang."
-    for extra in (strict, strict, romaji):   # putaran terakhir menerima romaji supaya tidak ada blok yang tersisa berhuruf Jepang
+    # (maks blok per permintaan, maks karakter per permintaan, tambahan prompt): makin lama makin kecil
+    rounds = [(20, 2500, ""), (8, 1200, strict), (4, 800, strict), (2, 500, romaji)]
+    for n_round, (max_n, max_chars, extra) in enumerate(rounds):
         todo = [i for i in range(len(blocks)) if i not in out and i not in same]
         if not todo:
             break
-        small = [todo[k:k + 8] for k in range(0, len(todo), 8)]
-        for idx, got in await asyncio.gather(*(run(b, extra) for b in small)):
+        if n_round and time.monotonic() - t_start > budget:
+            for i in todo:
+                why.setdefault(i, "waktu habis")
+            break
+        for idx, got in await asyncio.gather(*(run(b, extra) for b in make_batches(todo, max_n, max_chars))):
             if isinstance(got, Exception):
                 errors.append(got)
+                for i in idx:
+                    why[i] = f"galat model: {type(got).__name__}"
                 continue
             accept(idx, got)
 
     if _jp_font_ok():
         for i, t in partial.items():
             out.setdefault(i, t)   # v78: lebih baik tampil dengan nama berhuruf Jepang daripada seluruh kalimat tetap Jepang
+    for i in list(why):
+        if i in out or i in same:
+            why.pop(i, None)
+    _LAST["why"] = why
+    _LAST["errors"] = len(errors)
+    _LAST["err_msgs"] = [f"{type(e).__name__}: {str(e)[:140]}" for e in errors[:3]]
     if not out and errors:
         raise TranslateImageError("llm_failed", f"Model terjemahan gagal atau balasannya tidak sesuai format ({errors[0]!r}).")
     return out
@@ -655,7 +778,7 @@ def render(img: Image.Image, blocks: list[Block], tr: dict[int, str]) -> Image.I
     return out
 
 
-def _debug_dump(img: Image.Image, blocks: list[Block], tr: dict[int, str]) -> None:
+def _debug_dump(img: Image.Image, blocks: list[Block], tr: dict[int, str], why: dict | None = None, png: bool = True) -> None:
     """IRIS_TL_DEBUG=1: simpan iris_tl_debug.png (kotak OCR: hijau = diterjemahkan, merah = tidak) dan iris_tl_debug.json."""
     try:
         d = os.getenv("IRIS_TL_DEBUG_DIR", "").strip() or os.getcwd()
@@ -666,11 +789,13 @@ def _debug_dump(img: Image.Image, blocks: list[Block], tr: dict[int, str]) -> No
             ok = i in tr
             dr.rectangle((b.x, b.y, b.r, b.b), outline=(0, 170, 0) if ok else (230, 0, 0), width=2)
             dr.text((b.x + 2, max(0, b.y - 11)), str(i), fill=(0, 0, 200), font=_font(10))
-            rows.append({"id": i, "box": [b.x, b.y, b.r, b.b], "lines": len(b.lines), "ocr": b.text, "tl": tr.get(i)})
-        dbg.save(os.path.join(d, "iris_tl_debug.png"))
+            rows.append({"id": i, "box": [b.x, b.y, b.r, b.b], "lines": len(b.lines), "ocr": b.text, "tl": tr.get(i), "why": (why or {}).get(i)})
+        if png:
+            dbg.save(os.path.join(d, "iris_tl_debug.png"))
         with open(os.path.join(d, "iris_tl_debug.json"), "w", encoding="utf-8") as f:
             json.dump(rows, f, ensure_ascii=False, indent=1)
-        print(f"[iris_tl] debug disimpan di {d}", flush=True)
+        if png:
+            print(f"[iris_tl] debug disimpan di {d}", flush=True)
     except Exception as e:   # noqa: BLE001
         print(f"[iris_tl] debug gagal: {e!r}", flush=True)
 
@@ -678,6 +803,27 @@ def _debug_dump(img: Image.Image, blocks: list[Block], tr: dict[int, str]) -> No
 # ----------------------------------------------------------------------------
 # Pintu masuk
 # ----------------------------------------------------------------------------
+def _write_last(lang: str, secs_ocr: float, secs_tl: float, n_blocks: int, n_ok: int, why: dict, status: str = "ok") -> None:
+    """v92: laporan singkat tiap jalan (iris_tl_last.txt) supaya penyebab blok gagal terlihat tanpa membuka terminal."""
+    try:
+        d = os.getenv("IRIS_TL_DEBUG_DIR", "").strip() or os.getcwd()
+        cnt = Counter(why.values())
+        lines = [f"status: {status}", f"bahasa: {lang}", f"blok: {n_blok_fmt(n_ok, n_blocks)}", f"waktu OCR: {secs_ocr:.1f} dtk; waktu terjemah (model): {secs_tl:.1f} dtk",
+                 f"model: {os.getenv('IRIS_TL_MODEL', '').strip() or '(bawaan NINEROUTER_MODEL)'}; paralel: {os.getenv('IRIS_TL_PAR', '2')}",
+                 "alasan blok gagal: " + (", ".join(f"{k} x{v}" for k, v in cnt.most_common()) or "-"), f"galat model: {_LAST.get('errors', 0)} {_LAST.get('err_msgs') or ''}", "", "permintaan ke model:"]
+        for k, r in enumerate(_LAST.get("reqs") or []):
+            lines.append(f"  #{k}: {r['n']} blok, {r['chars_in']} huruf masuk -> balasan {r['reply_chars']} huruf, {r['items']} id terbaca, {r['secs']} dtk, percobaan {r['tries']}"
+                         + (", ada <think>" if r.get("think") else "") + (f", GALAT {r['err']}" if r.get("err") else ""))
+        with open(os.path.join(d, "iris_tl_last.txt"), "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    except Exception as e:   # noqa: BLE001
+        print(f"[iris_tl] laporan gagal: {e!r}", flush=True)
+
+
+def n_blok_fmt(ok: int, total: int) -> str:
+    return f"{ok} dari {total} terjemah"
+
+
 async def translate_image(data_url: str, complete, lang: str = "ja") -> Result:
     """lang: "ja" | "en" | "auto" (Jepang dulu; kalau tidak ada teks Jepang, coba Inggris)."""
     if lang == "auto":
@@ -696,15 +842,33 @@ async def translate_image(data_url: str, complete, lang: str = "ja") -> Result:
         lang = "ja"
     nm = LANGS[lang]["name"]
     img = decode_data_url(data_url)
+    t_ocr0 = time.monotonic()
     lines, ocr_name = await ocr_lines(img, lang)
+    t_ocr = time.monotonic() - t_ocr0
     src = [l for l in lines if LANGS[lang]["re"].search(l.text)]
     src, dropped = filter_noise(src, lang)
     if not src:
         raise TranslateImageError("no_text", f"Tidak ada teks {nm} yang terbaca di layar ini.")
+    src = merge_row_fragments(src)   # v90
     blocks = group_lines(src)[: int(os.getenv("IRIS_TL_MAX_BLOCKS", "120") or 120)]
-    tr = await translate_blocks(blocks, complete, lang)
-    if os.getenv("IRIS_TL_DEBUG", "") == "1":
-        await asyncio.to_thread(_debug_dump, img, blocks, tr)
+    t_tl0 = time.monotonic()
+    try:
+        tr = await translate_blocks(blocks, complete, lang)
+    except TranslateImageError:
+        _write_last(lang, t_ocr, time.monotonic() - t_tl0, len(blocks), 0, dict(_LAST.get("why") or {}), "gagal (llm_failed)")
+        raise
+    t_tl = time.monotonic() - t_tl0
+    why = dict(_LAST.get("why") or {})
+    for i_ in range(len(blocks)):
+        if i_ not in tr:
+            why.setdefault(i_, "dilewati/sama")
+    _write_last(lang, t_ocr, t_tl, len(blocks), len(tr), {i_: why[i_] for i_ in range(len(blocks)) if i_ not in tr})
+    if len(tr) < len(blocks):   # v90: kenapa sisanya tidak terjemah (satu baris ringkas di terminal server)
+        cnt = Counter(why.get(i, "dilewati/sama") for i in range(len(blocks)) if i not in tr)
+        print(f"[iris_tl] {len(tr)}/{len(blocks)} blok; sisa: " + ", ".join(f"{k} x{v}" for k, v in cnt.most_common()) + f"; galat model x{_LAST.get('errors', 0)}", flush=True)
+        for m_ in _LAST.get("err_msgs") or []:
+            print(f"[iris_tl]   galat: {m_}", flush=True)
+    await asyncio.to_thread(_debug_dump, img, blocks, tr, why, os.getenv("IRIS_TL_DEBUG", "") == "1")
     jpf = bool(_jp_font_ok())
     drawable = {i: t for i, t in tr.items() if 0 <= i < len(blocks) and (jpf or not JP_RE.search(t))}
     if not drawable:
