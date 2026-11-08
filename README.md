@@ -24,7 +24,7 @@ Proyek ini dibuat sebagai proyek pribadi dan masih terus dikembangkan.
 - Dipublikasikan di GitHub: 5 November 2026
 - Versi terbaru: v1.0.0 (peluncur `IrisLauncher.exe`)
 - Status: aktif dikembangkan sebagai proyek pribadi
-- Terakhir diperbarui: 8 November 2026 (agen Hermes kini berjalan di sandbox Docker dan setiap tindakan berisiko meminta persetujuan lewat kartu di overlay; tombol Stop menghentikan agen Hermes; status server di peluncur dicek lewat `/ping`; VOICEVOX bisa berjalan di GPU; jeda sambung ulang WebSocket bertahap; perbaikan path berspasi; lihat [Keamanan](#keamanan) dan [Status pengujian](#status-pengujian))
+- Terakhir diperbarui: 8 November 2026 (agen Hermes kini berjalan di sandbox Docker dan setiap tindakan berisiko meminta persetujuan lewat kartu di overlay; tombol Stop menghentikan agen Hermes; status server di peluncur dicek lewat `/ping`; VOICEVOX bisa berjalan di GPU; jeda sambung ulang WebSocket bertahap; perbaikan path berspasi; terjemah layar OCR Jepang/Inggris dengan suara dan pratinjau besar; ikon tray berwarna; tawaran aksi saat menyalin; ekspor/impor konfigurasi; `/rangkum`; lihat [Keamanan](#keamanan) dan [Status pengujian](#status-pengujian))
 
 Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan belum diuji penuh. Daftarnya ada di [Status pengujian](#status-pengujian).
 
@@ -44,6 +44,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - [Perintah chat](#perintah-chat)
 - [Pintasan keyboard](#pintasan-keyboard)
 - [Bicara lewat mikrofon](#bicara-lewat-mikrofon)
+- [Terjemah layar (OCR)](#terjemah-layar-ocr)
 - [Mini-browser `/chrome`](#mini-browser-chrome)
 - [Jembatan baca-saja untuk Hermes](#jembatan-baca-saja-untuk-hermes)
 - [Kemampuan Hermes Agent](#kemampuan-hermes-agent)
@@ -108,7 +109,9 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 
 - Lampirkan gambar lewat tempel (`Ctrl+V`), tombol klip, atau seret berkas; thumbnail bisa diklik, ada penampil besar dengan zoom, Salin gambar, dan Simpan
 - **Screenshot layar** langsung jadi lampiran (tombol kamera, pintasan, atau tray)
-- **Terjemah layar**: teks Jepang di layar diucapkan dan diterjemahkan
+- **Terjemah layar**: teks Jepang atau Inggris di layar dikenali lewat OCR, diterjemahkan ke Indonesia, lalu hasilnya digambar menimpa teks asli dan dibuka di penampil besar. Iris ikut mengucapkan kalimat pembuka dan penutup. Bahasa sumber dipilih Auto, Jepang, atau Inggris lewat pil di menu; tombol berhenti membatalkan prosesnya. Lihat [Terjemah layar](#terjemah-layar-ocr)
+- **Tawaran aksi saat menyalin** (bawaan mati, `/tawar`): setelah kamu menyalin teks, muncul popup kecil Terjemah, Rangkum, atau Perbaiki. Teks yang mirip kata sandi, token, atau nomor kartu tidak pernah ditawarkan
+- **`/rangkum`**: merangkum halaman yang terbuka di `/chrome`, sebuah link, atau sebuah file
 - **Tanya clipboard**: teks atau gambar di clipboard dikirim sebagai pertanyaan
 - **Komentar layar otomatis** (`/pantau`, ditandai 👁)
 - **Bicara lewat mikrofon** (STT, opsional) dengan faster-whisper. Model, bahasa, dan kosakata bantu bisa disetel lewat `.env`; ucapan yang diawali kata kerja aksi (mis. "Cek ...", "Cari ...") tetap dijalankan sebagai tugas walau Whisper menambahkan tanda tanya, dan jawaban singkat seperti "iya" atau "lanjut aja" setelah Iris menawarkan `/agen` menjalankan tugasnya. Lihat [Bicara lewat mikrofon](#bicara-lewat-mikrofon)
@@ -132,6 +135,8 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 
 - `IrisLauncher.exe`: peluncur satu klik dengan indikator hijau per layanan. Menutup peluncur ikut mematikan semua layanan (bisa dimatikan di Pengaturan), dan menu **Keluar** di overlay bisa mematikan semuanya lewat peluncur
 - Kotak **Mesin suara VOICEVOX** (GPU atau CPU) di Pengaturan peluncur; bila folder `vv-engine` tidak ada, peluncur memakai unit `voicevox` di WSL (CPU)
+- **Ikon tray berwarna**: titik di pojok ikon hijau (semua aktif), kuning (ada yang bermasalah), merah (tidak merespons), atau abu (server Iris tidak terhubung), lengkap dengan petunjuk perbaikan satu baris di menu tray
+- **Ekspor dan impor konfigurasi** pengaturan overlay (`/config ekspor`, `/config impor`)
 - `iris-doctor.ps1`: cek kesehatan seluruh sistem
 - `iris-start.ps1` dan `iris-stop.ps1`: start dan stop berurutan, aman dijalankan berulang
 - `9router.service`: 9Router berjalan sebagai layanan systemd di WSL
@@ -164,6 +169,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 | VOICEVOX | Sintesis suara (TTS) |
 | Hermes Agent (WSL2) | Tangan dan memori: menjalankan tugas di komputer |
 | `iris_web.py` | CLI untuk membaca panel mini-browser (dipakai agen) |
+| `iris_translate_img.py` | OCR dan penggambar ulang terjemahan layar (winocr atau Tesseract) |
 
 ---
 
@@ -279,6 +285,10 @@ Semua pengaturan dibaca dari file `.env` (di folder proyek atau di folder user W
 | `IRIS_WEB_BRIDGE=1` | Nyalakan jembatan baca-saja (butuh `COMPANION_TOKEN`) |
 | `IRIS_BRIDGE_HOST`, `IRIS_BRIDGE_PORT` | Alamat jembatan baca-saja (port bawaan 8767) |
 | `IRIS_PEEK_CUT` | Seberapa banyak karakter terlihat saat mengintip |
+| `IRIS_TL_MULTIPASS=0` | Matikan OCR pass cadangan pada terjemah layar |
+| `IRIS_TL_MAX_BLOCKS` | Batas blok teks per terjemah layar (bawaan 120) |
+| `IRIS_TL_FONT_JP` | Font Jepang untuk menggambar hasil (bawaan Meiryo, Yu Gothic, atau Noto CJK) |
+| `IRIS_TL_DEBUG=1` | Simpan `iris_tl_debug.png` dan `iris_tl_debug.json` (kotak hijau diterjemahkan, merah tidak) |
 | `IRIS_HEALTH_CONNECT` | Batas sambung (detik, bawaan 1,5) per layanan saat `/health` memeriksa VOICEVOX, 9Router, dan Hermes |
 
 Membuat token untuk `COMPANION_TOKEN`:
@@ -394,7 +404,11 @@ Ketik di kotak input overlay. Ketik `/help` untuk daftar lengkap di aplikasi. Pe
 | Perintah | Fungsi |
 |---|---|
 | `/layar [tanya]` | Ambil screenshot lalu bertanya |
-| `/terjemah [catatan]` (alias `/tl`, `/translate`) | Terjemahkan teks di layar |
+| `/terjemah [auto\|ja\|en\|teks]` (alias `/tl`, `/translate`) | Terjemahkan teks di layar; tanpa argumen memakai pilihan bahasa di menu, `teks` memberi balasan teks saja |
+| `/rangkum [halaman] [fokus]` | Rangkum halaman yang terbuka di `/chrome` |
+| `/rangkum <link> [fokus]` | Rangkum sebuah link lewat Hermes (link lokal dan jaringan pribadi ditolak) |
+| `/rangkum <path penuh> [fokus]` | Rangkum sebuah file lewat Hermes (path berspasi diapit tanda kutip; di sandbox praktis hanya folder kerja agen) |
+| `/tawar [nyala\|mati]` | Tawaran aksi saat menyalin teks (bawaan mati) |
 | `/clip` | Tanya isi clipboard |
 | `/pantau` | Komentar layar otomatis (ditandai 👁) |
 | `/belajar [topik]` | Mode belajar bahasa Jepang, mis. `/belajar makanan` |
@@ -416,6 +430,7 @@ Ketik di kotak input overlay. Ketik `/help` untuk daftar lengkap di aplikasi. Pe
 | `/sembunyi` | Iris bersembunyi di tepi layar |
 | `/atas [nyala\|mati]` | Selalu di atas jendela lain |
 | `/ekspor` | Ekspor percakapan ke HTML |
+| `/config ekspor` / `/config impor` | Simpan atau muat pengaturan overlay (berkas `Iris-config_<tanggal>.json` di Downloads) |
 | `/help` | Daftar perintah di aplikasi |
 
 ---
@@ -460,6 +475,18 @@ Perintah suara:
 - Setelah Iris menawarkan `/agen` (mis. "Mau /agen buat cari info?"), ucapan "iya", "boleh", atau "lanjut aja" menjalankan tugas dengan ucapanmu sebelumnya sebagai topik. Tawaran berlaku sekitar 5 menit; "ya" saja tanpa tawaran tidak memicu apa pun.
 
 Batas: Whisper tetap bisa salah dengar total pada suara pelan atau bising, dan perintah yang salah dengar total tidak tertangkap. Cek hasil teksnya di chat (ditandai 🎤).
+
+---
+
+## Terjemah layar (OCR)
+
+Tekan `Ctrl+Alt+T`, klik "Terjemah layar" di menu, atau ketik `/terjemah`. Iris memotret layar, membaca teksnya dengan OCR, menerjemahkan ke Indonesia, menggambar hasilnya di atas teks asli, dan membukanya di penampil besar (zoom dan geser).
+
+- **Bahasa sumber:** pil **Auto / Jepang / Inggris** di bawah item menu "Terjemah layar". Auto mencoba Jepang dulu, lalu Inggris bila tidak ada huruf Jepang. Auto tidak menerjemahkan dua bahasa sekaligus. `/terjemah en`, `/terjemah ja`, atau `/terjemah auto` menimpa pilihan untuk satu kali jalan. Tujuan selalu Indonesia.
+- **OCR Inggris di Windows** butuh paket bahasa OCR Inggris (Settings, Language and region, English, Language options, OCR).
+- Teks yang sudah berbahasa Indonesia, nama, kode, dan URL dibiarkan. Blok yang terlewat diminta ulang ke model sampai 2 putaran.
+- Tombol berhenti (kotak) membatalkan OCR, terjemahan, dan suara.
+- Batas: tombol kecil, teks putih di atas gradasi, dan huruf sangat kecil masih bisa salah baca atau terlewat; halaman sangat padat dibatasi `IRIS_TL_MAX_BLOCKS` blok. Gunakan `IRIS_TL_DEBUG=1` untuk melihat blok mana yang diproses.
 
 ---
 
@@ -576,7 +603,10 @@ Fitur di bawah sudah ditulis tetapi **belum lulus uji penuh di PC**. Anggap eksp
 
 | Area | Catatan |
 |---|---|
-| Terjemah layar | Belum diuji end-to-end |
+| Terjemah layar (OCR): Jepang, Inggris, Auto, suara, pratinjau besar, tombol berhenti | Perbaikan Jepang terbukti membaik lewat screenshot nyata (8 November 2026, "udah bisa"). Mode Inggris dan Auto baru diuji dengan OCR dan model palsu; pil bahasa di menu, penampil besar, tombol berhenti, font Jepang, dan penyaring teks sampah belum dilihat di overlay. Sisa gejala: teks merah, tebal, dan tombol kecil masih terlewat |
+| Jawaban Iris soal isi terjemahan (tidak boleh mengarang) | Ditulis, belum terbukti dengan model sungguhan; pernah mengarang isi halaman |
+| Ikon tray berwarna, tawaran aksi saat menyalin, ekspor/impor konfigurasi (v80) | Lolos tes logika dan `node --check`, belum dijalankan di Electron asli; pelukis titik tray bergantung pada `nativeImage` Electron |
+| `/rangkum` halaman, link, dan file (v81) | Lolos tes logika, belum dijalankan di Electron asli. Hanya teks DOM utama yang terbaca (PDF viewer, iframe, dan konten malas tidak); perilaku model terhadap injeksi di halaman belum terbukti |
 | Bicara lewat mikrofon: penyetelan 6 Nov (model, kosakata bantu, perintah suara) | Perbaikan perilaku diuji dengan kalimat dari tangkapan layar; pemilik melaporkan tidak ada masalah. Akurasi tetap bergantung pada model dan mikrofon |
 | Mini-browser, fase 4 (pil akun, hemat RAM, tab diparkir) | Belum dites di Electron asli |
 | Tugas `/agen` ringan terasa lambat | Penyebab belum dipastikan |
@@ -598,6 +628,7 @@ Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kart
 
 Ide yang sudah disetujui atau dicatat, **belum ada kodenya**:
 
+- Statistik fokus (catatan sesi Pomodoro dan jam fokus mingguan), mini-game kana, dan sapaan proaktif
 - Skill Hermes `cek-elearning` dan skill yang memakai jembatan baca-saja
 - Memori otomatis ringan (ringkasan fakta baru yang kamu setujui dulu sebelum disimpan)
 - Auto-start bersama Windows dan skrip setup untuk PC baru
@@ -622,6 +653,7 @@ Ide yang sudah disetujui atau dicatat, **belum ada kodenya**:
 ├── index.html               # tampilan overlay: avatar, bubble, input
 ├── server.py                # backend FastAPI + WebSocket
 ├── iris_web.py              # CLI untuk membaca panel mini-browser (dipakai agen)
+├── iris_translate_img.py    # OCR dan penggambar terjemahan layar
 ├── clips.json               # daftar klip (salinan; aplikasi membaca assets/animations/clips.json)
 ├── requirements.txt         # dependency Python
 ├── package.json             # dependency Node
@@ -680,6 +712,7 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 | Perubahan `.env` tidak terbaca | Server hanya membaca `.env` saat start. Restart server dan overlay |
 | Karakter menghilang sesekali | Pemulihan WebGL otomatis dan watchdog sudah dipasang. Coba `/kualitas hemat`, lalu lihat terminal Electron (`Renderer mati`, `WebGL context hilang`) |
 | Iris lag atau RAM penuh | `/kualitas hemat`, tutup tab browser yang tidak dipakai, dan cek batas memori WSL di `.wslconfig`. `/chrome ram` menampilkan pemakaian panel |
+| Terjemah layar banyak teks tak ikut, atau muncul teks aneh | Pastikan paket bahasa OCR sumber terpasang, pilih bahasa manual di menu (bukan Auto), lalu jalankan dengan `IRIS_TL_DEBUG=1` dan lihat `iris_tl_debug.png`. Setelah mengganti `server.py` atau `iris_translate_img.py`, restart server (bukan hanya overlay) |
 | Model gambar timeout | Kurangi jumlah gambar yang dikirim atau naikkan `NINEROUTER_VISION_READ_TIMEOUT` |
 | Tombol Salin gambar gagal | Restart Iris. Handler mencoba tiga cara berurutan, termasuk lewat PowerShell |
 | Pintasan bisu tidak bekerja | Kombinasinya mungkin dipakai aplikasi lain. Terminal mencetak pintasan yang terdaftar; paksa sendiri lewat `IRIS_MUTE_KEY` |
