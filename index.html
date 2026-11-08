@@ -2393,6 +2393,18 @@ function logTask(text) {
 }
 /* v34: konfirmasi tugas agen yang berbau berbahaya. Server menahan tugasnya dan mengirim {type:'confirm', id, task, hits, ttl};
    tugas baru jalan kalau Jalankan diklik (balasan {type:'confirm', id, ok:true}). Batal, Stop, atau pesan baru = tidak ada yang dikirim ke Hermes. */
+/* v72: tombol kartu izin baru aktif setelah ARM_MS. Kartu v34 dan kartu Hermes muncul di posisi yang sama secara berurutan; klik ganda
+   atau klik yang sudah ada di jalan saat kartu muncul bisa jatuh ke "Jalankan"/"Izinkan sekali" (dugaan penyebab jawaban 1 detik pada uji 23:06
+   dan kartu batal sendiri 23:15). Tombol hanya dihidupkan kalau kartu masih terbuka dan belum dijawab. */
+const ARM_MS = 700;
+function armButtons(card, res, buttons) {
+  const list = buttons.filter(Boolean);
+  list.forEach(b => { b.disabled = true; });
+  setTimeout(() => {
+    if (card.classList.contains('closed') || res.textContent) return;
+    list.forEach(b => { b.disabled = false; });
+  }, ARM_MS);
+}
 const confirmCards = new Map();   // id -> { card, run, no, res, timer }
 function closeConfirmCard(id, text, color) {
   const c = confirmCards.get(id); if (!c) return;
@@ -2420,6 +2432,7 @@ function onConfirm(m) {
   logBody.appendChild(d);
   const timer = setTimeout(() => closeConfirmCard(m.id, 'Kedaluwarsa, kirim lagi kalau masih mau', ''), Math.max(5, Number(m.ttl) || 120) * 1000);
   confirmCards.set(m.id, { card: d, run, no, res, timer });
+  armButtons(d, res, [run, no]);   // v72
   run.addEventListener('click', () => { send({ type: 'confirm', id: m.id, ok: true }); closeConfirmCard(m.id, 'Dijalankan', '#7ee2a0'); });
   no.addEventListener('click', () => { send({ type: 'confirm', id: m.id, ok: false }); closeConfirmCard(m.id, 'Dibatalkan, tidak dikirim ke Hermes', ''); });
   if (!logEl.classList.contains('open')) openChat();   // kartunya ada di panel chat; kalau tertutup, buka supaya kelihatan
@@ -2476,6 +2489,7 @@ function onApproval(m) {
   logBody.appendChild(d);
   const timer = setTimeout(() => closeApprovalCard(id, 'Kedaluwarsa, ditolak otomatis', ''), Math.max(5, Number(m.ttl) || 120) * 1000);
   approvalCards.set(id, { card: d, ok, no, res, timer });
+  armButtons(d, res, [ok, no]);   // v72
   if (ok) ok.addEventListener('click', () => answerApproval(id, 'once'));
   no.addEventListener('click', () => answerApproval(id, 'deny'));
   if (!logEl.classList.contains('open')) openChat();   // kartunya ada di panel chat; kalau tertutup, buka supaya kelihatan
