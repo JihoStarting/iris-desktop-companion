@@ -3,7 +3,7 @@ import sys
 import unittest
 from pathlib import Path
 
-os.environ.setdefault("HERMES_WIN_HOME", "/mnt/c/Users/Axioo Pongo")
+os.environ.setdefault("HERMES_WIN_HOME", "/mnt/c/Users/Nama Pengguna")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import server
@@ -27,8 +27,8 @@ class TestPathBerspasi(unittest.TestCase):
                          "Z:\\Folder Saya\\x.txt.")
 
     def test_path_di_bawah_win_home_berspasi(self):
-        self.assertEqual(server.to_windows_paths("/mnt/c/Users/Axioo Pongo/Downloads/a.txt"),
-                         "C:\\Users\\Axioo Pongo\\Downloads\\a.txt")
+        self.assertEqual(server.to_windows_paths("/mnt/c/Users/Nama Pengguna/Downloads/a.txt"),
+                         "C:\\Users\\Nama Pengguna\\Downloads\\a.txt")
 
     def test_path_di_tengah_kalimat_aturan_lama(self):
         self.assertEqual(server.to_windows_paths("File ada di /mnt/c/Data/a.txt, silakan buka."),

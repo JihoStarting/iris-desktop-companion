@@ -24,7 +24,7 @@ Proyek ini dibuat sebagai proyek pribadi dan masih terus dikembangkan.
 - Dipublikasikan di GitHub: 5 November 2026
 - Versi terbaru: v1.0.0 (peluncur `IrisLauncher.exe`)
 - Status: aktif dikembangkan sebagai proyek pribadi
-- Terakhir diperbarui: 8 November 2026 (statistik fokus `/statistik`, kuis kana `/kana`, dan sapaan sesuai waktu `/sapa`; tombol putar suara pada ucapan otomatis; bubble menghindari menu yang terbuka; penolakan lewat kartu izin tidak lagi disampaikan Iris sebagai "gagal"; sebelumnya: agen Hermes berjalan di sandbox Docker dan setiap tindakan berisiko meminta persetujuan lewat kartu di overlay; tombol Stop menghentikan agen Hermes; status server di peluncur dicek lewat `/ping`; VOICEVOX bisa berjalan di GPU; jeda sambung ulang WebSocket bertahap; perbaikan path berspasi; terjemah layar OCR Jepang/Inggris dengan suara dan pratinjau besar; ikon tray berwarna; tawaran aksi saat menyalin; ekspor/impor konfigurasi; `/rangkum`; lihat [Keamanan](#keamanan) dan [Status pengujian](#status-pengujian))
+- Terakhir diperbarui: 10 November 2026 (perintah `/rea` untuk membedah file secara statis lewat Hermes, dengan triase lokal tanpa model; folder kerja agen bisa ditambah, mis. Downloads; terminal agen kembali di sandbox Docker tanpa jaringan; sebelumnya, 8 November 2026: statistik fokus `/statistik`, kuis kana `/kana`, dan sapaan sesuai waktu `/sapa`; tombol putar suara pada ucapan otomatis; bubble menghindari menu yang terbuka; penolakan lewat kartu izin tidak lagi disampaikan Iris sebagai "gagal"; sebelumnya: agen Hermes berjalan di sandbox Docker dan setiap tindakan berisiko meminta persetujuan lewat kartu di overlay; tombol Stop menghentikan agen Hermes; status server di peluncur dicek lewat `/ping`; VOICEVOX bisa berjalan di GPU; jeda sambung ulang WebSocket bertahap; perbaikan path berspasi; terjemah layar OCR Jepang/Inggris dengan suara dan pratinjau besar; ikon tray berwarna; tawaran aksi saat menyalin; ekspor/impor konfigurasi; `/rangkum`; lihat [Keamanan](#keamanan) dan [Status pengujian](#status-pengujian))
 
 Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan belum diuji penuh. Daftarnya ada di [Status pengujian](#status-pengujian).
 
@@ -45,6 +45,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - [Pintasan keyboard](#pintasan-keyboard)
 - [Bicara lewat mikrofon](#bicara-lewat-mikrofon)
 - [Terjemah layar (OCR)](#terjemah-layar-ocr)
+- [Membedah file dengan `/rea`](#membedah-file-dengan-rea)
 - [Mini-browser `/chrome`](#mini-browser-chrome)
 - [Jembatan baca-saja untuk Hermes](#jembatan-baca-saja-untuk-hermes)
 - [Kemampuan Hermes Agent](#kemampuan-hermes-agent)
@@ -127,7 +128,8 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - **Jembatan Hermes Agent** (`/agen`, `/agent`, `/h`): memberi tugas ke agen di WSL, lengkap dengan indikator "sedang memproses" berhitung detik, heartbeat, tombol Stop (menghentikan agen di Hermes bila `HERMES_STREAM=1`), dan batas waktu
 - **Konfirmasi tugas berbahaya**: tugas `/agen` yang berbau hapus, pindah, timpa, atau format file ditahan dulu dan muncul kartu "Iris mau menjalankan ini. Lanjut?" dengan tombol Jalankan dan Batal
 - **Persetujuan tindakan agen**: bila Hermes menandai sebuah perintah berisiko, overlay menampilkan kartu izin dengan tombol **Izinkan sekali** atau **Tolak**. Tanpa jawaban, koneksi putus, atau Stop berarti ditolak; pilihan "selalu" dan "sesi" tidak pernah ditawarkan. Bila kamu menekan Tolak, Iris menyampaikan bahwa perintah sengaja tidak dijalankan karena penolakanmu (baris `[Catatan Iris]`), bukan sebagai kegagalan agen
-- **Sandbox Docker**: terminal agen berjalan di kontainer yang hanya bisa menulis ke satu folder kerja. Tugas dengan path di luar folder itu ditolak sebelum dikirim, dan Iris memeriksa disk sendiri lalu menambahkan baris `[Verifikasi Iris]` pada hasil (karena laporan agen tidak selalu benar)
+- **Sandbox Docker**: terminal agen berjalan di kontainer tanpa jaringan yang hanya bisa menulis ke folder kerja (satu folder bawaan; bisa ditambah lewat `docker_volumes` Hermes, lihat [Keamanan](#keamanan)). Tugas `/agen` dengan path di luar folder kerja bawaan ditolak sebelum dikirim, dan Iris memeriksa disk sendiri lalu menambahkan baris `[Verifikasi Iris]` pada hasil (karena laporan agen tidak selalu benar)
+- **Bedah file** (`/rea`): Hermes membedah satu file atau folder (exe, dll, apk, jar, firmware, js) secara statis, tanpa menjalankannya. Ada mode `cepat` (hanya triase lokal, tanpa Hermes), standar, dan `dalam`. Lihat [Membedah file dengan `/rea`](#membedah-file-dengan-rea)
 - Kartu **Hasil tugas** dengan tombol Salin. Path WSL di laporan otomatis diubah menjadi path Windows, termasuk folder berspasi (`C:\Users\<user>\...`)
 - Hermes menerima konteks 10 pesan terakhir hanya bila tugas merujuk ke percakapan, dan tahu folder Windows lewat `HERMES_WIN_HOME`
 - Iris dilarang mengaku bisa membuat, mengubah, atau menghapus file di obrolan biasa; ia menyuruh memakai `/agen`. Laporan agen disampaikan netral dan bersumber
@@ -144,7 +146,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - `iris-doctor.ps1`: cek kesehatan seluruh sistem
 - `iris-start.ps1` dan `iris-stop.ps1`: start dan stop berurutan, aman dijalankan berulang
 - `9router.service`: 9Router berjalan sebagai layanan systemd di WSL
-- `.wslconfig` dengan batas memori WSL 4 GB
+- `.wslconfig` dengan batas memori WSL 4 GB dan `networkingMode=mirrored` (supaya WSL menjangkau VOICEVOX di Windows lewat `localhost`)
 
 ---
 
@@ -174,6 +176,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 | Hermes Agent (WSL2) | Tangan dan memori: menjalankan tugas di komputer |
 | `iris_web.py` | CLI untuk membaca panel mini-browser (dipakai agen) |
 | `iris_translate_img.py` | OCR dan penggambar ulang terjemahan layar (winocr atau Tesseract) |
+| `rea_triage.py` | Triase statis file untuk `/rea` (hash, jenis, header, string, indikasi kemampuan); hanya pustaka standar Python |
 
 ---
 
@@ -267,6 +270,13 @@ Semua pengaturan dibaca dari file `.env` (di folder proyek atau di folder user W
 | `HERMES_STREAM` | `1` memakai respons stream. **Disarankan `1`**: dengan ini tombol Stop memanggil `POST /v1/runs/{id}/stop` di Hermes sebelum koneksi ditutup | `0` (isi `1` di `.env`) |
 | `HERMES_WIN_HOME` | Folder user Windows dilihat dari WSL (wajib diisi per PC) | `/mnt/c/Users/<user>` |
 | `HERMES_SANDBOX` | `1` bila terminal Hermes memakai sandbox Docker: path di luar folder kerja ditolak di Iris, path dipetakan dua arah, dan hasil diverifikasi ke disk | kosong (isi `1` bila sandbox dipakai) |
+| `REA_STAGE` | `0` mematikan penyalinan otomatis file ke folder kerja agen untuk `/rea` (aktif hanya bila `HERMES_SANDBOX=1`) | `1` |
+| `REA_STAGE_MAX_MB` | Batas ukuran file (atau total folder) yang disalin untuk `/rea` | `300` |
+| `REA_DIR_MAX_FILES` | Batas jumlah berkas saat folder dikemas jadi zip untuk `/rea` | `3000` |
+| `REA_KEEP_DAYS` | Berkas di `rea-input` yang lebih tua dari ini dihapus otomatis (`0` = jangan hapus) | `7` |
+| `REA_MAX_CHARS` | Batas karakter kartu hasil `/rea` (tugas `/agen` biasa tetap lebih pendek, 3000) | `9000` |
+| `REA_REPORT_DIR` | Folder laporan penuh `/rea` | `rea-reports` di samping `server.py` |
+| `REA_RAW_ONLY` | `0` mengembalikan ceritaan ulang oleh Iris; bawaan hasil `/rea` hanya tampil sebagai kartu mentah | `1` |
 
 ### Opsional (`IRIS_*`)
 
@@ -384,6 +394,7 @@ Ketik di kotak input overlay. Ketik `/help` untuk daftar lengkap di aplikasi. Pe
 | Perintah | Fungsi |
 |---|---|
 | `/agen <tugas>` (alias `/agent`, `/h`) | Beri tugas ke Hermes Agent, misalnya `/agen sebutkan isi folder Download` |
+| `/rea [cepat\|dalam] <path> [fokus]` (alias `/reverse`) | Bedah file atau folder secara statis lewat Hermes; `cepat` hanya triase lokal tanpa Hermes. Lihat [Membedah file dengan `/rea`](#membedah-file-dengan-rea) |
 | `/chrome`, `/akun` | Mini-browser multi-akun, lihat [bagiannya](#mini-browser-chrome) |
 | `/lokal daftar` | Daftar aplikasi yang boleh dibuka; ketik nomor atau nama untuk membukanya |
 | `/status` | Tampilkan hasil `/health` (VOICEVOX, 9Router, Hermes, token) |
@@ -501,6 +512,38 @@ Tekan `Ctrl+Alt+T`, klik "Terjemah layar" di menu, atau ketik `/terjemah`. Iris 
 
 ---
 
+## Membedah file dengan `/rea`
+
+`/rea` menyuruh Hermes membedah satu file atau folder (exe, dll, apk, jar, firmware, js) secara **statis** dengan skill `reverse-engineer-anything`. File tidak pernah dijalankan, dan isi file diperlakukan sebagai data, bukan perintah. Contoh:
+
+```
+/rea "C:\Users\<user>\Downloads\setup.exe" cari URL yang dihubungi
+/rea cepat C:\Users\<user>\Downloads\app.dll
+/rea dalam D:\kerja\firmware.bin
+```
+
+Path berspasi boleh diketik tanpa kutip; kata setelah path menjadi fokus analisis. Syaratnya `HERMES_SANDBOX=1`: file di luar folder kerja agen **disalin** (bukan dipindah) ke `rea-input` di dalam folder kerja, lalu path di tugas diganti dengan path salinan.
+
+| Mode | Perintah | Cara kerja |
+|---|---|---|
+| Cepat | `/rea cepat <path>` | Hanya triase lokal Python, **tanpa Hermes**, hasil dalam hitungan detik. File dibaca langsung (hanya-baca) tanpa disalin, jadi path jaringan (UNC) ditolak |
+| Standar | `/rea <path> [fokus]` | Hermes dibekali **fakta terukur** dari triase dan diminta tidak menghitung ulang |
+| Dalam | `/rea dalam <path> [fokus]` | Seperti standar, ditambah permintaan dekompilasi atau disassembly fungsi penting, alur logika, algoritma, protokol, dan dekode string |
+
+Alias mode: `quick`, `fast`, `standard`, `deep`.
+
+- **Triase lokal** (`rea_triage.py`, tanpa model dan tanpa menjalankan file): hash (SHA-256, SHA-1, MD5), jenis file (PE, ELF, ZIP/APK/JAR/OOXML, DEX, WASM, Mach-O, PDF, skrip), entropi, header PE (arsitektur, subsystem, timestamp, ASLR/DEP/CFG, .NET, tanda tangan, bagian, import, export), header ELF, isi zip (izin Android, `Main-Class`, berkas tertanam, zip-slip), string ASCII dan UTF-16 (URL, kandidat IP, email, kunci registry, path Windows, kandidat kredensial yang disamarkan), indikasi kemampuan, dan tanda packer. Pemindaian dibatasi 32 MB pertama.
+- **Akurasi:** jawaban agen berformat terstruktur (ringkasan, arsitektur, perilaku beserta bukti, IOC, risiko, yang tidak pasti, langkah lanjut), dan klaim penting wajib menyebut bukti dengan label `TERBUKTI` atau `DUGAAN`. Kartu hasil menaruh triase di atas dan tafsiran agen di bawah.
+- **Folder:** `/rea <folder>` mengemas folder (tanpa symlink) jadi satu zip di `rea-input`. Folder kosong atau terlalu besar ditolak dengan pesan jelas.
+- **Laporan:** kartu hasil memuat sampai `REA_MAX_CHARS` karakter; laporan penuh ditulis ke `rea-reports/rea-<tanggal>-<jam>.md` dan path-nya ditempel di akhir kartu. Hasil tampil sebagai kartu mentah tanpa ceritaan ulang oleh Iris.
+- **Pembersihan:** setiap `/rea` yang menyalin file menghapus berkas lama di `rea-input` (lebih dari `REA_KEEP_DAYS`).
+
+> **Anggap hasilnya petunjuk, bukan temuan.** Triase murni statis: tanpa dekompilasi, emulasi, atau jaringan, dan "indikasi kemampuan" hanya petunjuk dari nama API (program sah juga memakainya; IP bisa saja nomor versi). Laporan agen pernah memuat klaim yang saling bertentangan pada file yang diuji. Verifikasi dengan sumber atau hash (mis. VirusTotal) sebelum menyimpulkan. Laporan berisi analisis berkas pribadimu, jadi jangan masukkan `rea-reports/` ke repositori.
+
+Batas: arsip 7z dan RAR hanya dikenali jenisnya; file di atas 32 MB hanya dipindai bagian awalnya; sandbox tanpa jaringan membuat alat yang perlu unduhan gagal; seret-lepas file ke overlay belum ada. Status uji ada di [Status pengujian](#status-pengujian).
+
+---
+
 ## Mini-browser `/chrome`
 
 Panel browser kecil di samping karakter dengan **sepuluh slot akun** yang masing-masing punya sesi login terpisah. Panel berjalan di proses terpisah dan tanpa akses ke fungsi Electron.
@@ -571,7 +614,7 @@ Hermes Agent berjalan di WSL2 dan menjadi "tangan" Iris lewat `/agen`. Kemampuan
 
 Laporan Hermes ditampilkan apa adanya di kartu "Hasil tugas". Iris menyampaikannya secara netral dan bersumber, dan hanya menyatakan berhasil bila laporan Hermes jelas menyatakannya.
 
-> **Catatan Hermes di Docker.** Setelah `systemctl --user restart hermes-gateway`, tunggu `http://127.0.0.1:8642/health` menjawab (bisa puluhan detik) sebelum mengirim `/agen`; tugas yang terlalu cepat gagal dengan "Hermes tidak aktif" atau `runtime_draining`. Kontainer sandbox berhenti sendiri setelah 300 detik tanpa aktivitas.
+> **Catatan Hermes di Docker.** Setelah `systemctl --user restart hermes-gateway`, tunggu `http://127.0.0.1:8642/health` menjawab (bisa puluhan detik) sebelum mengirim `/agen`; tugas yang terlalu cepat gagal dengan "Hermes tidak aktif" atau `runtime_draining`. Kontainer dibuat saat tugas pertama dan bisa berhenti sendiri setelah jeda (bawaan 300 detik; satu pengamatan 10 November 2026 menunjukkan kontainer masih hidup setelah 31 menit, jadi jangan mengandalkan angka ini). **Setelah mengubah `docker_volumes`, restart gateway lalu hapus kontainer lama** (`docker ps`, lalu `docker rm -f <nama>`): mount baru tidak berlaku untuk kontainer yang sudah ada.
 
 > **Tombol Stop.** Dengan `HERMES_STREAM=1`, Iris memanggil `POST /v1/runs/{id}/stop` di Hermes sebelum menutup koneksi. Diuji 7 November 2026: Hermes menjawab HTTP 200 `stopping`, status tugas `cancelled`, dan file baru berhenti terbentuk. Berhentinya tidak seketika (satu langkah yang sedang berjalan bisa selesai dulu), dan kegagalan memanggil stop hanya dicatat di terminal tanpa mengganggu pembatalan di sisi Iris. Dengan `HERMES_STREAM=0` (bawaan), Stop hanya memutus koneksi dan agen di Hermes tetap berjalan (terukur 7 November 2026). Periksa dengan [`scripts/cek-stop-hermes.py`](scripts/cek-stop-hermes.py), atau ukur perilaku tanpa stop dengan [`scripts/cek-cancel-hermes.py`](scripts/cek-cancel-hermes.py) (jalankan dari folder proyek, mis. `.\.venv\Scripts\python.exe scripts\cek-stop-hermes.py`; `cek-cancel-hermes.py` punya opsi `--skip-health`).
 
@@ -584,8 +627,8 @@ IRIS dirancang untuk berjalan lokal dan memberi agen akses ke komputermu, jadi b
 - Server hanya mendengar di `127.0.0.1`.
 - **`COMPANION_TOKEN` wajib** (minimal 16 karakter). Koneksi `/ws` dilindungi token lewat header `X-Iris-Token` (kode penolakan 1008), plus pengecekan `Origin`. Server menolak start bila token kosong atau terlalu pendek; satu-satunya pengecualian adalah `COMPANION_ALLOW_NO_TOKEN=1` untuk pengembangan. Karena agen bisa menjalankan perintah di komputermu, jangan pakai pengecualian itu untuk pemakaian sehari-hari
 - Perintah `/agen` yang berpotensi berbahaya (hapus, pindah, timpa, format file) meminta konfirmasi dulu. Daftar kata pemicu bisa disetel, `/health` menampilkan `agent_confirm`, dan konfirmasi sekali pakai kedaluwarsa dalam 120 detik. Batasnya: pemeriksaan ini hanya membaca teks permintaanmu, bukan tindakan yang dipilih agen, jadi ini jaring pengaman untuk salah ketik dan salah paham
-- **Persetujuan tindakan agen.** Perintah yang ditandai Hermes menunggu klik **Izinkan sekali** atau **Tolak** di overlay. Sistemnya gagal-aman (tanpa jawaban = tolak), hanya `once` dan `deny` yang pernah dikirim ke Hermes, dan mode persetujuan Hermes diset `manual`. Perintah yang tidak ditandai detektor Hermes tidak menghasilkan kartu
-- **Sandbox Docker** (8 November 2026). Terminal agen berjalan di kontainer; yang bisa ditulis hanya satu folder kerja dan home sandbox, sedangkan drive dan folder lain di komputermu tidak terlihat. Dengan `HERMES_SANDBOX=1`, Iris menolak tugas dengan path di luar sandbox. Batasnya: agen tetap bisa menghapus atau mengubah isi folder kerjanya, dan jaringan kontainer dimatikan (`docker_network: false`; terbukti 8 November 2026: `network=none`, DNS gagal dari dalam kontainer), jadi isi folder kerja tidak bisa dikirim keluar lewat terminal agen. Alat web bawaan Hermes berjalan di luar kontainer dan masih bisa membuka situs, sehingga jalur itu belum tertutup
+- **Persetujuan tindakan agen.** Perintah yang ditandai Hermes menunggu klik **Izinkan sekali** atau **Tolak** di overlay. Sistemnya gagal-aman (tanpa jawaban = tolak), hanya `once` dan `deny` yang pernah dikirim ke Hermes, dan mode persetujuan Hermes diset `manual`. Perintah yang tidak ditandai detektor Hermes tidak menghasilkan kartu. Detektor itu berbasis pola dan punya celah: pada uji 9 November 2026, `rm` dengan path berkutip lolos tanpa kartu, jadi kartu bukan batas yang bisa diandalkan sendirian (itulah alasan terminal agen dikurung di sandbox)
+- **Sandbox Docker** (8 November 2026). Terminal agen berjalan di kontainer; yang bisa ditulis hanya folder kerja (bawaan satu folder) dan home sandbox, sedangkan drive dan folder lain di komputermu tidak terlihat. Dengan `HERMES_SANDBOX=1`, Iris menolak tugas dengan path di luar sandbox. Batasnya: agen tetap bisa menghapus atau mengubah isi folder kerjanya, dan jaringan kontainer dimatikan (`docker_network: false`; terbukti 8 November 2026: `network=none`, DNS gagal dari dalam kontainer), jadi isi folder kerja tidak bisa dikirim keluar lewat terminal agen. Alat web bawaan Hermes berjalan di luar kontainer dan masih bisa membuka situs, sehingga jalur itu belum tertutup. **Menambah folder kerja melonggarkan kurungan.** Contoh: folder Downloads dipasang sebagai volume kedua di `docker_volumes` Hermes (10 November 2026): mount aktif dan baca terbukti, tetapi penghapusan di sana belum terbukti melewati kartu persetujuan (belum diuji dengan nama berspasi, yang memakai path berkutip). Bila perlu, pasang subfolder khusus alih-alih seluruh Downloads, hindari wildcard, dan cek hasilnya dengan `dir`. Folder tambahan belum dipetakan di Iris, jadi `/agen` di overlay tetap menolak path-nya; gunakan Hermes langsung (mis. lewat Telegram) dengan path kontainer
 - **Laporan agen tidak selalu benar.** Agen pernah melaporkan "berhasil dihapus" padahal tidak ada tindakan sama sekali. Jangan percaya laporan begitu saja; cek dengan `dir` atau `ls`. Iris menambah `[Verifikasi Iris]` hanya untuk path di folder kerja agen
 - **Injeksi prompt dari isi web.** Isi halaman diperlakukan sebagai data, bukan perintah (aturan di prompt agen dan pembersih di `iris_web.py`). Perlindungan ini bergantung pada kepatuhan model dan baru lulus 2 uji, jadi jangan menganggapnya pagar teknis
 - Kunci API dan token tidak pernah ditulis di dokumen atau chat; bila ada yang bocor, ganti dan restart layanan terkait. Jangan beri `sudo` tanpa password di WSL
@@ -626,6 +669,10 @@ Fitur di bawah sudah ditulis tetapi **belum lulus uji penuh di PC**. Anggap eksp
 | Batas tunggu stop Hermes di peluncur | Lulus 8 November 2026: chip Hermes dimatikan (4 detik) dan dinyalakan lagi (12 detik) tanpa tampak gagal; batas stop systemd 75 detik |
 | Status server di peluncur lewat `/ping` | Lulus 8 November 2026: chip server tetap Hidup saat Hermes dimatikan, dan `/ping` menjawab 2 sampai 15 ms (`/health` sekitar 2 detik saat ada layanan mati). Sisa kecil: log start masih menulis "menunggu /health" |
 | Persetujuan tindakan agen dan sandbox Docker | Izinkan sekali dan Tolak terbukti di Hermes sungguhan, satu uji per kasus; `rm` file tunggal di sandbox kini juga diuji sekali (8 November 2026: satu kartu Hermes, Izinkan sekali menghapus, Tolak menjaga file). Tes otomatis memakai Hermes palsu (28 dan 26 tes lulus) |
+| `/rea` v82 dan v83 (bedah satu file lewat Hermes, hasil sebagai kartu mentah) | Alur ujung ke ujung berjalan di overlay (10 November 2026): skill termuat dan laporan keluar sekitar 4,5 menit untuk file 496 KB, penyebab lambat belum diketahui. Laporan agen memuat klaim yang saling bertentangan, jadi anggap petunjuk. Kartu mentah tanpa ceritaan ulang (v83) belum diuji di server asli |
+| `/rea` v91 (triase lokal `rea_triage.py`, mode `cepat` / standar / `dalam`, folder, laporan penuh, pembersihan otomatis) | Lolos `py_compile`, `node --check`, dan tes fungsi di lingkungan penulis kode (PE, ELF, APK buatan, zip folder, pembersihan). **Belum diuji di overlay dengan Hermes asli**, tampilan kartu 9000 karakter belum dicek, dan kecepatan `/rea cepat` pada file besar belum diukur |
+| Folder kerja tambahan (Downloads) di sandbox | 10 November 2026: mount aktif (`RW: true`) dan baca terbukti lewat Telegram; hapus satu file umpan terlihat berhasil di Explorer, tetapi kartu persetujuan, `Test-Path`, dan uji Tolak belum dilaporkan, dan kasus path berspasi (berkutip) belum diuji |
+| Backend Docker tanpa jaringan dan WSL `mirrored` | Terbukti 9 November 2026: hapus file di luar folder kerja tidak berefek, dan Iris kembali melaporkan VOICEVOX, 9Router, dan Hermes aktif. Batas: satu uji per kasus; suara lewat terminal agen belum diuji |
 | Perlindungan injeksi prompt | Lulus 2 uji (`curl` dan file lokal), belum dengan halaman web sungguhan |
 | Tombol kartu izin yang aktif setelah 0,7 detik (cegah klik ganda) dan peringkasan hasil agen yang lebih tepat (v72) | Peringkasan hasil agen lulus 8 November 2026 (resep dirangkum, peringatan injeksi disampaikan). Tombol kartu: Tolak dan Izinkan sekali berfungsi; efek jeda 0,7 detik terhadap klik ganda belum terbukti dari log |
 | Jembatan baca-saja untuk Hermes | Kode ada, belum dites; belum ada skill Hermes yang memakainya |
@@ -640,6 +687,7 @@ Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kart
 Ide yang sudah disetujui atau dicatat, **belum ada kodenya**:
 
 - Perluasan yang sudah dicatat: statistik fokus lebih rinci (mis. jam fokus mingguan dan `/timer` biasa ikut dihitung) dan kana lanjutan (tanda panjang ー dan っ kecil)
+- `/rea`: seret-lepas file ke overlay sebagai pengganti mengetik path; pemetaan folder kerja tambahan (mis. Downloads) di `/agen` overlay
 - Ide yang menunggu keputusan: terjemah langsung (subtitle) di area layar tertentu, reaksi ke suara sistem, pencarian file bahasa alami (butuh keputusan akses folder untuk agen), dan pengingat berbasis aplikasi aktif (bentrok dengan prinsip privasi)
 - Skill Hermes `cek-elearning` dan skill yang memakai jembatan baca-saja
 - Memori otomatis ringan (ringkasan fakta baru yang kamu setujui dulu sebelum disimpan)
@@ -666,6 +714,8 @@ Ide yang sudah disetujui atau dicatat, **belum ada kodenya**:
 ├── server.py                # backend FastAPI + WebSocket
 ├── iris_web.py              # CLI untuk membaca panel mini-browser (dipakai agen)
 ├── iris_translate_img.py    # OCR dan penggambar terjemahan layar
+├── rea_triage.py            # triase statis file untuk /rea (hanya pustaka standar)
+├── rea-reports/             # laporan /rea (dibuat saat dipakai; jangan di-commit)
 ├── clips.json               # daftar klip (salinan; aplikasi membaca assets/animations/clips.json)
 ├── requirements.txt         # dependency Python
 ├── package.json             # dependency Node
@@ -734,7 +784,9 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 | Suara VOICEVOX lambat atau GPU tidak terpakai | Cek kotak **Mesin suara VOICEVOX** di Pengaturan peluncur, dan cari `DirectML (device_id=0): OK` di `iris-voicevox.err.log`. Bila unit `voicevox` di WSL masih aktif, matikan: `wsl -d Ubuntu -- systemctl --user disable --now voicevox` |
 | Server baru langsung mati dengan `Errno 10048` | Server lama masih memegang port 8765. Cek `Get-NetTCPConnection -LocalPort 8765 -State Listen`, matikan prosesnya (atau lewat peluncur), lalu start ulang |
 | Agen melapor "berhasil" tetapi file atau folder tidak berubah | Laporan agen tidak selalu benar, dan di sandbox path di luar folder kerja tidak terjangkau. Cek langsung dengan `dir`, dan kirim path penuh pada `/agen` |
-| `/agen` ditolak dengan pesan path di luar sandbox | `HERMES_SANDBOX=1` aktif: hanya folder kerja agen yang bisa disentuh. Letakkan berkasnya di sana, atau matikan sandbox sadar akan risikonya |
+| `/agen` ditolak dengan pesan path di luar sandbox | `HERMES_SANDBOX=1` aktif: hanya folder kerja bawaan agen yang bisa disentuh lewat `/agen`. Letakkan berkasnya di sana (atau pakai `/rea`, yang menyalinnya otomatis), atau matikan sandbox sadar akan risikonya. Folder tambahan di `docker_volumes` Hermes belum dipetakan di Iris |
+| Iris melapor VOICEVOX, 9Router, atau Hermes "offline" padahal hidup | Dua penyebab yang pernah terbukti (9 November 2026): WSL mode NAT tidak menjangkau `localhost` Windows (atur `networkingMode=mirrored` di `.wslconfig`, lalu `wsl --shutdown`), dan cek status lewat `curl` dari terminal agen di sandbox tanpa jaringan selalu gagal (`000`). Lihat status lewat pil V 9 H atau `/status`, bukan dari terminal agen |
+| `/rea` lambat atau menolak | Mode standar dan `dalam` memakai Hermes dan bisa memakan beberapa menit; pakai `/rea cepat` untuk triase tanpa Hermes. Penyalinan hanya jalan bila `HERMES_SANDBOX=1`; folder kosong, terlalu besar, atau path jaringan (UNC) ditolak dengan pesan jelas. Tanpa `rea_triage.py` di folder `server.py`, triase mati dan mode `cepat` ditolak |
 | Tugas agen menggantung tanpa kartu izin | Pastikan `HERMES_STREAM=1` dan `approvals.mode` Hermes `manual`; restart server dan buka ulang overlay |
 | Stop tidak menghentikan agen Hermes | Pastikan `HERMES_STREAM=1` di `.env`, restart server, dan buka ulang overlay. Satu langkah yang sedang berjalan bisa selesai dulu. Me-restart `hermes-gateway` di tengah tugas memunculkan "Server disconnected"; itu bukan hasil tombol Stop |
 | Chip Hermes tampak gagal mati | Hermes bisa butuh sampai sekitar 70 detik untuk berhenti; peluncur menunggu 75 detik. Kalau tetap tampak gagal, cek `systemctl --user status hermes-gateway` di WSL. Peluncur lama (sebelum build ulang 8 November) hanya menunggu sekitar 12 detik, jadi bangun ulang `IrisLauncher.exe` |

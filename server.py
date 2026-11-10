@@ -115,10 +115,14 @@ import os
 import random
 import re
 import secrets
+import shutil
 import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
+
+import contextvars
+import zipfile
 
 import httpx
 import uvicorn
@@ -832,6 +836,138 @@ def _under(path: str, root: str) -> bool:
     return a == b or a.startswith(b + "\\")
 
 
+# v82: /rea menyalin SATU file dari luar sandbox ke folder sandbox sebelum diserahkan ke agen.
+# Agen hanya melihat SANDBOX_WIN; tanpa ini /rea untuk file di drive lain (mis. Z:\...) ditolak. Salinan, bukan pemindahan: file asli tidak disentuh.
+# Hanya satu file biasa (bukan folder), batas ukuran REA_STAGE_MAX_MB (bawaan 300), nama salinan dibersihkan. REA_STAGE=0 mematikan.
+REA_STAGE = os.getenv("REA_STAGE", "1").strip().lower() not in ("0", "false", "off", "no")
+REA_STAGE_MAX_MB = env_float("REA_STAGE_MAX_MB", 300.0)
+REA_STAGE_SUBDIR = "rea-input"
+# v83: hasil /rea hanya tampil sebagai kartu mentah (agent_result); model Iris tidak menceritakannya ulang, karena ceritaan ulang
+# oleh model kecil mencampur bahasa dan menggeser makna (10 Nov 2026). REA_RAW_ONLY=0 mengembalikan ceritaan ulang.
+REA_RAW_ONLY = os.getenv("REA_RAW_ONLY", "1").strip().lower() not in ("0", "false", "off", "no")
+REA_DONE_LINE = "[neutral] 結果はカードに出したよ。 ||| Hasilnya ada di kartu ya. Baca yang itu, bukan ringkasanku."
+_REA_ANY_RE = re.compile(r"^\s*(?:/agen[ \t]+)?(?:Analisis file ini dengan skill reverse-engineer-anything|Triase cepat file ini \(REA lokal\)):", re.I)
+# v91: /rea cepat = triase lokal murni Python (rea_triage.py), tanpa Hermes, hitungan detik.
+_REA_QUICK_RE = re.compile(r"^\s*(?:/agen[ \t]+)?Triase cepat file ini \(REA lokal\):[ \t]*(?P<path>[A-Za-z]:[\\/][^\r\n]*?)[ \t]*$", re.I | re.M)
+REA_MAX_CHARS = int(env_float("REA_MAX_CHARS", 9000.0))          # v91: batas kartu hasil /rea (tugas lain tetap HERMES_MAX_CHARS)
+REA_KEEP_DAYS = env_float("REA_KEEP_DAYS", 7.0)                  # v91: salinan di rea-input lebih tua dari ini dihapus otomatis (0 = jangan hapus)
+REA_DIR_MAX_FILES = int(env_float("REA_DIR_MAX_FILES", 3000.0))  # v91: folder dikemas jadi zip, maksimal sekian berkas
+REA_REPORT_DIR = Path(os.getenv("REA_REPORT_DIR", "").strip() or (Path(__file__).resolve().parent / "rea-reports"))
+_rea_triage_var: "contextvars.ContextVar[str]" = contextvars.ContextVar("rea_triage", default="")
+try:
+    import rea_triage as _rt   # v91: berkas rea_triage.py di folder yang sama dengan server.py
+except Exception as _e:        # tanpa modul: /rea tetap jalan seperti v83
+    _rt = None
+    print("[WARN] rea_triage.py tidak dimuat (%r); /rea berjalan tanpa triase lokal" % (_e,), flush=True)
+_REA_TASK_RE = re.compile(r"(?m)^(?P<head>(?:/agen[ \t]+)?Analisis file ini dengan skill reverse-engineer-anything:[ \t]*)(?P<path>[A-Za-z]:[\\/][^\r\n]*?)[ \t]*$")
+
+
+def _rea_stage_copy(src: str) -> str:
+    """Sinkron (dipanggil lewat thread). Mengembalikan path Windows salinan di SANDBOX_WIN."""
+    sp = Path(src)
+    if not sp.exists():
+        raise SandboxPathError("file tidak ditemukan: " + src[:200])
+    if sp.is_dir():
+        return _rea_stage_folder(sp)   # v91: folder dikemas jadi satu zip
+    if not sp.is_file():
+        raise SandboxPathError("bukan file biasa: " + src[:200])
+    size = sp.stat().st_size
+    if size > REA_STAGE_MAX_MB * 1024 * 1024:
+        raise SandboxPathError("file %.0f MB melebihi batas salin %.0f MB (REA_STAGE_MAX_MB); salin sendiri ke %s kalau memang perlu"
+                               % (size / 1048576, REA_STAGE_MAX_MB, SANDBOX_WIN))
+    clean = re.sub(r"[^A-Za-z0-9._-]", "_", sp.name)[:80] or "file.bin"
+    tag = hashlib.sha1(str(sp.resolve()).lower().encode("utf-8", "ignore")).hexdigest()[:6]   # dua file bernama sama dari folder berbeda tidak saling timpa
+    dest_dir = Path(SANDBOX_WIN) / REA_STAGE_SUBDIR
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / (tag + "_" + clean)
+    try:
+        same = dest.exists() and dest.stat().st_size == size and int(dest.stat().st_mtime) == int(sp.stat().st_mtime)
+        if not same:
+            shutil.copy2(str(sp), str(dest))
+    except OSError as e:
+        raise SandboxPathError("gagal menyalin ke sandbox: " + str(e)[:160])
+    return str(dest)
+
+
+def _rea_cleanup() -> None:
+    """v91: hapus salinan rea-input yang lebih tua dari REA_KEEP_DAYS. Hanya menyentuh berkas biasa di folder itu."""
+    if REA_KEEP_DAYS <= 0:
+        return
+    d = Path(SANDBOX_WIN) / REA_STAGE_SUBDIR
+    if not d.is_dir():
+        return
+    cut = time.time() - REA_KEEP_DAYS * 86400
+    for f in d.iterdir():
+        try:
+            if f.is_file() and not f.is_symlink() and f.stat().st_mtime < cut:
+                f.unlink()
+        except OSError:
+            pass
+
+
+def _rea_stage_folder(sp: Path) -> str:
+    """v91: kemas folder (tanpa symlink) jadi satu zip di rea-input. Batas REA_DIR_MAX_FILES berkas dan REA_STAGE_MAX_MB total."""
+    dest_dir = Path(SANDBOX_WIN) / REA_STAGE_SUBDIR
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    clean = re.sub(r"[^A-Za-z0-9._-]", "_", sp.name)[:60] or "folder"
+    tag = hashlib.sha1(str(sp.resolve()).lower().encode("utf-8", "ignore")).hexdigest()[:6]
+    dest = dest_dir / (tag + "_" + clean + ".zip")
+    total, n = 0, 0
+    try:
+        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as z:
+            for f in sp.rglob("*"):
+                if f.is_symlink() or not f.is_file():
+                    continue
+                n += 1
+                total += f.stat().st_size
+                if n > REA_DIR_MAX_FILES:
+                    raise SandboxPathError("folder punya lebih dari %d berkas (REA_DIR_MAX_FILES); pilih subfolder yang lebih kecil" % REA_DIR_MAX_FILES)
+                if total > REA_STAGE_MAX_MB * 1024 * 1024:
+                    raise SandboxPathError("isi folder melebihi %.0f MB (REA_STAGE_MAX_MB)" % REA_STAGE_MAX_MB)
+                z.write(str(f), arcname=str(f.relative_to(sp)).replace("\\", "/"))
+    except SandboxPathError:
+        dest.unlink(missing_ok=True)
+        raise
+    except OSError as e:
+        dest.unlink(missing_ok=True)
+        raise SandboxPathError("gagal mengemas folder: " + str(e)[:160])
+    if n == 0:
+        dest.unlink(missing_ok=True)
+        raise SandboxPathError("folder kosong: " + str(sp)[:200])
+    return str(dest)
+
+
+async def rea_stage_task(task: str) -> str:
+    """Tugas /rea dengan path di luar sandbox: salin filenya ke SANDBOX_WIN dan ganti path di tugas. Selain itu tidak diubah."""
+    if not (SANDBOX_ON and REA_STAGE):
+        return task
+    m = _REA_TASK_RE.search(task)
+    if not m:
+        return task
+    src = m.group("path").strip().strip("\"'")
+    if src.startswith("\\\\"):
+        return task   # UNC: biarkan penjaga biasa menolaknya
+    await asyncio.to_thread(_rea_cleanup)
+    in_sandbox = any(_under(src, win) for _mnt, win in SANDBOX_MOUNTS)
+    if in_sandbox and Path(src).is_dir():
+        in_sandbox = False   # folder di dalam sandbox pun dikemas jadi zip supaya agen menerima satu berkas
+    if in_sandbox:
+        dest, note = src, ""
+    else:
+        dest = await asyncio.to_thread(_rea_stage_copy, src)
+        print("[INFO] /rea: salin %s -> %s" % (src, dest), flush=True)
+        note = "\n(Catatan: file asli ada di luar sandbox; yang kamu analisis adalah SALINANNYA di path di atas. Sebut path salinan ini di laporan, bukan path aslinya.)"
+        if dest.lower().endswith(".zip") and Path(src).is_dir():
+            note += "\n(Sumbernya adalah FOLDER yang dikemas jadi zip. Ekstrak ke subfolder kerja di dalam sandbox, lalu analisis isinya; mulai dari berkas terpenting.)"
+    # v91: fakta terukur dihitung Python (hash, format, import, string); disisipkan ke tugas dan disimpan untuk kartu hasil
+    if _rt is not None:
+        tri = await asyncio.to_thread(_rt.triage_text, dest, False)
+        _rea_triage_var.set(tri)
+        note += ("\n\nFAKTA TERUKUR (dihitung Python dari bytes file, boleh dipercaya; JANGAN dihitung ulang atau dibantah tanpa bukti):\n" + tri[:5500] +
+                 "\nPakai fakta ini sebagai titik awal; tugasmu adalah hal yang TIDAK bisa dihitung dari header: apa fungsi kode, alur logika, protokol, algoritma, dan arti temuan di atas.")
+    return task[:m.start()] + m.group("head") + dest + note + task[m.end():]
+
+
 def sandbox_prepare_task(task: str) -> str:
     """SANDBOX_ON: ubah path Windows sandbox di tugas jadi path kontainer; tolak path lain yang tidak terjangkau agen."""
     if not SANDBOX_ON:
@@ -1278,6 +1414,7 @@ async def ask_hermes(client: httpx.AsyncClient, task: str, context: str = "", pr
     headers = {"Content-Type": "application/json"}
     if HERMES_KEY:
         headers["Authorization"] = f"Bearer {HERMES_KEY}"
+    task = await rea_stage_task(task)   # v82: /rea menyalin file luar sandbox ke folder sandbox dulu
     task = sandbox_prepare_task(task)   # v71: tolak path di luar sandbox, petakan path sandbox (no-op kalau HERMES_SANDBOX!=1)
     task_msg = build_hermes_message(task, context, prev_note)
     payload = {
@@ -2107,6 +2244,10 @@ async def handle_agent_task(ws: WebSocket, client: httpx.AsyncClient, history: l
     phase = "ack"             # ack -> hermes -> iris (menentukan siapa yang mengirim "done" saat dibatalkan)
     maybe_running = False     # True kalau permintaan sudah terkirim dan Hermes belum terbukti selesai
     hb: asyncio.Task | None = None
+    rea_raw = False           # v83: tugas /rea berhasil, hasil hanya ditampilkan sebagai kartu mentah
+    is_rea = bool(_REA_ANY_RE.search(task))                       # v91
+    card_max = REA_MAX_CHARS if is_rea else HERMES_MAX_CHARS      # v91: laporan REA butuh ruang lebih
+    _rea_triage_var.set("")
     note_user_facts(history, task)
     await safe_send(ws, status_msg(True, "working", "Memproses tugas...", 0.0))
     try:
@@ -2122,21 +2263,48 @@ async def handle_agent_task(ws: WebSocket, client: httpx.AsyncClient, history: l
         hb = asyncio.create_task(heartbeat(ws, t0))
         try:
             denied_before = getattr(approver, "denied_n", 0)
-            raw_result = await ask_hermes(client, task, build_agent_context(history, include_note=follow), prev_note, approver)
-            result = to_windows_paths(raw_result)
-            if result:
-                result += user_deny_note(USER_NAME, getattr(approver, "denied_n", 0) - denied_before)   # v85
-                result += sandbox_verify_note(task, raw_result)   # v71: cek disk sendiri, jangan percaya laporan agen
+            qm = _REA_QUICK_RE.search(task) if (is_rea and _rt is not None) else None
+            if qm:
+                # v91: /rea cepat: tanpa Hermes. Baca file langsung (hanya-baca) dan laporkan hitungannya.
+                qp = qm.group("path").strip().strip("\"'")
+                if qp.startswith("\\\\"):
+                    raise SandboxPathError("path jaringan (UNC) tidak diterima")
+                if not Path(qp).is_file():
+                    raise SandboxPathError("/rea cepat butuh satu file yang ada: " + qp[:200])
+                raw_result = await asyncio.to_thread(_rt.triage_text, qp, False)
+                result = raw_result
+                _rea_triage_var.set("")
+            else:
+                raw_result = await ask_hermes(client, task, build_agent_context(history, include_note=follow), prev_note, approver)
+                result = to_windows_paths(raw_result)
+                if result:
+                    result += user_deny_note(USER_NAME, getattr(approver, "denied_n", 0) - denied_before)   # v85
+                    result += sandbox_verify_note(task, raw_result)   # v71: cek disk sendiri, jangan percaya laporan agen
+                    tri = _rea_triage_var.get()
+                    if is_rea and tri:
+                        result = tri + "\n\n===== ANALISIS AGEN (Hermes) =====\n" + result   # v91: fakta terukur di atas, tafsiran agen di bawah
             t_hermes = time.perf_counter() - t0
             print(f"[{stamp()}] Hermes selesai dalam {t_hermes:.1f} detik", flush=True)
             maybe_running = False
             if not result:
                 raise RuntimeError("Hermes mengirim hasil kosong")
+            card_text = result[:card_max]
+            if is_rea:
+                # v91: laporan penuh disimpan ke berkas supaya tidak terpotong oleh batas kartu
+                try:
+                    REA_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+                    rp = REA_REPORT_DIR / ("rea-%s.md" % datetime.now().strftime("%Y%m%d-%H%M%S"))
+                    rp.write_text("# Laporan /rea\n\n```\n" + task[:600] + "\n```\n\n" + result + "\n", encoding="utf-8")
+                    foot = "\n\n[Laporan lengkap: %s]" % rp
+                    card_text = result[:max(0, card_max - len(foot))] + (("\n[...dipotong...]" if len(result) > card_max - len(foot) else "") + foot)
+                except OSError as e:
+                    print("[WARN] laporan /rea gagal disimpan: %r" % (e,), flush=True)
             history.note = f"Permintaan: {task}\nHasil dari sistem: {result[:HERMES_MAX_CHARS]}"
             hist_save(history)
             history.note_at = time.time()
             # hasil mentah ke overlay supaya bisa dibaca dan disalin persis (path file, dll)
-            await safe_send(ws, {"type": "agent_result", "text": result[:HERMES_MAX_CHARS]})
+            await safe_send(ws, {"type": "agent_result", "text": card_text})
+            rea_raw = REA_RAW_ONLY and bool(_REA_ANY_RE.search(task))   # v83
             llm_text = AGENT_RESULT_PROMPT.format(
                 user=USER_NAME, task=task, result=result[:HERMES_MAX_CHARS], ack=ack_text
             )
@@ -2161,7 +2329,12 @@ async def handle_agent_task(ws: WebSocket, client: httpx.AsyncClient, history: l
             hb = None
 
         phase = "iris"
-        await handle_user_text(ws, client, history, f"(tugas) {task}", llm_text=llm_text)
+        if rea_raw:
+            # v83: tidak ada panggilan ke model Iris; satu baris penutup tetap, lalu "done" supaya overlay keluar dari keadaan sibuk
+            await process_line(ws, client, REA_DONE_LINE)
+            await safe_send(ws, {"type": "done", "interrupted": False})
+        else:
+            await handle_user_text(ws, client, history, f"(tugas) {task}", llm_text=llm_text)
     except asyncio.CancelledError:
         if phase != "iris":
             # handle_user_text belum mulai, jadi dia belum sempat mengirim "done"

@@ -1,0 +1,14 @@
+{
+  "iris": "config",
+  "v": 1,
+  "by": "KangJiho",
+  "set": {
+    "vol": "keras",
+    "tlLang": "xx",
+    "fx": false,
+    "sleepMin": 40,
+    "kunci_asing": true
+  },
+  "iris.outfit": "../../etc/passwd",
+  "iris.q": "tinggi"
+}
