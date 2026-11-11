@@ -808,7 +808,7 @@ const ARM_MIN = 0.55;    // batas lengan naik (radian dari pose T). Lengan TIDAK
 let ARM_GEST = 0;
 window.setArmGest = (v) => { ARM_GEST = Math.max(0, Math.min(1, Number(v) || 0)); console.log('ARM_GEST =', ARM_GEST); };
 const GEST_CHANCE = 0.35;            // peluang bergerak saat segmen bicara baru mulai (sebelumnya 0.55)
-const IDLE_MIN = 8, IDLE_VAR = 10;  // jeda gerakan idle acak, detik (v44: lebih sering; sebelumnya 20 + 0..20)
+const IDLE_MIN = 4, IDLE_VAR = 6;  // jeda gerakan idle acak, detik (v44: lebih sering; sebelumnya 20 + 0..20)
 const ARM_REST = 1.05;   // seberapa turun lengan dari pose T (radian). Arah (+/-) dikalibrasi otomatis.
 
 /* v43: kualitas render adaptif. Laptop lag + Iris ngilang biasanya GPU/RAM kewalahan: kanvas 2x-3x dengan antialias dan filter bayangan
@@ -1169,11 +1169,11 @@ function playGesture(name) {
    Emosi kuat lebih sering bergerak, netral jarang; kalimat galat tidak pernah; klip besar dibatasi jedanya.
    Kalau gerbang klip tidak lolos, jatuh ke gerakan prosedural kecil (kepala, mata, bahu). */
 const GATE = {
-  chance: { happy: 0.9, shy: 0.85, angry: 0.9, sad: 0.85, surprised: 1, neutral: 0.5 },   // v45: lebih sering lagi (sebelumnya 0.7 / 0.65 / 0.7 / 0.6 / 0.85 / 0.25).   // v44: peluang bergerak per kalimat, dikali GEST_CHANCE / 0.35 (sebelumnya 0.5 / 0.45 / 0.5 / 0.4 / 0.7 / 0.12)
+  chance: { happy: 0.95, shy: 0.95, angry: 0.95, sad: 0.95, surprised: 1, neutral: 0.8 },   /* v92: lebih sering lagi, netral 0.5 -> 0.8 */   // v45: lebih sering lagi (sebelumnya 0.7 / 0.65 / 0.7 / 0.6 / 0.85 / 0.25).   // v44: peluang bergerak per kalimat, dikali GEST_CHANCE / 0.35 (sebelumnya 0.5 / 0.45 / 0.5 / 0.4 / 0.7 / 0.12)
   clipShare: 1,    // v44: kalau lolos dan ada klip yang cocok: peluang memakai klip VRMA, sisanya prosedural (sebelumnya 0.7)
-  clipGap: 2,        // v44: detik minimal antar klip VRMA (sebelumnya 8)
-  idleClipShare: 0.9, // v44: saat Iris diam, peluang gerakan idle memakai klip VRMA bertag 'idle' (sisanya prosedural)
-  bigGap: 30,        // detik minimal antar klip bertanda big
+  clipGap: 1.5,        // v44: detik minimal antar klip VRMA (sebelumnya 8)
+  idleClipShare: 1, // v44: saat Iris diam, peluang gerakan idle memakai klip VRMA bertag 'idle' (sisanya prosedural)
+  bigGap: 20,        // detik minimal antar klip bertanda big
 };
 window.GATE = GATE;
 const clipLib = {};            // nama -> { action, dur, emo, big, fi, fo }
@@ -1184,11 +1184,16 @@ let lastClip = '', lastClipAt = -1e9, lastBigAt = -1e9;
    Urutan penting: yang cocok pertama dipakai. Hanya teks ucapan yang dicocokkan (bukan pikiran batin); kalimat galat tidak memicu. Ubah dari konsol: PHRASES, PHRASE_CFG.
    Uji tanpa menunggu Iris bicara: phraseTest('makasih ya'). */
 const PHRASES = [
+  { clip: 'melambai', re: /\b(halo|hai|hi|hello|dadah|bye|sampai jumpa|selamat (pagi|siang|sore|malam))\b|こんにちは|おはよう|こんばんは|じゃあね|バイバイ|またね/i },
+  { clip: 'hormat', re: /\b(maaf|permisi|salam kenal|perkenalkan|mohon)\b|ごめん|すみません|よろしく|失礼/i },
   { clip: 'tunduk', re: /\b(makasih|terima ?kasih|thanks?|thx)\b|ありがとう|感謝/i },
   { clip: 'miring', re: /\bh+m+\b|\beh\b ?[?？]|\bloh\b ?[?？]|うーん|んー|ふむ|え[?？]|えっ|えー/i },
+  { clip: 'tari_ceria', re: /\b(hore|horee+|yay|yeay|asyik|yippie|berhasil|sukses|mantap|keren banget)\b|やった|わーい|最高/i },
+  { clip: 'geleng', re: /\b(jangan|nggak boleh|tidak boleh|nggak mau|tidak mau|bukan begitu|bukan itu|salah)\b|だめ|ダメ|違う|ちがう|いやだ/i },
   { clip: 'angguk', re: /\b(iya|oke|okee*|siap|betul|setuju)\b|(?<!う)うん|はい|そうだね|了解/i },
+  { clip: 'mikir', re: /\b(mungkin|kira-kira|coba kupikir|coba pikir|sebentar ya|bentar ya|tunggu sebentar)\b|考え|ちょっと待って|たぶん|かもね/i },
 ];
-const PHRASE_CFG = { chance: 1, gap: 3 };   // chance: peluang main kalau cocok; gap: detik minimal antar gestur frasa
+const PHRASE_CFG = { chance: 1, gap: 2 };   // chance: peluang main kalau cocok; gap: detik minimal antar gestur frasa
 window.PHRASES = PHRASES; window.PHRASE_CFG = PHRASE_CFG;
 let lastPhraseAt = -1e9;
 function matchPhrase(text) {
@@ -1199,7 +1204,7 @@ function matchPhrase(text) {
 window.phraseTest = (t) => {
   const n = matchPhrase(String(t || ''));
   if (!n) { console.log('phraseTest: tidak ada frasa yang cocok'); return false; }
-  const ok = !!clipLib[n] && playClip(n);
+  const ok = !!findClip(n) && playClip(n);
   console.log('phraseTest:', n, ok ? '(diputar)' : '(klip tidak ada / sedang jalan)');
   return ok;
 };
@@ -1211,16 +1216,17 @@ function reactToSegment(emotion, isErr, seg) {
   if (seg) {                                          // v46: frasa dulu, sebelum gerbang emosi (yang dicocokkan hanya teks ucapan, bukan pikiran batin)
     const nowP = performance.now() / 1000;
     const pc = matchPhrase((seg.text || '') + ' ' + (seg.jp || ''));
-    if (pc && clipLib[pc] && nowP - lastPhraseAt > PHRASE_CFG.gap && Math.random() < PHRASE_CFG.chance && playClip(pc)) { lastPhraseAt = nowP; return; }
+    const pk = findClip(pc);
+    if (pc && pk && nowP - lastPhraseAt > PHRASE_CFG.gap && Math.random() < PHRASE_CFG.chance && playClip(pk)) { lastPhraseAt = nowP; return; }
   }
-  if (gest && gest.t < gest.dur * 0.6) return;        // jangan menimpa gerakan yang masih jalan
+  if (!Object.keys(clipLib).length && gest && gest.t < gest.dur * 0.6) return;   // v92: kalau ada klip VRMA, gerakan prosedural tidak lagi menghalangi klip        // jangan menimpa gerakan yang masih jalan
   const p = (GATE.chance[emotion] ?? GATE.chance.neutral) * (GEST_CHANCE / 0.35);
   if (Math.random() >= p) return;
   const now = performance.now() / 1000;
-  const cands = Object.keys(clipLib).filter((n) => {
-    const c = clipLib[n];
-    return c.emo.includes(emotion) && n !== lastClip && now - lastClipAt > GATE.clipGap && !(c.big && now - lastBigAt < GATE.bigGap);
-  });
+  const okClip = (n, c) => n !== lastClip && now - lastClipAt > GATE.clipGap && !(c.big && now - lastBigAt < GATE.bigGap);
+  let cands = Object.keys(clipLib).filter((n) => clipLib[n].emo.includes(emotion) && okClip(n, clipLib[n]));
+  // v92: tidak ada klip untuk emosi ini (mis. klip yang cocok baru dipakai) = pakai klip netral / idle yang kecil, jangan langsung ke gerakan prosedural
+  if (!cands.length && (emotion === 'neutral' || emotion === 'happy')) cands = Object.keys(clipLib).filter((n) => { const c = clipLib[n]; return !c.big && (c.emo.includes('neutral') || c.emo.includes('idle')) && okClip(n, c); });
   if (cands.length && Math.random() < GATE.clipShare && playClip(pick(cands))) return;
   playGesture(pickNew(GEST_BY_EMO[emotion] || GEST_BY_EMO.neutral));
 }
@@ -1287,6 +1293,8 @@ function touchReact(part) {
     clearTimeout(touchTimer);
     touchTimer = setTimeout(() => { if (!playing) setEmotion('neutral'); }, 2800);
   }
+  const tc = (TOUCH_CLIP[part] || []).map(findClip).filter(Boolean);   // v92: sentuhan memakai klip VRMA dulu
+  if (tc.length && !clipAct && playClip(pick(tc))) return;
   playGesture(pickNew(t.gest));
 }
 charBox.addEventListener('click', (e) => {
@@ -1294,6 +1302,8 @@ charBox.addEventListener('click', (e) => {
   const part = pickPart(e.clientX, e.clientY);
   if (part) { touchReact(part); touchVoice(part); return; }
   // 'wave' tanpa lengan hanya menggoyang tangan di samping badan, jadi dilewati selama lengan dimatikan
+  const rc = Object.keys(clipLib).filter((n) => n !== lastClip && clipLib[n].emo.some((e) => ['happy', 'neutral', 'shy', 'idle', 'surprised'].includes(e)));   // v92: klik acak = klip VRMA dulu
+  if (rc.length && !clipAct && playClip(pick(rc))) return;
   const names = Object.keys(GEST).filter(n => (!gest || n !== gest.name) && (ARM_GEST > 0.3 || n !== 'wave'));
   playGesture(pick(names));
 });
@@ -1732,11 +1742,44 @@ const CLIP_DIR = '/assets/animations/';
 // Bawaan kosong: tidak ada file klip yang dicari. Untuk mengaktifkan, taruh .vrma di assets/animations/ lalu isi daftar ini, mis.
 //   greet: { file: 'VRMA_02.vrma', emo: [], big: true },  peace: { file: 'VRMA_03.vrma', emo: ['happy'], big: true },
 // atau buat assets/animations/clips.json.
+/* v92: tag otomatis per NAMA FILE klip (tanpa .vrma), digabung dengan emo di clips.json (gabungan, bukan menimpa).
+   Tujuannya: klip yang ada di folder animations selalu ikut dipakai walau clips.json belum menandainya.
+   - emo kosong = hanya lewat frasa (PHRASES), sentuhan, atau playClip('nama'), tidak pernah acak.
+   - Entri clips.json yang sudah punya "emo" TIDAK digabung (dipakai apa adanya); gabung paksa: "auto": true. Matikan tag otomatis untuk satu klip: "auto": false. Matikan penemuan otomatis file: CLIP_DISCOVER = false. */
+const CLIP_AUTO = {
+  angguk:     { emo: ['neutral', 'happy', 'idle'] },
+  dagu:       { emo: [], big: true },   // 10 dtk: pose berpikir, lewat alias mikir / frasa
+  geleng:     { emo: ['angry', 'sad'] },
+  hormat:     { emo: [], big: true },
+  melambai:   { emo: [], big: true },
+  miring:     { emo: ['neutral', 'happy', 'surprised', 'idle'] },
+  tari_ceria: { emo: [], big: true },   // 9 dtk: lewat frasa (hore, yay), timer selesai, atau tambahkan "happy" di clips.json
+  tunduk:     { emo: ['sad', 'shy'] },
+};
+const CLIP_NEVER = ['duduk_iris', 'idle_loop'];   // pose duduk dan idle dasar: tidak boleh jadi klip acak
+const CLIP_ALIAS = { mikir: 'dagu', greet: 'melambai', cheer: 'tari_ceria' };   // nama yang dipakai kode -> nama file yang ada
+const TOUCH_CLIP = { head: ['miring', 'tunduk'], body: ['miring'], leftArm: ['angguk', 'miring'], rightArm: ['angguk', 'miring'], leftHand: ['melambai', 'angguk'], rightHand: ['melambai', 'angguk'] };
+let CLIP_DISCOVER = true;
+const stemOf = (f) => String(f || '').replace(/^.*[\\/]/, '').replace(/\.vrma$/i, '');
+function findClip(n) {   // nama kunci klip, atau nama file, atau alias -> kunci di clipLib ('' kalau tidak ada)
+  const one = (x) => { if (!x) return ''; if (clipLib[x]) return x; for (const k of Object.keys(clipLib)) if (clipLib[k].stem === x) return k; return ''; };
+  return one(n) || one(CLIP_ALIAS[n]);
+}
+function actOr(clipName, gestName) {   // klip VRMA kalau ada dan bebas, kalau tidak gerakan prosedural
+  const k = findClip(clipName);
+  if (k && !clipAct && playClip(k)) return;
+  playGesture(gestName);
+}
 const DEFAULT_CLIPS = {};
 async function loadClips() {
   if (!vrmaOn || !idleAction) return;
   let defs = DEFAULT_CLIPS;
   try { const r = await fetch(CLIP_DIR + 'clips.json', { cache: 'no-cache' }); if (r.ok) defs = await r.json(); } catch (_) { /* pakai default */ }
+  defs = Object.assign({}, defs);
+  if (CLIP_DISCOVER) {   // v92: file di CLIP_AUTO yang belum tercantum di clips.json ikut dimuat (yang tidak ada dilewati)
+    const have = new Set(Object.values(defs).map((c) => stemOf(c && c.file)));
+    for (const stem of Object.keys(CLIP_AUTO)) if (!have.has(stem) && !defs[stem]) defs[stem] = { file: stem + '.vrma' };
+  }
   const { VRMAnimationLoaderPlugin, createVRMAnimationClip, VRMLookAtQuaternionProxy } = await import('@pixiv/three-vrm-animation');
   ensureLookAtProxy(VRMLookAtQuaternionProxy);
   const al = new GLTFLoader();
@@ -1753,15 +1796,18 @@ async function loadClips() {
       action.setLoop(THREE.LoopOnce, 1);
       action.clampWhenFinished = true;
       const speed = cfg.speed > 0 ? cfg.speed : 1;
-      clipLib[name] = { action, dur: clip.duration / speed, speed, emo: cfg.emo || [], big: !!cfg.big, fi: cfg.fi || 0.5, fo: cfg.fo || 0.6 };
+      const stem = stemOf(cfg.file), never = CLIP_NEVER.includes(stem), au = (never || cfg.auto === false) ? null : CLIP_AUTO[stem];
+      const emo = never ? [] : (Array.isArray(cfg.emo) && cfg.auto !== true) ? cfg.emo : [...new Set([...(cfg.emo || []), ...((au && au.emo) || [])])];   // v92b: kalau clips.json sudah punya emo, dipakai apa adanya
+      clipLib[name] = { action, dur: clip.duration / speed, speed, stem, emo, big: cfg.big !== undefined ? !!cfg.big : !!(au && au.big), fi: cfg.fi || 0.5, fo: cfg.fo || 0.6 };
     } catch (e) { missing.push(cfg.file); }
   }
   const got = Object.keys(clipLib);
-  if (got.length) console.log('Klip VRMA aksi siap:', got.join(', '));
+  if (got.length) console.log('Klip VRMA aksi siap:', got.map((n) => n + ' [' + (clipLib[n].emo.join(',') || 'khusus') + ']').join(' | '));
   if (missing.length) console.warn('Klip VRMA tidak dimuat (file tidak ada / tidak terbaca):', missing.join(', '));
-  if (clipLib.greet && !quiet && !asleep) playClip('greet');   // sapaan saat muncul
+  if (findClip('greet') && !quiet && !asleep) playClip('greet');   // sapaan saat muncul
 }
 function playClip(name) {
+  name = findClip(name);
   const c = clipLib[name];
   if (!c || clipAct || !vrmaOn) return false;
   c.action.reset();
@@ -1771,6 +1817,7 @@ function playClip(name) {
   clipAct = { name, action: c.action, t: 0, dur: c.dur, fi: c.fi, fo: c.fo };
   gest = null; gestOut = null;                       // gerakan prosedural berhenti; pegas di frame() menghaluskan peralihannya
   lastClip = name; lastClipAt = performance.now() / 1000;
+  nextIdle = IDLE_MIN + Math.random() * IDLE_VAR;   // v92: jeda idle dihitung dari klip yang barusan main, ritmenya stabil
   if (c.big) lastBigAt = lastClipAt;
   return true;
 }
@@ -1799,7 +1846,7 @@ function tryIdleClip() {
   nextIdle = IDLE_MIN + Math.random() * IDLE_VAR;
   return true;
 }
-window.playClip = (n) => { if (!clipLib[n]) { console.warn('tidak ada klip:', n, '| tersedia:', Object.keys(clipLib).join(', ') || '(kosong)'); return false; } return playClip(n); };
+window.playClip = (n) => { if (!findClip(n)) { console.warn('tidak ada klip:', n, '| tersedia:', Object.keys(clipLib).join(', ') || '(kosong)'); return false; } return playClip(n); };
 window.clips = () => Object.keys(clipLib);
 
 /* ---------- v25: ganti baju ----------
@@ -2127,6 +2174,7 @@ function startThinking() {
   if (thinkIv) return;
   thinkHold = true;
   fx('❓', 1);
+  { const k = findClip('mikir'); if (k && !clipAct) playClip(k); }   // v92: pose berpikir (dagu) saat tugas agen mulai
   thinkIv = setInterval(() => {
     renderBusy();
   }, 1000);
@@ -2248,7 +2296,6 @@ function placeBubble() {
     } catch { /* abaikan */ }
   }
   bubble.style.setProperty('--bdx', Math.round(dx) + 'px'); bubble.style.setProperty('--bdy', Math.round(dy) + 'px');
-  console.log('[bubble v31b]', { mode: side ? 'samping' : (roomAbove < SIDE_MIN_ABOVE ? 'bawah-dagu/atas-mentok' : 'atas'), roomAbove: Math.round(roomAbove), dx: Math.round(dx), dy: Math.round(dy), V });
   const tail = 146 + dx;   // ekor tetap di bawah kepala: geser relatif ke tepi kanan bubble
   const ok = !side && dy === 0 && tail >= 18 && tail <= w - 34;
   bubble.classList.toggle('notail', !ok);
@@ -3812,7 +3859,7 @@ function startTimer(min, label, pomo) {
 function finishTimer() {
   const t = timer; timer = null; pill.classList.remove('show');
   peekReveal(); wakeUp(true); lastInteract = performance.now();
-  moodAdd('timer', 2, 4); chime(); fx('✨', 4); playGesture('cheer');
+  moodAdd('timer', 2, 4); chime(); fx('✨', 4); actOr('tari_ceria', 'cheer');
   let msg, jp, next = false;
   if (t.pomo === 'work') { pomoCount++; try { focusLog(t.min || 25); } catch { /* abaikan */ } msg = 'Sesi fokus #' + pomoCount + ' selesai! Istirahat 5 menit dulu ya.'; jp = 'フォーカス、おわり！五分だけ休憩しよう。'; next = true; }
   else if (t.pomo === 'break') { msg = 'Istirahat selesai. Siap lanjut fokus lagi?'; jp = '休憩おわり。また頑張れる？'; }

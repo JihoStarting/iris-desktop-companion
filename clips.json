@@ -14,7 +14,8 @@
  "geleng": {
   "file": "geleng.vrma",
   "emo": [
-   "angry"
+   "angry",
+   "sad"
   ],
   "big": false,
   "speed": 1,
@@ -27,6 +28,7 @@
    "surprised",
    "shy",
    "neutral",
+   "happy",
    "idle"
   ],
   "big": false,
@@ -46,5 +48,49 @@
   "speed": 1,
   "fi": 0.5,
   "fo": 0.7
+ },
+ "tari_ceria": {
+  "file": "tari_ceria.vrma",
+  "emo": [],
+  "big": true,
+  "speed": 1,
+  "fi": 0.6,
+  "fo": 0.8
+ },
+ "dagu": {
+  "file": "dagu.vrma",
+  "emo": [],
+  "big": true,
+  "speed": 1,
+  "fi": 0.3,
+  "fo": 0.4
+ },
+ "melambai": {
+  "file": "melambai.vrma",
+  "emo": [
+   "happy"
+  ],
+  "big": false,
+  "speed": 1,
+  "fi": 0.5,
+  "fo": 0.6
+ },
+ "hormat": {
+  "file": "hormat.vrma",
+  "emo": [
+   "sad"
+  ],
+  "big": false,
+  "speed": 1,
+  "fi": 0.5,
+  "fo": 0.6
+ },
+ "duduk_iris": {
+  "file": "duduk_iris.vrma",
+  "emo": [],
+  "big": true,
+  "speed": 1,
+  "fi": 0.6,
+  "fo": 0.8
  }
 }
