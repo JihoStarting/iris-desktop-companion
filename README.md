@@ -24,7 +24,7 @@ Proyek ini dibuat sebagai proyek pribadi dan masih terus dikembangkan.
 - Dipublikasikan di GitHub: 5 November 2026
 - Versi terbaru: v1.0.0 (peluncur `IrisLauncher.exe`)
 - Status: aktif dikembangkan sebagai proyek pribadi
-- Terakhir diperbarui: 10 November 2026 siang (`/rea` v94: celah ReDoS dan injeksi prompt lewat isi sampel ditutup, triase lokal diperluas ke ELF, PDF, OLE2, RTF, LNK, dan skrip; sebelumnya, 10 November 2026: perintah `/rea` untuk membedah file secara statis lewat Hermes, dengan triase lokal tanpa model; folder kerja agen bisa ditambah, mis. Downloads; terminal agen kembali di sandbox Docker tanpa jaringan; sebelumnya, 8 November 2026: statistik fokus `/statistik`, kuis kana `/kana`, dan sapaan sesuai waktu `/sapa`; tombol putar suara pada ucapan otomatis; bubble menghindari menu yang terbuka; penolakan lewat kartu izin tidak lagi disampaikan Iris sebagai "gagal"; sebelumnya: agen Hermes berjalan di sandbox Docker dan setiap tindakan berisiko meminta persetujuan lewat kartu di overlay; tombol Stop menghentikan agen Hermes; status server di peluncur dicek lewat `/ping`; VOICEVOX bisa berjalan di GPU; jeda sambung ulang WebSocket bertahap; perbaikan path berspasi; terjemah layar OCR Jepang/Inggris dengan suara dan pratinjau besar; ikon tray berwarna; tawaran aksi saat menyalin; ekspor/impor konfigurasi; `/rangkum`; lihat [Keamanan](#keamanan) dan [Status pengujian](#status-pengujian))
+- Terakhir diperbarui: 11 November 2026 (klip gerak VRMA dipakai jauh lebih sering: tag emosi, frasa ucapan, sentuhan, dan gerak idle memakai klip, dan lima klip seluruh badan ditambahkan; lihat [Animasi klip VRMA](#animasi-klip-vrma); sebelumnya, 10 November 2026 siang, `/rea` v94: celah ReDoS dan injeksi prompt lewat isi sampel ditutup, triase lokal diperluas ke ELF, PDF, OLE2, RTF, LNK, dan skrip; sebelumnya, 10 November 2026: perintah `/rea` untuk membedah file secara statis lewat Hermes, dengan triase lokal tanpa model; folder kerja agen bisa ditambah, mis. Downloads; terminal agen kembali di sandbox Docker tanpa jaringan; sebelumnya, 8 November 2026: statistik fokus `/statistik`, kuis kana `/kana`, dan sapaan sesuai waktu `/sapa`; tombol putar suara pada ucapan otomatis; bubble menghindari menu yang terbuka; penolakan lewat kartu izin tidak lagi disampaikan Iris sebagai "gagal"; sebelumnya: agen Hermes berjalan di sandbox Docker dan setiap tindakan berisiko meminta persetujuan lewat kartu di overlay; tombol Stop menghentikan agen Hermes; status server di peluncur dicek lewat `/ping`; VOICEVOX bisa berjalan di GPU; jeda sambung ulang WebSocket bertahap; perbaikan path berspasi; terjemah layar OCR Jepang/Inggris dengan suara dan pratinjau besar; ikon tray berwarna; tawaran aksi saat menyalin; ekspor/impor konfigurasi; `/rangkum`; lihat [Keamanan](#keamanan) dan [Status pengujian](#status-pengujian))
 
 Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan belum diuji penuh. Daftarnya ada di [Status pengujian](#status-pengujian).
 
@@ -46,6 +46,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - [Bicara lewat mikrofon](#bicara-lewat-mikrofon)
 - [Terjemah layar (OCR)](#terjemah-layar-ocr)
 - [Membedah file dengan `/rea`](#membedah-file-dengan-rea)
+- [Animasi klip VRMA](#animasi-klip-vrma)
 - [Mini-browser `/chrome`](#mini-browser-chrome)
 - [Jembatan baca-saja untuk Hermes](#jembatan-baca-saja-untuk-hermes)
 - [Kemampuan Hermes Agent](#kemampuan-hermes-agent)
@@ -74,7 +75,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - Bayangan siluet yang berubah per keadaan (diam, diangkat, mengintip, duduk), render HD (`/bayangan`)
 - Bubble di atas kepala dengan teks Indonesia, kalimat Jepang berlabel 日本語, dan garis aksen sesuai emosi. Bubble panjang bisa digulir dan tidak keluar jendela. Bubble juga bergeser ke kanan menjauhi menu, Pengaturan, Timer, dan popover lain yang sedang terbuka supaya tidak tertimpa
 - **Pikiran batin**: kadang Iris menampilkan satu baris bisikan hati berukuran kecil dan miring di atas bubble (tidak disuarakan dan tidak masuk riwayat). Saklar di Pengaturan
-- Klip gerak VRMA buatan sendiri (4 klip kecil: `angguk`, `geleng`, `miring`, `tunduk`; hanya punggung, dada, leher, dan kepala, tanpa lengan) yang diputar lewat gerbang emosi. Klip tari dan lengan belum ada
+- **Klip gerak VRMA** (9 klip di `assets/animations/`): 4 klip kecil buatan sendiri (`angguk`, `geleng`, `miring`, `tunduk`; hanya punggung, dada, leher, dan kepala) dan 5 klip seluruh badan (`dagu`, `melambai`, `hormat`, `tari_ceria`, `duduk_iris`). Diputar lewat gerbang emosi, frasa ucapan, sentuhan, dan gerak idle; lihat [Animasi klip VRMA](#animasi-klip-vrma). `duduk_iris` belum dipakai oleh `/duduk`
 - Kualitas gambar adaptif: `auto`, `tinggi`, `normal`, `hemat`. Mode auto turun sendiri kalau frame lambat (`/kualitas`)
 - Seluruh UI (menu, bubble, bar input, panel) dijaga tetap di dalam layar; jendela yang dilepas jauh dari tepi meluncur balik ke area kerja
 
@@ -86,7 +87,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - **Sembunyi di tepi layar** dan **mengintip**: dilepas dekat tepi layar, Iris langsung bersembunyi, lalu muncul lagi saat kursor menempel atau diklik (`/sembunyi`)
 - **Duduk di tepi atas jendela lain** (`/duduk`). Bawaan mati karena menyentuh privasi; yang dibaca hanya posisi dan ukuran jendela, bukan judul, nama proses, atau isinya
 - **Colek dan elus**: colek berkali-kali dibalas "geli", gumaman, lalu ngambek 10 detik. Tahan klik kiri di kepala untuk mengelus
-- Klik bagian tubuh (kepala, badan, lengan, tangan) dibalas suara dengan variasi kalimat
+- Klik bagian tubuh (kepala, badan, lengan, tangan) dibalas suara dengan variasi kalimat, dan gerak klip VRMA bila ada
 - **Menu aksi cepat** lewat klik kanan karakter, dan ikon tray untuk pengaturan
 - Bar input auto-sembunyi dengan garis petunjuk hijau yang "bernapas" (merah saat server mati, cyan saat agen bekerja)
 - **Mode fokus**: karakter dan bubble hilang, hanya garis petunjuk tipis yang tersisa, dan klik tembus
@@ -547,6 +548,56 @@ Batas: tidak ada dekompilasi, emulasi, atau parsing resource DEX; deteksi XOR ha
 
 ---
 
+## Animasi klip VRMA
+
+Selain gerak prosedural (napas, kedip, tatapan), Iris memutar klip `.vrma` dari folder `assets/animations/`. Daftar klip dan tag-nya dibaca dari `assets/animations/clips.json` saat overlay dimuat; `idle_loop.vrma` tetap menjadi animasi dasar.
+
+**Klip yang ada** (durasi diukur dari berkas)
+
+| Klip | Durasi | Menggerakkan | Tag emosi (`clips.json`) |
+|---|---|---|---|
+| `angguk` | 1,5 dtk | kepala, leher | `happy`, `neutral`, `idle` |
+| `geleng` | 1,7 dtk | kepala, leher | `angry`, `sad` |
+| `miring` | 2,2 dtk | kepala, leher | `surprised`, `shy`, `neutral`, `happy`, `idle` |
+| `tunduk` | 2,6 dtk | kepala, punggung, dada | `sad`, `shy`, `neutral`, `idle` |
+| `hormat` | 3,2 dtk | seluruh badan | `sad` |
+| `melambai` | 3,6 dtk | badan atas, lengan | `happy` |
+| `tari_ceria` | 9 dtk | seluruh badan | kosong (hanya lewat frasa, timer, sentuhan) |
+| `dagu` | 10 dtk | badan atas, lengan | kosong (pose berpikir) |
+| `duduk_iris` | 17 dtk | seluruh badan, kaki | kosong, tidak pernah acak; belum terhubung ke `/duduk` |
+
+**Kapan klip diputar**
+
+- **Saat kalimat mulai diucapkan.** Frasa dicek dulu (contoh: "halo" → `melambai`, "maaf" → `hormat`, "terima kasih" → `tunduk`, "hore" atau "berhasil" → `tari_ceria`, "jangan" atau "salah" → `geleng`, "iya" atau "oke" → `angguk`, "mungkin" atau "sebentar ya" → `dagu`, beserta padanan Jepangnya). Bila tidak ada frasa yang cocok, gerbang emosi memilih klip yang tagnya sama dengan emosi kalimat; peluang bergerak per kalimat 0,8 (netral) sampai 1 (kaget). Kalimat galat tidak memicu klip.
+- **Saat diam.** Klip bertag `idle` diputar tiap 4 sampai 10 detik. Butuh saklar **Gerakan acak** di Pengaturan menyala.
+- **Interaksi.** Sentuh kepala atau badan (`miring`, `tunduk`), sentuh lengan (`angguk`, `miring`), sentuh tangan (`melambai`, `angguk`), klik acak pada karakter, timer selesai (`tari_ceria`), tugas agen mulai (`dagu`), dan sapaan saat Iris muncul (`melambai`).
+- **Jeda.** Minimal 1,5 detik antar klip, dan klip bertanda `big` paling cepat tiap 20 detik. Klip yang sama tidak diulang berturut-turut. Klip yang sedang jalan tidak disela.
+
+**Format `clips.json`**
+
+```json
+{
+ "angguk": { "file": "angguk.vrma", "emo": ["happy", "neutral", "idle"], "big": false, "speed": 1, "fi": 0.35, "fo": 0.45 }
+}
+```
+
+| Kunci | Arti |
+|---|---|
+| `file` | nama berkas di `assets/animations/` |
+| `emo` | emosi yang boleh memicunya: `happy`, `sad`, `angry`, `surprised`, `shy`, `neutral`, dan `idle` (gerak saat diam). Emosi tambahan ikut induknya: `tease`, `smug`, `excited` → `happy`; `worried` → `sad`; `confused` → `surprised`; `sleepy` → `neutral`. Kosong = hanya lewat frasa, sentuhan, atau `playClip('nama')` |
+| `big` | klip besar, dibatasi jedanya (20 detik) |
+| `speed` | kecepatan putar |
+| `fi`, `fo` | detik masuk dan keluar (crossfade) |
+| `auto` | opsional: `false` mematikan tag otomatis, `true` menggabungkan tag otomatis dengan `emo` |
+
+Aturan tag: entri yang sudah punya `emo` dipakai **apa adanya**. Entri tanpa `emo` (atau dengan `"auto": true`) memakai tag otomatis berdasarkan nama berkas (daftar `CLIP_AUTO` di `index.html`). Berkas bernama `angguk`, `dagu`, `geleng`, `hormat`, `melambai`, `miring`, `tari_ceria`, atau `tunduk` yang belum ada di `clips.json` ikut dimuat otomatis (matikan dengan `CLIP_DISCOVER = false`). `duduk_iris` dan `idle_loop` tidak pernah masuk pilihan acak. Nama yang dipakai kode punya alias: `mikir` → `dagu`, `greet` → `melambai`, `cheer` → `tari_ceria`.
+
+**Menyetel di `index.html`:** `GATE` (peluang dan jeda), `IDLE_MIN` dan `IDLE_VAR` (jeda idle), `PHRASES` dan `PHRASE_CFG` (frasa pemicu), `TOUCH_CLIP` (klip untuk sentuhan). Uji di konsol (`Ctrl+Alt+D`): `clips()` daftar klip yang termuat, `playClip('tari_ceria')`, `phraseTest('hore')`. Saat dimuat, konsol mencetak "Klip VRMA aksi siap" beserta tag tiap klip, dan menyebut berkas yang gagal dimuat.
+
+> **Catatan.** Entri di `clips.json` yang berkasnya tidak ada tetap dicoba dimuat dan mencatat galat 404 di konsol; hapus entrinya. Perubahan 11 November 2026 lolos `node --check` dan belum diuji di overlay.
+
+---
+
 ## Mini-browser `/chrome`
 
 Panel browser kecil di samping karakter dengan **sepuluh slot akun** yang masing-masing punya sesi login terpisah. Panel berjalan di proses terpisah dan tanpa akses ke fungsi Electron.
@@ -682,6 +733,7 @@ Fitur di bawah sudah ditulis tetapi **belum lulus uji penuh di PC**. Anggap eksp
 | Tombol kartu izin yang aktif setelah 0,7 detik (cegah klik ganda) dan peringkasan hasil agen yang lebih tepat (v72) | Peringkasan hasil agen lulus 8 November 2026 (resep dirangkum, peringatan injeksi disampaikan). Tombol kartu: Tolak dan Izinkan sekali berfungsi; efek jeda 0,7 detik terhadap klik ganda belum terbukti dari log |
 | Jembatan baca-saja untuk Hermes | Kode ada, belum dites; belum ada skill Hermes yang memakainya |
 | Bubble dengan lampiran dekat tepi atas layar | Belum dites |
+| Klip VRMA lebih sering dipakai (11 November 2026: tag, frasa, sentuhan, idle, 5 klip seluruh badan) | Lolos `node --check` dan pemeriksaan isi berkas `.vrma` (durasi dan tulang yang digerakkan). **Belum diuji di overlay**: seberapa sering klip terasa pas, peralihan klip seluruh badan dari idle, dan klip yang bertumpuk dengan gerak prosedural belum dilihat |
 
 Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kartu hasil), konfirmasi `/agen` berbahaya, token `/ws`, ganti baju, tema, fun fact, alarm dan jam, mood, seret file dan lampiran gambar, ekspor, pilihan bernomor, pil status koneksi, dan peluncur, termasuk menutup peluncur dan menu Keluar yang mematikan semua layanan (`--stop-all`, dilaporkan pemilik berfungsi), serta perbaikan v46 sampai v50 (jaga UI tetap di layar, panel pindah sisi, rambut dan bayangan setengah badan; dilaporkan pemilik sudah beres), serta pikiran batin (dilaporkan pemilik aman). Dari 8 November 2026 malam, lulus di overlay: ikon tray berwarna, ekspor/impor konfigurasi (dengan tangkapan layar), tawaran aksi saat menyalin, `/rangkum`, `/statistik`, `/kana`, dan `/sapa` (dilaporkan pemilik, sebagian tanpa tangkapan layar rinci), bubble yang menghindari menu, reaksi Iris di riwayat chat, serta pesan Iris saat Tolak ditekan (dengan model sungguhan: tidak lagi menyebut "gagal"). Dari 7 November 2026: pembatalan tugas yang benar-benar menghentikan agen Hermes (HTTP 200 `stopping`, status `cancelled`) dan konversi path berspasi (`tests/test_path_berspasi.py`, 13 dari 13 tes proyek lulus).
 
@@ -699,7 +751,7 @@ Ide yang sudah disetujui atau dicatat, **belum ada kodenya**:
 - Memori otomatis ringan (ringkasan fakta baru yang kamu setujui dulu sebelum disimpan)
 - Auto-start bersama Windows dan skrip setup untuk PC baru
 - Mini-browser fase 5b dan 5c (Hermes beraksi dengan konfirmasi dan batas domain)
-- Menari mengikuti musik dan perintah `/nari` (butuh klip `.vrma` lengan)
+- Menari mengikuti musik dan perintah `/nari` (klip `tari_ceria.vrma` sudah ada; yang belum ada: deteksi musik dan perintah `/nari`), serta menghubungkan `duduk_iris.vrma` ke `/duduk`
 - Angin dari kecepatan kursor (`/angin`)
 - `/catat` dan `/todo`, statistik Pomodoro, jurnal mood harian
 - Mode jangan ganggu otomatis saat game atau aplikasi layar penuh
@@ -756,11 +808,13 @@ assets/
 ├── iris.vrm                 # model utama
 ├── Iris_winter.vrm          # model baju (opsional)
 └── animations/
-    ├── idle_loop.vrma       # animasi idle
-    └── clips.json           # daftar klip gerak (opsional)
+    ├── idle_loop.vrma       # animasi idle dasar
+    ├── clips.json           # daftar klip gerak dan tag emosi (opsional)
+    ├── angguk.vrma, geleng.vrma, miring.vrma, tunduk.vrma           # klip kecil
+    └── dagu.vrma, melambai.vrma, hormat.vrma, tari_ceria.vrma, duduk_iris.vrma   # klip seluruh badan
 ```
 
-Klip gerak sederhana bisa dibuat sendiri dengan `python scripts\buat_klip_vrma.py` dari folder proyek; skrip ini menulis `.vrma` dan `clips.json` ke `assets/animations/`.
+Klip gerak sederhana bisa dibuat sendiri dengan `python scripts\buat_klip_vrma.py` dari folder proyek; skrip ini menulis `.vrma` dan `clips.json` ke `assets/animations/`. Skrip itu dapat menimpa `clips.json`, jadi cadangkan dulu bila kamu sudah menyetel tag sendiri. Klip seluruh badan (`dagu`, `melambai`, `hormat`, `tari_ceria`, `duduk_iris`) bukan hasil skrip itu; pastikan kamu punya hak pakainya sebelum mempublikasikannya.
 
 Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 
@@ -797,6 +851,7 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 | Stop tidak menghentikan agen Hermes | Pastikan `HERMES_STREAM=1` di `.env`, restart server, dan buka ulang overlay. Satu langkah yang sedang berjalan bisa selesai dulu. Me-restart `hermes-gateway` di tengah tugas memunculkan "Server disconnected"; itu bukan hasil tombol Stop |
 | Chip Hermes tampak gagal mati | Hermes bisa butuh sampai sekitar 70 detik untuk berhenti; peluncur menunggu 75 detik. Kalau tetap tampak gagal, cek `systemctl --user status hermes-gateway` di WSL. Peluncur lama (sebelum build ulang 8 November) hanya menunggu sekitar 12 detik, jadi bangun ulang `IrisLauncher.exe` |
 | Chip server.py tampak Mati padahal server jalan, atau server tidak bisa dinyalakan saat Hermes mati | Peluncur lama menilai server lewat `/health`, yang melambat saat Hermes mati. Perbarui `server.py`, bangun ulang `IrisLauncher.exe` (peluncur kini memakai `/ping`), lalu cek `http://127.0.0.1:8765/ping`. Bila masih salah, lihat di Task Manager apakah `python.exe` benar-benar hilang |
+| Klip gerak jarang main, atau konsol penuh galat 404 klip | Cek saklar **Gerakan acak** di Pengaturan (mati = tanpa klip acak). Hapus entri `clips.json` yang berkasnya tidak ada. Lihat baris "Klip VRMA aksi siap" di konsol untuk klip dan tag yang benar-benar termuat; `idle` hanya ada di klip yang bertag itu. Lihat [Animasi klip VRMA](#animasi-klip-vrma) |
 
 Untuk diagnosis lebih lanjut, jalankan overlay dengan `npm start`, buka DevTools dengan `Ctrl+Alt+D`, dan cek tab Console (DevTools tidak tersedia di versi rilis).
 
