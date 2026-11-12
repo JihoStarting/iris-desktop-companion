@@ -1,4 +1,4 @@
-"""rea_triage.py - triase statis lokal untuk perintah /rea (Iris v96, kumulatif dengan v95, v94, v93, v92, v91).
+"""rea_triage.py - triase statis lokal untuk perintah /rea (Iris v97, kumulatif dengan v96, v95, v94, v93, v92, v91).  by: KangJiho
 
 Dihitung langsung di PC oleh Python (hanya pustaka standar), TANPA LLM dan TANPA menjalankan file:
 hash, jenis file, entropi, header PE / ELF / ZIP (APK, JAR), import / export, bagian (section), string menarik,
@@ -19,6 +19,21 @@ v95: modul triase ini TIDAK berubah perilakunya. Ekstraksi / penjelajahan contai
 
 v96: Binary Workbench dipisah ke rea_binary.py (hex view, data inspector, pencarian, compare, patch dengan undo).
     hex_text(path, offset=0, length=256) -> str ; compare_text(a, b) -> str   (jembatan tipis, impor malas)
+
+v97 (lebih bertenaga; API lama tidak berubah, semua tambahan bersifat aditif):
+    - Mach-O penuh (tipis + universal): arsitektur, platform, load command, dylib / RPATH, segmen + entropi, tanda tangan, enkripsi, UUID,
+      simbol impor / ekspor (ikut dipetakan ke kemampuan + ATT&CK);
+    - metadata .NET: versi runtime, stream, nama dari #Strings, string pengguna #US (masuk ke IOC), kemampuan dari nama P/Invoke / kripto,
+      dugaan obfuskasi;
+    - CTPH (hash fuzzy gaya ssdeep): ctph(data), ctph_compare(x, y), similarity(a, b), similar_text(a, b);
+    - perburuan satu-byte XOR / ADD / ROL untuk URL, stub DOS, dan nama API tersembunyi;
+    - detail kemasan: PyInstaller (versi Python + skrip masuk dari TOC), UPX, NSIS, Inno Setup, Go, Rust, AutoIt, SFX 7-Zip, PyArmor;
+    - triage_dir mengelompokkan keluarga sampel (imphash, rich header, UUID Mach-O, opsional CTPH dengan fuzzy=True);
+    - triage_md(path): laporan Markdown; rea_api(request): satu pintu JSON untuk Iris / Hermes (opsi pembatas path: env REA_ROOTS).
+
+v96.1 (pengerasan): berkas dibuka sekali dengan fstat (tolak FIFO / perangkat / folder, tanpa TOCTOU); batas kerja entropi / MD5
+    per bagian (header bagian tumpang-tindih tidak bisa memakan CPU); ZIP dibaca dengan batas dekompresi dan jumlah entri;
+    keluaran dibersihkan dari baris baru / pemisah baris (anti injeksi laporan); perbaikan nama impor PE bila RVA tak terpetakan.
 """
 from __future__ import annotations
 
@@ -28,6 +43,7 @@ import os
 import time
 import datetime as _dt
 import hashlib
+import itertools
 import json
 import math
 import re
@@ -41,6 +57,9 @@ from pathlib import Path
 MAX_SCAN = 32 * 1024 * 1024          # byte yang dipindai untuk string / parsing (file lebih besar: awal file saja)
 ENT_SAMPLE = 4 * 1024 * 1024         # sampel untuk entropi keseluruhan
 SEC_ENT_SAMPLE = 1 * 1024 * 1024     # sampel per bagian PE
+ENT_BUDGET = 32 * 1024 * 1024        # total byte yang boleh dihitung entropinya lewat semua bagian PE / ELF
+MD5_BUDGET = 256 * 1024 * 1024       # total byte yang boleh di-MD5 lewat semua bagian PE
+MAX_ZIP_ENTRIES = 100_000            # lebih dari ini: arsip tidak diurai (cegah kehabisan memori)
 
 # ---------------------------------------------------------------------------
 # Dasar
@@ -55,13 +74,54 @@ def _entropy(b: bytes) -> float:
     return -sum((v / n) * math.log2(v / n) for v in c.values())
 
 
-def _hash_file(path: Path) -> dict:
-    h256, h1, hmd = hashlib.sha256(), hashlib.sha1(), hashlib.md5()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+def _md5(data=b""):
+    """MD5 untuk sidik jari (bukan keamanan): tetap jalan di Python mode FIPS."""
+    try:
+        return hashlib.md5(data, usedforsecurity=False)
+    except TypeError:   # Python < 3.9
+        return hashlib.md5(data)
+
+
+def _open_regular(path, follow: bool = True):
+    """Buka berkas biasa dan kembalikan (file, ukuran) dari handle yang SAMA (tanpa celah TOCTOU).
+    Menolak FIFO / perangkat (mis. /dev/zero: hash tak berujung) / folder. follow=False menolak symlink di POSIX."""
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0)
+    if not follow:
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(os.fspath(path), flags)
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise OSError("bukan berkas biasa (FIFO / perangkat / folder): %s" % os.fspath(path))
+        f = os.fdopen(fd, "rb")
+    except BaseException:
+        os.close(fd)
+        raise
+    return f, st.st_size
+
+
+def _hash_file(src, size: int | None = None) -> dict:
+    """src: path ATAU file object biner. Membaca paling banyak `size` byte supaya hash konsisten dengan ukuran yang dilaporkan."""
+    own = not hasattr(src, "read")
+    if own:
+        f, fsz = _open_regular(src)
+        size = fsz if size is None else size
+    else:
+        f = src
+    h256, h1, hmd = hashlib.sha256(), hashlib.sha1(), _md5()
+    try:
+        left = float("inf") if size is None else size
+        while left > 0:
+            chunk = f.read(int(min(1024 * 1024, left)))
+            if not chunk:
+                break
+            left -= len(chunk)
             h256.update(chunk)
             h1.update(chunk)
             hmd.update(chunk)
+    finally:
+        if own:
+            f.close()
     return {"sha256": h256.hexdigest(), "sha1": h1.hexdigest(), "md5": hmd.hexdigest()}
 
 
@@ -156,7 +216,7 @@ def _rich_header(d: bytes, pe_off: int):
     while pos >= 0x40:
         if struct.unpack_from("<I", d, pos)[0] ^ k == 0x536E6144:   # "DanS"
             clear = bytes(b ^ key[i % 4] for i, b in enumerate(d[pos:end]))
-            return {"hash": hashlib.md5(clear).hexdigest(), "n": max(0, (end - pos - 16) // 8)}
+            return {"hash": _md5(clear).hexdigest(), "n": max(0, (end - pos - 16) // 8)}
         pos -= 4
     return None
 
@@ -188,6 +248,8 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
         return {"broken": "optional header terpotong"}
     magic = struct.unpack_from("<H", d, o)[0]
     is64 = magic == 0x20B
+    if o + (112 if is64 else 96) > len(d):
+        return {"broken": "optional header terpotong"}
     entry = struct.unpack_from("<I", d, o + 16)[0]
     subsys, dllch = struct.unpack_from("<HH", d, o + 68)
     nrva = struct.unpack_from("<I", d, o + (108 if is64 else 92))[0]
@@ -200,6 +262,7 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
 
     secs = []
     so = o + optsz
+    ent_left, md5_left, budget_hit = ENT_BUDGET, MD5_BUDGET, False
     for i in range(min(nsec, 96)):
         p = so + 40 * i
         if p + 40 > len(d):
@@ -207,17 +270,29 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
         nm, vsz, va, rsz, rptr, _r, _l, _nr, _nl, ch = struct.unpack_from("<8sIIIIIIHHI", d, p)
         name = nm.rstrip(b"\0").decode("latin-1", "replace")
         raw = d[rptr:rptr + min(rsz, SEC_ENT_SAMPLE)] if rptr < len(d) else b""
+        if len(raw) > ent_left:       # header bagian tumpang-tindih / dibuat-buat: jangan biarkan CPU habis
+            raw, budget_hit = b"", True
+        ent_left -= len(raw)
+        md5 = ""
+        if rptr < len(d) and rsz:
+            n_md = min(rsz, 16 * 1024 * 1024, len(d) - rptr)
+            if n_md <= md5_left:
+                md5_left -= n_md
+                md5 = _md5(memoryview(d)[rptr:rptr + n_md]).hexdigest()
+            else:
+                budget_hit = True
         secs.append({
             "name": name, "va": va, "vsize": vsz, "rptr": rptr, "rsize": rsz,
-            "md5": hashlib.md5(d[rptr:rptr + min(rsz, 16 * 1024 * 1024)]).hexdigest() if (rptr < len(d) and rsz) else "",
+            "md5": md5,
             "flags": ("R" if ch & 0x40000000 else "-") + ("W" if ch & 0x80000000 else "-") + ("X" if ch & 0x20000000 else "-"),
             "ent": _entropy(raw) if raw else 0.0,
         })
 
     def rva2off(rva: int) -> int | None:
         for s in secs:
-            if s["va"] <= rva < s["va"] + max(s["vsize"], s["rsize"]):
-                return rva - s["va"] + s["rptr"]
+            rel = rva - s["va"]
+            if 0 <= rel < max(s["vsize"], s["rsize"]):
+                return (rel + s["rptr"]) if rel < s["rsize"] else None   # ekor virtual (nol) tidak ada di berkas
         if secs and rva < min(s["va"] for s in secs):
             return rva
         return None
@@ -227,6 +302,10 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
             return ""
         e = d.find(b"\0", off, off + lim)
         return d[off:(e if e != -1 else off + lim)].decode("latin-1", "replace")
+
+    def hint_name(rva: int) -> str:
+        fo = rva2off(rva)
+        return (cstr(fo + 2) if fo is not None else "") or "?"
 
     imports: dict[str, list[str]] = {}
     try:
@@ -249,10 +328,10 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
                     if v & (1 << (63 if is64 else 31)):
                         fns.append("#%d" % (v & 0xFFFF))
                     else:
-                        fns.append(cstr((rva2off(v & 0x7FFFFFFF) or 0) + 2))
+                        fns.append(hint_name(v & 0x7FFFFFFF))
                     th += step
                     k += 1
-                imports[dll or "?"] = fns
+                imports.setdefault(dll or "?", []).extend(fns)
                 off += 20
                 n += 1
     except (struct.error, IndexError):
@@ -279,10 +358,10 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
                     if v & (1 << (63 if is64 else 31)):
                         fns.append("#%d" % (v & 0xFFFF))
                     else:
-                        fns.append(cstr((rva2off(v & 0x7FFFFFFF) or 0) + 2))
+                        fns.append(hint_name(v & 0x7FFFFFFF))
                     th += step
                     k += 1
-                delay_imports[dll or "?"] = fns
+                delay_imports.setdefault(dll or "?", []).extend(fns)
                 off += 32
                 n += 1
     except (struct.error, IndexError):
@@ -299,7 +378,7 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
                     fn = "ord" + fn[1:]
                 parts.append("%s.%s" % (base, fn.lower()))
         if parts:
-            imph = hashlib.md5(",".join(parts).encode()).hexdigest()
+            imph = _md5(",".join(parts).encode()).hexdigest()
     except Exception:
         pass
 
@@ -314,7 +393,9 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
                 for i in range(min(nnames, 80)):
                     if no is None or no + 4 * i + 4 > len(d):
                         break
-                    exports.append(cstr(rva2off(struct.unpack_from("<I", d, no + 4 * i)[0])))
+                    nm_ = cstr(rva2off(struct.unpack_from("<I", d, no + 4 * i)[0]))
+                    if nm_:
+                        exports.append(nm_)
     except (struct.error, IndexError):
         pass
 
@@ -361,7 +442,7 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
         "aslr": bool(dllch & 0x40), "dep": bool(dllch & 0x100), "cfg": bool(dllch & 0x4000),
         "dotnet": len(dirs) > 14 and dirs[14][0] != 0 and dirs[14][1] != 0,
         "signed": cert[0] != 0 and cert[1] != 0, "overlay": overlay, "last_raw": last_raw, "delay_imports": delay_imports,
-        "sections": secs, "imports": imports, "exports": exports,
+        "sections": secs, "imports": imports, "exports": exports, "budget_hit": budget_hit,
     }
 
 
@@ -378,7 +459,7 @@ def _parse_elf(d: bytes) -> dict | None:
     etype, mach = struct.unpack_from(en + "HH", d, 16)
     out: dict = {"bits": 64 if is64 else 32, "endian": "little" if en == "<" else "big",
                  "type": _ELF_TYPE.get(etype, str(etype)), "arch": _ELF_MACHINE.get(mach, str(mach)),
-                 "sections": [], "stripped": None, "interp": "", "wx": [], "exec_stack": False, "nsec": 0, "nseg": 0}
+                 "sections": [], "stripped": None, "interp": "", "wx": [], "exec_stack": False, "nsec": 0, "nseg": 0, "budget_hit": False}
     try:
         if is64:
             phoff, shoff = struct.unpack_from(en + "QQ", d, 32)
@@ -413,10 +494,14 @@ def _parse_elf(d: bytes) -> dict | None:
             if shstrndx < len(hdrs):
                 so_, ssz = hdrs[shstrndx][3], hdrs[shstrndx][4]
                 strtab = d[so_:so_ + min(ssz, 65536)]
+            ent_left = ENT_BUDGET
             for nm, st, fl, off, sz in hdrs:
                 e = strtab.find(b"\0", nm)
                 name = strtab[nm:(len(strtab) if e == -1 else e)].decode("latin-1", "replace") if nm < len(strtab) else ""
                 raw = d[off:off + min(sz, SEC_ENT_SAMPLE)] if st != 8 and off < len(d) else b""
+                if len(raw) > ent_left:
+                    raw, out["budget_hit"] = b"", True
+                ent_left -= len(raw)
                 out["sections"].append({"name": name, "size": sz, "ent": _entropy(raw) if raw else 0.0,
                                         "flags": ("W" if fl & 1 else "-") + ("A" if fl & 2 else "-") + ("X" if fl & 4 else "-")})
             out["stripped"] = ".symtab" not in {x["name"] for x in out["sections"]}
@@ -438,11 +523,54 @@ _PRIO_EXT = (".dex", ".class", "vbaproject.bin", ".js", ".ps1", ".vbs", ".bat", 
 _REL_TARGET = re.compile(rb'Target="((?:https?|file|ftp)://[^"]{4,300})"[^>]*TargetMode="External"|TargetMode="External"[^>]*Target="((?:https?|file|ftp)://[^"]{4,300})"', re.I)
 
 
-def _parse_zip(path: Path) -> dict | None:
-    if not zipfile.is_zipfile(path):
+def _zip_entry_count(f, size: int) -> int:
+    """Perkiraan jumlah entri dari EOCD / ZIP64 TANPA memuat direktori pusat (ZIP berjuta entri bisa menghabiskan RAM). -1 bila tak terbaca."""
+    try:
+        tail = min(size, 65535 + 22 + 20)
+        f.seek(size - tail)
+        buf = f.read(tail)
+        i = buf.rfind(b"PK\x05\x06")
+        if i < 0 or i + 22 > len(buf):
+            return -1
+        total = struct.unpack_from("<H", buf, i + 10)[0]
+        cd_size = struct.unpack_from("<I", buf, i + 12)[0]
+        if (total == 0xFFFF or cd_size == 0xFFFFFFFF) and i >= 20 and buf[i - 20:i - 16] == b"PK\x06\x07":
+            z64 = struct.unpack_from("<Q", buf, i - 12)[0]
+            if z64 + 56 <= size:
+                f.seek(z64)
+                rec = f.read(56)
+                if len(rec) == 56 and rec[:4] == b"PK\x06\x06":
+                    total = struct.unpack_from("<Q", rec, 32)[0]
+                    cd_size = struct.unpack_from("<Q", rec, 40)[0]
+        return max(total, 0 if cd_size == 0xFFFFFFFF else cd_size // 46)   # 46 = ukuran minimum satu entri direktori pusat
+    except (OSError, struct.error):
+        return -1
+
+
+def _zread(z, member, limit: int) -> bytes:
+    """Baca paling banyak `limit` byte HASIL dekompresi. z.read() tanpa batas rentan zip bomb (1 MB terkompres bisa jadi GB)."""
+    with z.open(member) as m:
+        return m.read(max(0, limit))
+
+
+def _parse_zip(src, size: int | None = None) -> dict | None:
+    """src: path ATAU file object biner (yang sama dengan yang dibaca triase, supaya tidak dibuka ulang lewat nama)."""
+    if not hasattr(src, "read"):
+        f_, sz_ = _open_regular(src)
+        with f_:
+            return _parse_zip(f_, sz_)
+    if size is None:
+        src.seek(0, 2)
+        size = src.tell()
+    if not zipfile.is_zipfile(src):
         return None
     out: dict = {"names": [], "n": 0, "unc": 0, "kind": "ZIP", "warn": [], "perms": [], "dex": 0, "nested": [], "ext_rels": [], "_blob": b""}
-    with zipfile.ZipFile(path) as z:
+    cnt = _zip_entry_count(src, size)
+    if cnt > MAX_ZIP_ENTRIES:
+        out["n"] = cnt
+        out["warn"].append("jumlah entri arsip tidak wajar (~%d): tidak diurai (cegah kehabisan memori)" % cnt)
+        return out
+    with zipfile.ZipFile(src) as z:
         infos = z.infolist()
         out["n"] = len(infos)
         names = [i.filename for i in infos]
@@ -452,7 +580,7 @@ def _parse_zip(path: Path) -> dict | None:
         out["ratio"] = out["unc"] / comp
         if any(i.flag_bits & 1 for i in infos):
             out["warn"].append("ada entri terenkripsi (kata sandi)")
-        if any(n.startswith(("/", "\\")) or ".." in n.replace("\\", "/").split("/") for n in names):
+        if any(n.startswith(("/", "\\")) or re.match(r"[A-Za-z]:", n) or ".." in n.replace("\\", "/").split("/") for n in names):
             out["warn"].append("nama entri berpola path traversal (zip-slip)")
         if out["ratio"] > 200:
             out["warn"].append("rasio kompresi %.0fx (kemungkinan zip bomb)" % out["ratio"])
@@ -461,7 +589,7 @@ def _parse_zip(path: Path) -> dict | None:
             out["kind"] = "APK (Android)"
             out["dex"] = sum(1 for n in low if re.fullmatch(r"classes\d*\.dex", n))
             try:
-                mf = z.read("AndroidManifest.xml")[:400000]
+                mf = _zread(z, names[low.index("androidmanifest.xml")], 400000)
                 perms = {m.decode() for m in _PERM_RE.findall(mf)}
                 perms |= {m.decode("utf-16le", "ignore") for m in _PERM_RE16.findall(mf)}
                 out["perms"] = sorted(perms)[:60]
@@ -470,7 +598,7 @@ def _parse_zip(path: Path) -> dict | None:
         elif "meta-inf/manifest.mf" in low:
             out["kind"] = "JAR/WAR (Java)"
             try:
-                mf = z.read(names[low.index("meta-inf/manifest.mf")])[:4096].decode("utf-8", "replace")
+                mf = _zread(z, names[low.index("meta-inf/manifest.mf")], 4096).decode("utf-8", "replace")
                 m = re.search(r"Main-Class:\s*(\S+)", mf)
                 out["main"] = m.group(1) if m else ""
             except Exception:
@@ -486,7 +614,7 @@ def _parse_zip(path: Path) -> dict | None:
         for i in infos:
             if i.filename.lower().endswith(".rels") and i.file_size < 400000 and not i.flag_bits & 1:
                 try:
-                    for m in _REL_TARGET.findall(z.read(i)[:200000]):
+                    for m in _REL_TARGET.findall(_zread(z, i, 200000)):
                         t = (m[0] or m[1]).decode("latin-1", "replace")
                         if t not in out["ext_rels"]:
                             out["ext_rels"].append(t)
@@ -507,7 +635,7 @@ def _parse_zip(path: Path) -> dict | None:
             if not (fn.endswith(_SCAN_EXT) or "vbaproject.bin" in fn) or i.file_size > 12 * 1024 * 1024:
                 continue
             try:
-                data = z.read(i)[:min(12 * 1024 * 1024, budget)]
+                data = _zread(z, i, min(12 * 1024 * 1024, budget))
             except Exception:
                 continue
             budget -= len(data)
@@ -618,21 +746,26 @@ def _risky_perms(perms: list[str]) -> list[str]:
 def _decode_b64(blob: str) -> list[list[str]]:
     """Dekode string base64 panjang dan beri tahu isinya (PE tertanam, teks, arsip). Hanya hasil nyata yang dilaporkan."""
     out: list[list[str]] = []
-    for m in _B64.findall(blob)[:60]:
+    for mm in itertools.islice(_B64.finditer(blob), 60):
+        m = mm.group(0)
+        est = len(m) * 3 // 4                      # ukuran hasil dekode (perkiraan); hanya awalnya yang didekode
+        seg = m[:8192]
+        if len(m) > 8192:
+            seg = seg[:len(seg) - len(seg) % 4]
         try:
-            raw = base64.b64decode(m + "=" * (-len(m) % 4))
+            raw = base64.b64decode(seg + "=" * (-len(seg) % 4))
         except Exception:
             continue
         if len(raw) < 24:
             continue
         if raw[:2] == b"MZ":
-            out.append(["PE/MZ", "executable tertanam dalam base64 (%s)" % _human(len(raw))])
+            out.append(["PE/MZ", "executable tertanam dalam base64 (%s)" % _human(est)])
         elif raw[:4] == b"\x7fELF":
-            out.append(["ELF", "executable ELF tertanam dalam base64 (%s)" % _human(len(raw))])
+            out.append(["ELF", "executable ELF tertanam dalam base64 (%s)" % _human(est)])
         elif raw[:2] == b"PK":
-            out.append(["ZIP", "arsip zip tertanam dalam base64 (%s)" % _human(len(raw))])
+            out.append(["ZIP", "arsip zip tertanam dalam base64 (%s)" % _human(est)])
         elif raw[:2] == b"\x1f\x8b":
-            out.append(["GZIP", "data gzip tertanam dalam base64 (%s)" % _human(len(raw))])
+            out.append(["GZIP", "data gzip tertanam dalam base64 (%s)" % _human(est)])
         else:
             txt = ""
             if raw[1::2].count(0) > 0.9 * (len(raw) // 2):
@@ -791,6 +924,7 @@ def _score(rep: dict) -> tuple[int, str, list[str]]:
     ov = rep.get("overlay")
     if ov and ov.get("type") == "PE/MZ":
         add(2, "executable di dalam overlay")
+    _score_v97(rep, add)
     level = "TINGGI" if pts >= 7 else "SEDANG" if pts >= 4 else "RENDAH" if pts >= 1 else "TANPA TANDA"
     return pts, level, why
 
@@ -799,7 +933,7 @@ def _df(x: str, on: bool) -> str:
     """defang: hxxp dan [.] supaya IOC tidak bisa terklik tak sengaja."""
     if not on:
         return x
-    return x.replace("http", "hxxp").replace("ftp://", "fxp://").replace(".", "[.]").replace("@", "[@]")
+    return x.replace("http", "hxxp").replace("ftp://", "fxp://").replace("ws://", "wxs://").replace("wss://", "wxss://").replace(".", "[.]").replace("@", "[@]")
 
 
 def _indicators(strs: list[str], api_names: set[str]) -> dict:
@@ -816,10 +950,12 @@ def _indicators(strs: list[str], api_names: set[str]) -> dict:
     secrets = _uniq((_mask(m) for m in _SECRET.findall(blob)), 8)
     caps: dict[str, list[str]] = {}
     low_blob = blob.lower()
+    api_low = [a.lower() for a in api_names]
     for cap, keys in CAPS.items():
         hit = []
         for k in keys:
-            if any(k.lower() in a.lower() for a in api_names) or (len(k) > 7 and k.lower() in low_blob):
+            kl = k.lower()
+            if any(kl in a for a in api_low) or (len(k) > 7 and kl in low_blob):
                 hit.append(k)
         if hit:
             caps[cap] = hit[:6]
@@ -836,7 +972,7 @@ def _indicators(strs: list[str], api_names: set[str]) -> dict:
         "urls": urls, "ips": _uniq(ips, 15), "emails": _uniq(_MAIL.findall(blob), 10),
         "reg": _uniq(_REG.findall(blob), 12), "paths": _uniq(_WPATH.findall(blob), 12),
         "secrets": secrets, "pem": bool(_PEM.search(blob)),
-        "b64": len(_B64.findall(full)), "b64d": _decode_b64(full), "pdb": _uniq(_PDB.findall(blob), 3),
+        "b64": sum(1 for _ in _B64.finditer(full)), "b64d": _decode_b64(full), "pdb": _uniq(_PDB.findall(blob), 3),
         "caps": caps, "n_strings": len(strs),
     }
 
@@ -847,11 +983,12 @@ def _indicators(strs: list[str], api_names: set[str]) -> dict:
 
 
 def _clean(s: str) -> str:
-    """v94: buang karakter kontrol dan pengecoh arah teks (RLO dll.) dari keluaran; string dari sampel tidak dipercaya."""
+    """v94: buang karakter kontrol dan pengecoh arah teks (RLO dll.) dari keluaran; string dari sampel tidak dipercaya.
+    v96.1: baris baru ikut dibuang, supaya nama bagian / entri ZIP / versi bisa menyisipkan baris laporan palsu."""
     return _CTRL_RE.sub("?", s)
 
 
-_CTRL_RE = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]")
+_CTRL_RE = re.compile("[\x00-\x1f\x7f-\x9f\u061c\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]")   # termasuk \n \r \t, U+2028/2029
 
 
 def _is_reparse(p) -> bool:
@@ -1148,13 +1285,18 @@ def _parse_docs(d: bytes, kind: str):
     return {"fmt": k, "info": info, "score": score}
 
 
-def triage(path) -> dict:
+def triage(path, follow_links: bool = True, fuzzy: bool = True) -> dict:
     p = Path(path)
-    size = p.stat().st_size
+    f, size = _open_regular(p, follow_links)
+    with f:
+        return _triage_open(p, f, size, fuzzy)
+
+
+def _triage_open(p: Path, f, size: int, fuzzy: bool = True) -> dict:
     rep: dict = {"name": p.name, "size": size, "warn": []}
-    rep.update(_hash_file(p))
-    with open(p, "rb") as f:
-        d = f.read(MAX_SCAN)
+    rep.update(_hash_file(f, size))
+    f.seek(0)
+    d = f.read(MAX_SCAN)
     rep["truncated"] = size > len(d)
     rep["entropy"] = _entropy(d[:ENT_SAMPLE])
 
@@ -1171,9 +1313,15 @@ def triage(path) -> dict:
             elf = None
     if pe is None and elf is None:
         try:
-            zp = _parse_zip(p)
+            zp = _parse_zip(f, size)
         except Exception as e:
             rep["warn"].append("parser ZIP gagal: %s" % type(e).__name__)
+    mo = None
+    if pe is None and elf is None and zp is None:   # v97: Mach-O (tipis / universal)
+        try:
+            mo = _parse_macho(d)
+        except Exception as e:
+            rep["warn"].append("parser Mach-O gagal: %s" % type(e).__name__)
 
     head = d[:16]
     if pe and not pe.get("broken"):
@@ -1190,6 +1338,8 @@ def triage(path) -> dict:
         kind = "ELF%d %s, %s, %s" % (elf["bits"], elf["endian"], elf["type"], elf["arch"])
     elif zp:
         kind = zp["kind"]
+    elif mo:
+        kind = "Mach-O%s (%s, %d-bit, %s)" % (" universal" if len(mo["fat"]) > 1 else "", mo["arch"], mo["bits"], mo["type"])
     elif head[:4] in (b"\xca\xfe\xba\xbe",):
         kind = "Java class atau Mach-O fat binary"
     elif head[:4] in (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xfe\xed\xfa\xce"):
@@ -1218,7 +1368,9 @@ def triage(path) -> dict:
         txt = sum(1 for b in d[:4096] if 9 <= b <= 13 or 32 <= b <= 126)
         kind = "teks / skrip" if d[:4096] and txt / len(d[:4096]) > 0.95 else "biner tak dikenal (tanpa magic number umum)"
     rep["kind"] = kind
-    rep["pe"], rep["elf"], rep["zip"] = pe, elf, zp
+    rep["pe"], rep["elf"], rep["zip"], rep["macho"] = pe, elf, zp, mo
+    if mo:
+        api_names.update(mo["imports"])
     if elf:   # v94: ELF dulu tanpa impor sama sekali
         try:
             ei = _elf_imports(d)
@@ -1227,20 +1379,33 @@ def triage(path) -> dict:
         elf["dyn"] = ei
         api_names.update(ei["imports"])
     rep["docs"] = None
-    if pe is None and elf is None and zp is None:
+    if pe is None and elf is None and zp is None and mo is None:
         try:
             rep["docs"] = _parse_docs(d, kind)
         except Exception as e:
             rep["warn"].append("parser dokumen gagal: %s" % type(e).__name__)
 
+    rep["dotnet"] = None
+    if pe and not pe.get("broken") and pe.get("dotnet"):   # v97: metadata .NET
+        try:
+            rep["dotnet"] = _dotnet_info(d, pe)
+        except Exception as e:
+            rep["warn"].append("parser metadata .NET gagal: %s" % type(e).__name__)
     strs = _strings(d)
+    if rep["dotnet"]:
+        strs += rep["dotnet"]["us"]
     if zp:
         blob = zp.pop("_blob", b"")
         if blob:
             strs += _strings(blob)
     rep["ind"] = _indicators(strs, api_names)
+    if rep["dotnet"]:
+        for cap_, hit_ in _net_caps(rep["dotnet"]["names"]).items():
+            rep["ind"]["caps"][cap_] = list(dict.fromkeys(rep["ind"]["caps"].get(cap_, []) + hit_))[:8]
 
     w = rep["warn"]
+    if (pe and pe.get("budget_hit")) or (elf and elf.get("budget_hit")):
+        w.append("batas kerja entropi / hash bagian tercapai (header bagian tumpang-tindih atau dibuat-buat); sebagian nilai dikosongkan")
     if rep["entropy"] > 7.2 and not zp:   # arsip zip wajar berentropi tinggi
         w.append("entropi tinggi (%.2f): terkompres, terenkripsi, atau dikemas (packer)" % rep["entropy"])
     if pe and not pe.get("broken"):
@@ -1337,6 +1502,7 @@ def triage(path) -> dict:
     if rep["regions"] and not (pe and not pe.get("broken") and any(x["ent"] > 7.2 for x in pe["sections"])):
         a_, b_ = rep["regions"][0]
         w.append("wilayah berentropi tinggi di offset 0x%X-0x%X (%s)" % (a_, b_, _human(b_ - a_)))
+    _v97_enrich(d, size, rep, fuzzy)
     pts, level, why = _score(rep)
     rep["score"], rep["level"], rep["why"] = pts, level, why
     return rep
@@ -1482,6 +1648,7 @@ def _render(rep: dict, compact: bool = False, defang: bool = True, imp_detail: b
         a("Dugaan PE di-XOR: " + ", ".join("kunci 0x%02X @0x%X" % x for x in emb["xor"]))
     if rep.get("regions") and not compact:
         a("Wilayah berentropi tinggi (>7,2): " + ", ".join("0x%X-0x%X (%s)" % (x, y, _human(y - x)) for x, y in rep["regions"][:6]))
+    _render_v97(rep, a, compact, defang)
     a("String terbaca: %d" % ind["n_strings"])
     if rep["warn"]:
         a("PERHATIAN:")
@@ -1505,7 +1672,8 @@ def render(rep: dict, compact: bool = False, defang: bool = True, max_chars: int
     if len(txt) <= max_chars:
         return txt
     head = int(max_chars * 0.6)
-    return txt[:head] + "\n[...dipangkas supaya muat...]\n" + txt[-(max_chars - head - 40):]
+    tail = max(0, max_chars - head - 40)
+    return txt[:head] + "\n[...dipangkas supaya muat...]\n" + (txt[-tail:] if tail else "")
 
 
 def triage_text(path, compact: bool = False, defang: bool = True, max_chars: int = 0) -> str:
@@ -1527,7 +1695,11 @@ def carve(path, outdir, max_items: int = 8, rep: dict | None = None) -> list[dic
     Tidak pernah menjalankan apa pun. Peringatan: antivirus bisa mengarantina hasilnya."""
     p = Path(path)
     rep = rep or triage(path)
-    with open(p, "rb") as f:
+    f, fsize = _open_regular(p)
+    with f:
+        if _hash_file(f, fsize)["sha256"] != rep["sha256"]:
+            raise OSError("berkas berubah sejak triase; ulangi /rea")
+        f.seek(0)
         d = f.read(MAX_SCAN)
     cands: list[tuple[str, bytes]] = []
     cap = 16 * 1024 * 1024
@@ -1543,7 +1715,8 @@ def carve(path, outdir, max_items: int = 8, rep: dict | None = None) -> list[dic
         if x.get("mz"):
             cands.append(("resource %s/%s" % (x["type"], x["name"]), d[x["off"]:x["off"] + min(x["size"], cap)]))
     try:
-        for m in _B64.findall("\n".join(_strings(d)))[:60]:
+        for mm in itertools.islice(_B64.finditer("\n".join(_strings(d))), 60):
+            m = mm.group(0)
             raw = base64.b64decode(m + "=" * (-len(m) % 4))
             if raw[:2] == b"MZ" and len(raw) >= 256:
                 cands.append(("PE base64", raw[:_pe_extent(raw)]))
@@ -1565,7 +1738,11 @@ def carve(path, outdir, max_items: int = 8, rep: dict | None = None) -> list[dic
             with open(fp, "xb") as f:
                 f.write(blob)
         except FileExistsError:
-            pass
+            try:
+                if hashlib.sha256(fp.read_bytes()).hexdigest() != sha:   # berkas lama bernama sama tapi isi lain: jangan klaim
+                    continue
+            except OSError:
+                continue
         except OSError:
             continue
         item = {"file": str(fp), "sha256": sha, "size": len(blob), "source": src}
@@ -1581,8 +1758,8 @@ def carve(path, outdir, max_items: int = 8, rep: dict | None = None) -> list[dic
 def _carved_text(items: list[dict]) -> str:
     L = ["", "PAYLOAD DIKELUARKAN (disalin sebagai .bin, TIDAK dijalankan; antivirus bisa mengarantina berkas ini):"]
     for it in items:
-        L.append("   - %s | %s | sha256 %s | %s | skor %s (%s)\n     %s" % (it["source"], _human(it["size"]), it["sha256"][:16] + "...",
-                 it.get("kind", "?"), it.get("score", "?"), it.get("level", "?"), it["file"]))
+        L.append("   - %s | %s | sha256 %s | %s | skor %s (%s)\n     %s" % (_clean(it["source"]), _human(it["size"]), it["sha256"][:16] + "...",
+                 _clean(str(it.get("kind", "?"))), it.get("score", "?"), _clean(str(it.get("level", "?"))), _clean(it["file"])))
     L.append("   Analisis tiap berkas ini dengan /rea cepat sebelum menyimpulkan apa pun.")
     return "\n".join(L)
 
@@ -1609,7 +1786,7 @@ _DIR_PRIO = (".exe", ".dll", ".sys", ".scr", ".so", ".apk", ".jar", ".dex", ".ps
              ".docm", ".xlsm", ".msi", ".bin", ".dat", ".elf")
 
 
-def triage_dir(path, max_files: int = 300, per_file_mb: float = 200.0, time_budget: float = 90.0) -> dict:
+def triage_dir(path, max_files: int = 300, per_file_mb: float = 200.0, time_budget: float = 90.0, fuzzy: bool = False) -> dict:
     root = Path(path)
     t0 = time.monotonic()
     found: list[Path] = []
@@ -1649,17 +1826,24 @@ def triage_dir(path, max_files: int = 300, per_file_mb: float = 200.0, time_budg
             if fp.stat().st_size > per_file_mb * 1024 * 1024:
                 skipped.append("%s (>%.0f MB)" % (rel, per_file_mb))
                 continue
-            r = triage(str(fp))
+            if _is_reparse(fp):
+                skipped.append("%s (berubah menjadi link)" % rel)
+                continue
+            r = triage(str(fp), follow_links=False, fuzzy=fuzzy)
         except Exception as e:
             skipped.append("%s (%s)" % (rel, type(e).__name__))
             continue
         items.append({"rel": rel, "size": r["size"], "kind": r["kind"], "score": r["score"], "level": r["level"], "sha256": r["sha256"],
-                      "why": r["why"][:3], "urls": r["ind"]["urls"][:5], "ips": r["ind"]["ips"][:5]})
+                      "why": r["why"][:3], "urls": r["ind"]["urls"][:5], "ips": r["ind"]["ips"][:5],
+                      "imphash": ((r.get("pe") or {}).get("imphash") or "") if not (r.get("pe") or {}).get("broken") else "",
+                      "rich": ((r.get("pe") or {}).get("rich") or {}).get("hash", "") if not (r.get("pe") or {}).get("broken") else "",
+                      "macho_uuid": (r.get("macho") or {}).get("uuid", ""), "ctph": r.get("ctph", "")})
     by_hash: dict[str, list[str]] = {}
     for it in items:
         by_hash.setdefault(it["sha256"], []).append(it["rel"])
     return {"root": str(root), "n_total": total_n, "total_size": total_sz, "n_done": len(items), "items": items, "skipped": skipped[:10],
-            "dups": [v for v in by_hash.values() if len(v) > 1][:10], "elapsed": time.monotonic() - t0}
+            "dups": [v for v in by_hash.values() if len(v) > 1][:10], "elapsed": time.monotonic() - t0,
+            "families": _families(items, fuzzy)}
 
 
 def render_dir(sm: dict, defang: bool = True, top: int = 15) -> str:
@@ -1683,6 +1867,8 @@ def render_dir(sm: dict, defang: bool = True, top: int = 15) -> str:
             a("   Tidak ada berkas dengan tanda mencurigakan. Terbesar: " + ", ".join("%s (%s)" % (it["rel"], _human(it["size"])) for it in sorted(ranked, key=lambda x: -x["size"])[:5]))
     if sm["dups"]:
         a("Duplikat identik: " + " | ".join(" = ".join(g[:3]) for g in sm["dups"][:5]))
+    for fm in sm.get("families", [])[:6]:
+        a("Keluarga (%s): %s" % (fm["basis"], " | ".join(fm["members"][:4]) + (" ..." if len(fm["members"]) > 4 else "")))
     urls = _uniq((u for it in sm["items"] for u in it["urls"]), 12)
     ips = _uniq((u for it in sm["items"] for u in it["ips"]), 10)
     if urls:
@@ -1713,6 +1899,8 @@ def yara_draft(rep: dict, name: str = "") -> str:
         cand += ind["caps"].get(cap, [])[:3]
     cand = _uniq([c for c in cand if 6 <= len(c) <= 200], 10)
     rid = re.sub(r"[^A-Za-z0-9_]", "_", name or ("rea_" + rep["sha256"][:12]))
+    if not rid or rid[0].isdigit():
+        rid = "r_" + rid
     if len(cand) < 2:
         return "// Tidak cukup string unik untuk draf YARA yang layak (%d). Jangan membuat aturan dari satu string umum." % len(cand)
     esc = lambda x: x.replace("\\", "\\\\").replace('"', '\\"')
@@ -1736,6 +1924,10 @@ def iocs(rep: dict) -> dict:
     ind, pe = rep["ind"], rep.get("pe")
     out = {"sha256": rep["sha256"], "sha1": rep["sha1"], "md5": rep["md5"], "urls": ind["urls"], "ips": ind["ips"],
            "emails": ind["emails"], "registry": ind["reg"], "pdb": ind.get("pdb", [])}
+    out["ctph"] = rep.get("ctph", "")
+    out["xor_urls"] = _uniq((u for x in rep.get("xor") or [] for u in x["urls"]), 10)
+    if rep.get("macho"):
+        out["macho_uuid"] = rep["macho"]["uuid"]
     if pe and not pe.get("broken"):
         out["imphash"] = pe.get("imphash", "")
         out["rich_hash"] = (pe.get("rich") or {}).get("hash", "")
@@ -1750,6 +1942,758 @@ def triage_json(path, ioc_only: bool = False) -> str:
         return json.dumps(iocs(rep) if ioc_only else rep, ensure_ascii=False, indent=2, default=str)
     except Exception as e:
         return json.dumps({"error": "%s: %s" % (type(e).__name__, str(e)[:120])}, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# v97: Mach-O, metadata .NET, CTPH (hash fuzzy), perburuan XOR / ADD / ROL, detail kemasan, keluarga sampel,
+#      laporan Markdown, dan API JSON untuk Iris / Hermes. Semuanya hanya-baca, pustaka standar, file tidak dijalankan.
+# ---------------------------------------------------------------------------
+
+VERSION = "97"
+AUTHOR = "KangJiho"
+
+# nama impor Mach-O (garis bawah depan sudah dibuang) yang menandai manipulasi proses lain
+EXACT_CAPS["injeksi / manipulasi proses"] = EXACT_CAPS["injeksi / manipulasi proses"] | {"task_for_pid", "mach_vm_write", "mach_vm_protect", "thread_create_running"}
+STR_CAPS["macOS: persistensi / manipulasi sistem"] = ["launchagents", "launchdaemons", "com.apple.quarantine", "osascript", "dyld_insert_libraries", "tccutil", "security find-generic-password"]
+ATTACK["macOS: persistensi / manipulasi sistem"] = "T1543.001 Launch Agent / T1574.006 Dynamic Linker Hijacking / T1553.001 Gatekeeper Bypass"
+
+# ----------------------------- Mach-O ---------------------------------------
+
+_MACHO_CPU = {7: "x86", 0x01000007: "x86-64", 12: "ARM", 0x0100000C: "ARM64", 0x0200000C: "ARM64_32", 18: "PowerPC", 0x01000012: "PowerPC64"}
+_MACHO_FT = {1: "object (.o)", 2: "executable", 3: "fvmlib", 4: "core dump", 5: "preload", 6: "dylib", 7: "dylinker", 8: "bundle", 9: "dylib stub", 10: "dSYM", 11: "kext"}
+_MACHO_PLAT = {1: "macOS", 2: "iOS", 3: "tvOS", 4: "watchOS", 5: "bridgeOS", 6: "Mac Catalyst", 7: "iOS Simulator", 8: "tvOS Simulator", 9: "watchOS Simulator", 10: "DriverKit"}
+
+
+def _macho_cstr(d: bytes, off: int, lim: int) -> str:
+    if off < 0 or off >= len(d):
+        return ""
+    stop = min(len(d), off + max(0, lim))
+    e = d.find(b"\0", off, stop)
+    return d[off:e if e >= 0 else stop].decode("utf-8", "replace")
+
+
+def _macho_thin(d: bytes, base: int = 0) -> dict | None:
+    if base < 0 or base + 28 > len(d):
+        return None
+    m = d[base:base + 4]
+    if m in (b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe"):
+        e = "<"
+    elif m in (b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf"):
+        e = ">"
+    else:
+        return None
+    is64 = m[0] == 0xCF or m[3] == 0xCF
+    hsz = 32 if is64 else 28
+    if base + hsz > len(d):
+        return None
+    cpu, _sub, ft, ncmds, szcmds, flags = struct.unpack_from(e + "IIIIII", d, base + 4)
+    info: dict = {"bits": 64 if is64 else 32, "endian": "little" if e == "<" else "big", "arch": _MACHO_CPU.get(cpu, "cpu 0x%X" % cpu),
+                  "type": _MACHO_FT.get(ft, str(ft)), "ncmds": ncmds, "pie": bool(flags & 0x200000), "segments": [], "sections": [], "dylibs": [],
+                  "weak": [], "rpaths": [], "entry": "", "signed": False, "encrypted": False, "uuid": "", "platform": "", "imports": [],
+                  "exports": [], "nsyms": 0, "warn": [], "fat": []}
+    off = base + hsz
+    end = min(len(d), off + szcmds)
+    symtab = None
+    ent_left = ENT_BUDGET
+    for _ in range(min(ncmds, 600)):
+        if off + 8 > end:
+            break
+        cmd, csz = struct.unpack_from(e + "II", d, off)
+        if csz < 8 or off + csz > end:
+            break
+        c = cmd & 0x7FFFFFFF
+        if c in (0x1, 0x19):
+            fmt, need, sec_sz = (e + "16sQQQQiiII", 72, 80) if c == 0x19 else (e + "16sIIIIiiII", 56, 68)
+            if csz >= need:
+                nm, _va, vsz, fo, fsz, _mp, ip, ns, _fl = struct.unpack_from(fmt, d, off + 8)
+                sname = nm.split(b"\0")[0].decode("ascii", "replace")
+                raw = d[base + fo:base + fo + min(fsz, SEC_ENT_SAMPLE)] if fo < len(d) else b""
+                ent = 0.0
+                if raw and len(raw) <= ent_left:
+                    ent = _entropy(raw)
+                    ent_left -= len(raw)
+                info["segments"].append({"name": sname, "vsize": vsz, "fsize": fsz, "prot": "".join(ch if ip & b else "-" for ch, b in (("R", 1), ("W", 2), ("X", 4))), "ent": ent})
+                for i in range(min(ns, 64)):
+                    p = off + need + i * sec_sz
+                    if p + 32 > off + csz:
+                        break
+                    info["sections"].append("%s,%s" % (sname, d[p:p + 16].split(b"\0")[0].decode("ascii", "replace")))
+        elif c in (0xC, 0x18, 0x1F, 0x23, 0x20) and csz >= 24:
+            noff = struct.unpack_from(e + "I", d, off + 8)[0]
+            nm_ = _macho_cstr(d, off + noff, csz - noff) if noff < csz else ""
+            (info["weak"] if c == 0x18 else info["dylibs"]).append(nm_)
+        elif c == 0x1C and csz >= 12:
+            noff = struct.unpack_from(e + "I", d, off + 8)[0]
+            info["rpaths"].append(_macho_cstr(d, off + noff, csz - noff) if noff < csz else "")
+        elif c == 0x28 and csz >= 16:
+            info["entry"] = "LC_MAIN +0x%X" % struct.unpack_from(e + "Q", d, off + 8)[0]
+        elif c == 0x5:
+            info["entry"] = info["entry"] or "LC_UNIXTHREAD"
+        elif c == 0x1D:
+            info["signed"] = True
+        elif c in (0x21, 0x2C) and csz >= 20:
+            info["encrypted"] = struct.unpack_from(e + "I", d, off + 16)[0] != 0
+        elif c == 0x1B and csz >= 24:
+            info["uuid"] = d[off + 8:off + 24].hex()
+        elif c == 0x2 and csz >= 24:
+            symtab = struct.unpack_from(e + "IIII", d, off + 8)
+        elif c == 0x32 and csz >= 12:
+            info["platform"] = _MACHO_PLAT.get(struct.unpack_from(e + "I", d, off + 8)[0], "")
+        elif c == 0x24:
+            info["platform"] = info["platform"] or "macOS"
+        elif c == 0x25:
+            info["platform"] = info["platform"] or "iOS"
+        off += csz
+    if symtab:
+        so, ns, sto, stsz = symtab
+        esz = 16 if is64 else 12
+        info["nsyms"] = ns
+        imp, exp_ = [], []
+        for i in range(min(ns, 50000)):
+            p = base + so + i * esz
+            if p + esz > len(d):
+                break
+            strx, nt, _nsect, _ndesc = struct.unpack_from(e + "IBBH", d, p)
+            if nt & 0xE0 or not nt & 1 or strx >= stsz:
+                continue    # simbol debug (STAB) atau bukan eksternal
+            nm_ = _macho_cstr(d, base + sto + strx, min(200, stsz - strx))
+            nm_ = nm_[1:] if nm_.startswith("_") else nm_
+            if not nm_:
+                continue
+            if nt & 0x0E == 0 and len(imp) < 1500:
+                imp.append(nm_)
+            elif nt & 0x0E == 0x0E and len(exp_) < 300:
+                exp_.append(nm_)
+        info["imports"], info["exports"] = imp, exp_
+    w = info["warn"]
+    if info["encrypted"]:
+        w.append("Mach-O: segmen terenkripsi (cryptid=1, mis. FairPlay App Store); isi kode tidak bisa dibaca sebelum didekripsi")
+    if not info["signed"] and info["type"] in ("executable", "dylib", "bundle"):
+        w.append("Mach-O: tidak ada LC_CODE_SIGNATURE (tanda tangan dihapus atau belum diberikan)")
+    for s in info["segments"]:
+        if s["prot"][1:] == "WX":
+            w.append("Mach-O: segmen %s dapat ditulis DAN dieksekusi (W+X)" % s["name"])
+        if s["ent"] > 7.2 and s["fsize"] > 16384 and s["name"] != "__LINKEDIT":
+            w.append("Mach-O: segmen %s berentropi %.2f (terkompres / terenkripsi / dikemas)" % (s["name"], s["ent"]))
+    if any(r.startswith(("@loader_path", "@executable_path", ".")) for r in info["rpaths"]) and info["weak"]:
+        w.append("Mach-O: RPATH relatif ditambah dylib lemah (kandidat dylib hijacking)")
+    return info
+
+
+def _parse_macho(d: bytes) -> dict | None:
+    """Mach-O tipis atau fat / universal. Fat: irisan pertama yang terurai dipakai, daftar arsitektur lain disimpan di ['fat']."""
+    if len(d) < 28:
+        return None
+    m = d[:4]
+    if m in (b"\xca\xfe\xba\xbe", b"\xca\xfe\xba\xbf"):
+        n = struct.unpack_from(">I", d, 4)[0]
+        if not 1 <= n <= 16:
+            return None   # berkas class Java memakai magic yang sama; angka versinya selalu >= 45
+        f64 = m[3] == 0xBF
+        esz = 32 if f64 else 20
+        slices = []
+        for i in range(n):
+            p = 8 + i * esz
+            if p + esz > len(d):
+                break
+            if f64:
+                cpu, _s, off, size, _a, _r = struct.unpack_from(">IIQQII", d, p)
+            else:
+                cpu, _s, off, size, _a = struct.unpack_from(">IIIII", d, p)
+            slices.append((_MACHO_CPU.get(cpu, "cpu 0x%X" % cpu), off, size))
+        for _arch, off, _size in slices:
+            r = _macho_thin(d, off)
+            if r:
+                r["fat"] = [(a_, o_, s_) for a_, o_, s_ in slices]
+                return r
+        return None
+    return _macho_thin(d, 0)
+
+
+# ----------------------------- .NET metadata --------------------------------
+
+_NET_STD_STREAMS = {"#~", "#-", "#Strings", "#US", "#GUID", "#Blob"}
+_NET_CAPS = {
+    "injeksi / manipulasi proses": {"VirtualAllocEx", "WriteProcessMemory", "CreateRemoteThread", "NtUnmapViewOfSection", "SetThreadContext", "QueueUserAPC", "NtWriteVirtualMemory"},
+    "kripto": {"CreateDecryptor", "CreateEncryptor", "RijndaelManaged", "AesManaged", "AesCryptoServiceProvider", "TripleDESCryptoServiceProvider", "RSACryptoServiceProvider", "DESCryptoServiceProvider"},
+    "muat kode dinamis": {"GetDelegateForFunctionPointer", "DefineDynamicAssembly", "LoadModule", "VirtualProtect", "VirtualAlloc", "GetProcAddress", "LoadLibrary"},
+    "penyadap input / layar": {"SetWindowsHookEx", "GetAsyncKeyState", "GetKeyboardState", "CopyFromScreen", "GetForegroundWindow"},
+    "anti-debug / anti-analisis": {"IsDebuggerPresent", "CheckRemoteDebuggerPresent", "NtQueryInformationProcess"},
+    "jaringan": {"DownloadString", "DownloadFile", "DownloadData", "UploadString", "UploadFile", "UploadValues", "TcpClient", "TcpListener"},
+    "eksekusi proses / shell": {"ProcessStartInfo", "ShellExecute", "WinExec"},
+}
+
+
+def _dotnet_info(d: bytes, pe: dict) -> dict | None:
+    """Metadata CLR: versi runtime, daftar stream, nama dari heap #Strings, string pengguna dari #US, dugaan obfuskasi."""
+    pe_off = struct.unpack_from("<I", d, 0x3C)[0]
+    o = pe_off + 24
+    is64 = struct.unpack_from("<H", d, o)[0] == 0x20B
+    nrva = struct.unpack_from("<I", d, o + (108 if is64 else 92))[0]
+    if nrva <= 14:
+        return None
+    rva, _sz = struct.unpack_from("<II", d, o + (112 if is64 else 96) + 8 * 14)
+
+    def r2o(x: int):
+        for s in pe["sections"]:
+            if s["va"] <= x < s["va"] + max(s["vsize"], s["rsize"]):
+                return s["rptr"] + x - s["va"]
+        return None
+
+    co = r2o(rva)
+    if co is None or co + 24 > len(d):
+        return None
+    _cb, _ma, _mi, mrva, _msz, cflags, etok = struct.unpack_from("<IHHIIII", d, co)
+    mo = r2o(mrva)
+    if mo is None or mo + 20 > len(d) or d[mo:mo + 4] != b"BSJB":
+        return None
+    vlen = struct.unpack_from("<I", d, mo + 12)[0]
+    if vlen > 255 or mo + 16 + vlen + 4 > len(d):
+        return None
+    runtime = d[mo + 16:mo + 16 + vlen].split(b"\0")[0].decode("ascii", "replace")
+    p = mo + 16 + vlen
+    _fl, nstreams = struct.unpack_from("<HH", d, p)
+    p += 4
+    streams: dict[str, tuple[int, int]] = {}
+    for _ in range(min(nstreams, 16)):
+        if p + 9 > len(d):
+            break
+        so, ssz = struct.unpack_from("<II", d, p)
+        e = d.find(b"\0", p + 8, p + 40)
+        if e < 0:
+            break
+        nm = d[p + 8:e].decode("ascii", "replace")
+        streams[nm] = (mo + so, ssz)
+        p += 8 + ((len(nm) + 1 + 3) & ~3)
+    names: list[str] = []
+    st = streams.get("#Strings")
+    if st and st[0] < len(d):
+        heap = d[st[0]:st[0] + min(st[1], 4 * 1024 * 1024)]
+        names = _uniq((x.decode("utf-8", "replace") for x in heap.split(b"\0") if x), 6000)
+    us: list[str] = []
+    ust = streams.get("#US")
+    if ust and ust[0] < len(d):
+        heap = d[ust[0]:ust[0] + min(ust[1], 4 * 1024 * 1024)]
+        i = 1
+        while i < len(heap) and len(us) < 3000:
+            b0 = heap[i]
+            if b0 < 0x80:
+                ln, i = b0, i + 1
+            elif b0 & 0xC0 == 0x80 and i + 1 < len(heap):
+                ln, i = ((b0 & 0x3F) << 8) | heap[i + 1], i + 2
+            elif b0 & 0xE0 == 0xC0 and i + 3 < len(heap):
+                ln, i = ((b0 & 0x1F) << 24) | (heap[i + 1] << 16) | (heap[i + 2] << 8) | heap[i + 3], i + 4
+            else:
+                break
+            if ln == 0:
+                continue
+            raw = heap[i:i + max(0, ln - 1)]
+            i += ln
+            s = raw.decode("utf-16le", "ignore")
+            if len(s) >= 4 and sum(ch.isprintable() for ch in s) >= 0.9 * len(s):
+                us.append(s[:300])
+    obf: list[str] = []
+    odd = [n_ for n_ in streams if n_ not in _NET_STD_STREAMS]
+    if odd:
+        obf.append("stream metadata tidak baku: " + ", ".join(odd[:3]))
+    if len(names) >= 40:
+        short = sum(1 for n_ in names if len(n_) <= 2)
+        weird = sum(1 for n_ in names if any(ord(ch) > 126 or ord(ch) < 32 for ch in n_))
+        if short / len(names) > 0.35:
+            obf.append("%d%% nama tipe / anggota hanya 1-2 karakter (pola penggantian nama obfuskator)" % (100 * short // len(names)))
+        if weird / len(names) > 0.2:
+            obf.append("%d%% nama berisi karakter non-ASCII / kontrol (pola obfuskator)" % (100 * weird // len(names)))
+    return {"runtime": runtime, "streams": [(k, v[1]) for k, v in streams.items()], "ilonly": bool(cflags & 1), "strong": bool(cflags & 8),
+            "entry_token": etok, "names": names, "us": us, "obf": obf, "n_names": len(names)}
+
+
+def _net_caps(names: list[str]) -> dict[str, list[str]]:
+    have = set(names)
+    out = {cap: sorted(have & keys)[:6] for cap, keys in _NET_CAPS.items() if have & keys}
+    if {"Assembly", "Load", "Invoke"} <= have:
+        out.setdefault("muat kode dinamis", []).append("Assembly.Load + Invoke")
+    return out
+
+
+# ----------------------------- CTPH (hash fuzzy gaya ssdeep) ----------------
+
+_B64C = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+CTPH_SAMPLE = 1024 * 1024
+
+
+def _spamsum(data: bytes, bs: int) -> tuple[str, str]:
+    h1 = h2 = h3 = 0
+    win = [0] * 7
+    n = 0
+    bh1 = bh2 = 0x28021967
+    s1, s2 = [], []
+    M = 0xFFFFFFFF
+    b2 = bs * 2
+    r = 0
+    for c in data:
+        bh1 = ((bh1 * 0x01000193) ^ c) & M
+        bh2 = ((bh2 * 0x01000193) ^ c) & M
+        h2 = (h2 - h1 + 7 * c) & M
+        h1 = (h1 + c - win[n % 7]) & M
+        win[n % 7] = c
+        n += 1
+        h3 = ((h3 << 5) ^ c) & M
+        r = (h1 + h2 + h3) & M
+        if r % bs == bs - 1 and len(s1) < 63:
+            s1.append(_B64C[bh1 & 63])
+            bh1 = 0x28021967
+        if r % b2 == b2 - 1 and len(s2) < 31:
+            s2.append(_B64C[bh2 & 63])
+            bh2 = 0x28021967
+    if r:
+        s1.append(_B64C[bh1 & 63])
+        s2.append(_B64C[bh2 & 63])
+    return "".join(s1), "".join(s2)
+
+
+def ctph(data: bytes) -> str:
+    """Hash fuzzy (context-triggered piecewise hashing, algoritma spamsum). Format 'blok:digest1:digest2'.
+    Dapat dibandingkan dengan ctph_compare(); bukan jaminan identik dengan keluaran ssdeep resmi."""
+    n = len(data)
+    if n < 64:
+        return ""
+    bs = 3
+    while bs * 64 < n:
+        bs *= 2
+    while True:
+        s1, s2 = _spamsum(data, bs)
+        if bs > 3 and len(s1) < 32:
+            bs //= 2
+            continue
+        return "%d:%s:%s" % (bs, s1, s2)
+
+
+def _squeeze(s: str) -> str:
+    return re.sub(r"(.)\1{3,}", r"\1\1\1", s)
+
+
+def _ssd_one(a: str, b: str, bs: int) -> int:
+    if len(a) < 7 or len(b) < 7:
+        return 0
+    if not any(a[i:i + 7] in b for i in range(len(a) - 6)):
+        return 0
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (0 if ca == cb else 2)))
+        prev = cur
+    score = prev[-1] * 64 // (len(a) + len(b))
+    score = 100 - (100 * score // 64)
+    if bs < 45:
+        score = min(score, bs // 3 * min(len(a), len(b)))
+    return max(0, min(100, score))
+
+
+def ctph_compare(x: str, y: str) -> int:
+    """Skor kemiripan 0-100 antara dua digest ctph(); 0 = tidak ada kemiripan berarti atau blok tak sebanding."""
+    try:
+        bx, ax1, ax2 = x.split(":", 2)
+        by, ay1, ay2 = y.split(":", 2)
+        bx, by = int(bx), int(by)
+    except ValueError:
+        return 0
+    ax1, ax2, ay1, ay2 = _squeeze(ax1), _squeeze(ax2), _squeeze(ay1), _squeeze(ay2)
+    if bx == by:
+        if ax1 == ay1 and ax2 == ay2:
+            return 100
+        return max(_ssd_one(ax1, ay1, bx), _ssd_one(ax2, ay2, bx * 2))
+    if bx == by * 2:
+        return _ssd_one(ax1, ay2, bx)
+    if by == bx * 2:
+        return _ssd_one(ax2, ay1, by)
+    return 0
+
+
+def _read_sample(path, n: int = CTPH_SAMPLE) -> tuple[bytes, int]:
+    f, size = _open_regular(path)
+    with f:
+        return f.read(n), size
+
+
+def similarity(path_a, path_b) -> dict:
+    """Bandingkan dua berkas: hash identik, skor CTPH, imphash, rich hash, irisan bagian PE (MD5), irisan string menarik."""
+    da, sa = _read_sample(path_a)
+    db, sb = _read_sample(path_b)
+    ra, rb = triage(path_a, fuzzy=False), triage(path_b, fuzzy=False)
+    ca, cb = ctph(da), ctph(db)
+    out = {"a": Path(path_a).name, "b": Path(path_b).name, "size_a": sa, "size_b": sb, "identical": ra["sha256"] == rb["sha256"],
+           "ctph_a": ca, "ctph_b": cb, "ctph_score": ctph_compare(ca, cb) if ca and cb else 0}
+    pa, pb = ra.get("pe"), rb.get("pe")
+    if pa and pb and not pa.get("broken") and not pb.get("broken"):
+        out["imphash_same"] = bool(pa.get("imphash")) and pa.get("imphash") == pb.get("imphash")
+        out["rich_same"] = bool((pa.get("rich") or {}).get("hash")) and (pa.get("rich") or {}).get("hash") == (pb.get("rich") or {}).get("hash")
+        ma = {x["md5"] for x in pa["sections"] if x.get("md5")}
+        mb = {x["md5"] for x in pb["sections"] if x.get("md5")}
+        out["section_md5_shared"] = len(ma & mb)
+        out["sections"] = (len(ma), len(mb))
+    ua = set(ra["ind"]["urls"]) | set(ra["ind"]["ips"]) | set(ra["ind"]["pdb"])
+    ub = set(rb["ind"]["urls"]) | set(rb["ind"]["ips"]) | set(rb["ind"]["pdb"])
+    out["shared_iocs"] = sorted(ua & ub)[:10]
+    verdict = "identik" if out["identical"] else ("sangat mirip (kemungkinan varian / keluarga sama)" if out["ctph_score"] >= 70 else
+                                                   "ada kemiripan" if out["ctph_score"] >= 30 else "tidak mirip menurut CTPH")
+    if not out["identical"] and (out.get("imphash_same") or out.get("rich_same") or out.get("section_md5_shared")) and out["ctph_score"] < 70:
+        verdict += "; tetapi struktur PE sama (imphash / rich header / bagian), kemungkinan satu keluarga atau satu toolchain"
+    out["verdict"] = verdict
+    return out
+
+
+def similar_text(path_a, path_b) -> str:
+    try:
+        r = similarity(path_a, path_b)
+    except Exception as e:
+        return "SIMILARITY gagal (%s: %s)." % (type(e).__name__, str(e)[:120])
+    L = ["KEMIRIPAN: %s vs %s" % (r["a"], r["b"]), "Ukuran : %s vs %s" % (_human(r["size_a"]), _human(r["size_b"])),
+         "SHA-256 identik: %s" % ("ya" if r["identical"] else "tidak"), "CTPH   : skor %d/100 (sampel %s pertama)" % (r["ctph_score"], _human(CTPH_SAMPLE))]
+    if "imphash_same" in r:
+        L.append("PE     : imphash %s | rich header %s | bagian MD5 sama %d dari %d/%d" % ("sama" if r["imphash_same"] else "beda", "sama" if r["rich_same"] else "beda", r["section_md5_shared"], *r["sections"]))
+    if r["shared_iocs"]:
+        L.append("IOC bersama: " + " | ".join(_df(x, True) for x in r["shared_iocs"][:6]))
+    L.append("Kesimpulan (petunjuk, bukan vonis): " + r["verdict"])
+    return "\n".join(_clean(x) for x in L)
+
+
+# ----------------------------- XOR / ADD / ROL ------------------------------
+
+_XOR_WORDS = [b"This program cannot be run", b"https://", b"http://", b"kernel32", b"KERNEL32", b"cmd.exe", b"powershell", b"GetProcAddress", b"LoadLibrary",
+              b"VirtualAlloc", b"WScript.Shell", b"/bin/sh", b"User-Agent", b"Mozilla/5.0"]
+_XOR_URL = re.compile(rb"https?://[\x21-\x7e]{4,100}")
+def _xor_table(op: str, key: int) -> bytes:
+    if op == "XOR":
+        return bytes(i ^ key for i in range(256))
+    if op == "ADD":
+        return bytes((i + key) & 255 for i in range(256))
+    return bytes(((i << key) | (i >> (8 - key))) & 255 for i in range(256))   # ROL
+
+
+def _xor_hunt(d: bytes, budget: float = 3.0) -> list[dict]:
+    """Cari kata kunci (URL, stub DOS, nama API) yang baru muncul setelah dekode satu byte (XOR / ADD / ROL).
+    XOR dan ADD dicari lewat selisih antar-byte (tidak bergantung pada kunci), jadi 255 kunci dicek sekali jalan, bukan satu per satu.
+    Jendela: 2 MB pertama + 1 MB terakhir berkas."""
+    if len(d) < 512:
+        return []
+    probe = d[:4096]
+    if sum(1 for b in probe if 9 <= b <= 13 or 32 <= b <= 126) / len(probe) > 0.97:
+        return []   # teks / skrip biasa: tidak ada gunanya
+    head, tail = 2 << 20, 1 << 20
+    samp = d if len(d) <= head + tail else d[:head] + d[-tail:]
+    n = len(samp)
+    words = [w for w in _XOR_WORDS if w not in samp]   # kata yang sudah polos di berkas tidak diburu
+    t0 = time.monotonic()
+    found: dict[tuple[str, int], set] = {}
+    xd = (int.from_bytes(samp, "big") ^ int.from_bytes(samp[1:] + b"\0", "big")).to_bytes(n, "big")
+    for w in words:
+        pat = bytes(w[i] ^ w[i + 1] for i in range(len(w) - 1))
+        pos, tries = xd.find(pat), 0
+        while pos >= 0 and tries < 4:
+            k = samp[pos] ^ w[0]
+            if k and pos + len(w) <= n and bytes(b ^ k for b in samp[pos:pos + len(w)]) == w:
+                found.setdefault(("XOR", k), set()).add(w)
+            pos, tries = xd.find(pat, pos + 1), tries + 1
+    del xd
+    if time.monotonic() - t0 < budget:
+        ad = bytes((b - a) & 255 for a, b in zip(samp, samp[1:]))
+        for w in words:
+            pat = bytes((w[i + 1] - w[i]) & 255 for i in range(len(w) - 1))
+            pos, tries = ad.find(pat), 0
+            while pos >= 0 and tries < 4:
+                k = (w[0] - samp[pos]) & 255
+                if k and pos + len(w) <= n and bytes((b + k) & 255 for b in samp[pos:pos + len(w)]) == w:
+                    found.setdefault(("ADD", k), set()).add(w)
+                pos, tries = ad.find(pat, pos + 1), tries + 1
+        del ad
+    for r in range(1, 8):
+        if time.monotonic() - t0 > budget:
+            break
+        dec = samp.translate(_xor_table("ROL", r))
+        for w in words:
+            if w in dec:
+                found.setdefault(("ROL", r), set()).add(w)
+    res: list[dict] = []
+    for (op, key), ws in found.items():
+        urls = [u.decode("ascii", "replace") for u in _uniq(_XOR_URL.findall(samp.translate(_xor_table(op, key))), 3)] if any(w.startswith(b"http") for w in ws) else []
+        res.append({"op": op, "key": key, "words": sorted(w.decode("ascii") for w in ws)[:4], "count": len(ws), "urls": urls})
+    res.sort(key=lambda x: (-x["count"], x["op"] != "XOR", x["key"]))
+    return res[:5]
+
+
+# ----------------------------- detail kemasan / installer -------------------
+
+
+def _pack_details(d: bytes, size: int) -> list[str]:
+    out: list[str] = []
+    head = d[: 16 * 1024 * 1024]
+    k = head.rfind(b"MEI\x0c\x0b\x0a\x0b\x0e")
+    if k >= 0 and k + 24 <= len(head):
+        pkg, toc, tlen, pyv = struct.unpack_from(">IIII", head, k + 8)
+        lib = head[k + 24:k + 88].split(b"\0")[0].decode("ascii", "ignore") if k + 88 <= len(head) else ""
+        newer = "python" in lib.lower()
+        pyver = ("%d.%d" % (pyv // 100, pyv % 100) if pyv >= 100 else "%d.%d" % (pyv // 10, pyv % 10)) if 20 <= pyv < 1000 else "?"
+        line = "PyInstaller %s | Python %s%s | arsip %s" % ("2.1+" if newer else "2.0", pyver, " (%s)" % lib if lib else "", _human(pkg))
+        if size == len(d) and 0 < tlen < 4 * 1024 * 1024:
+            csz = 88 if newer else 24
+            base = size - (pkg + (size - k - csz))
+            p, stop = base + toc, base + toc + tlen
+            kinds: collections.Counter = collections.Counter()
+            scripts: list[str] = []
+            while p + 18 <= min(stop, len(d)):
+                elen = struct.unpack_from(">I", d, p)[0]
+                if elen < 18 or p + elen > len(d):
+                    break
+                typ = d[p + 17:p + 18].decode("latin-1")
+                nm = d[p + 18:p + elen].split(b"\0")[0].decode("utf-8", "replace")
+                kinds[typ] += 1
+                if typ == "s" and len(scripts) < 6:
+                    scripts.append(nm)
+                p += elen
+            if kinds:
+                line += " | %d entri" % sum(kinds.values())
+            if scripts:
+                line += " | skrip masuk: " + ", ".join(scripts)
+        out.append(line)
+    m = re.search(rb"\$Id: UPX (\d+\.\d+\w*) Copyright", head)
+    if m:
+        out.append("UPX %s (unpack: `upx -d`)" % m.group(1).decode("ascii"))
+    i = head.find(b"\xef\xbe\xad\xdeNullsoftInst")
+    if i >= 0:
+        out.append("installer NSIS: header firstheader di offset 0x%X (ekstrak dengan 7-Zip)" % i)
+    m = re.search(rb"Inno Setup Setup Data \(([0-9.]{3,12}[^)]{0,16})\)", head)
+    if m:
+        out.append("Inno Setup versi %s (ekstrak dengan innoextract)" % m.group(1).decode("ascii", "replace"))
+    if head.find(b"Go build ID") >= 0 or head.find(b"runtime.gopanic") >= 0:
+        m = re.search(rb"\x00(go1\.\d{1,2}(?:\.\d{1,2})?)\x00?", head)
+        out.append("Go%s (pulihkan nama fungsi dari pclntab)" % (" " + m.group(1).decode("ascii") if m else ""))
+    m = re.search(rb"/rustc/([0-9a-f]{40})", head)
+    if m:
+        out.append("Rust: kompiler commit %s" % m.group(1).decode("ascii")[:12])
+    i = head.find(b"AU3!EA06")
+    if i >= 0:
+        out.append("AutoIt: skrip terkompilasi (AU3!EA06) di offset 0x%X" % i)
+    i = head.find(b";!@Install@!UTF-8!")
+    if i >= 0:
+        out.append("arsip swa-ekstrak 7-Zip: blok konfigurasi di offset 0x%X (baca perintah RunProgram)" % i)
+    if b"pyarmor" in head.lower():
+        out.append("PyArmor: skrip Python dilindungi (pyarmor_runtime)")
+    return out
+
+
+# ----------------------------- penggabung v97 -------------------------------
+
+
+def _v97_enrich(d: bytes, size: int, rep: dict, fuzzy: bool) -> None:
+    w = rep["warn"]
+    zp, mo, dn = rep.get("zip"), rep.get("macho"), rep.get("dotnet")
+    if mo:
+        w.extend(mo["warn"])
+    if dn:
+        for x in dn["obf"]:
+            w.append(".NET: " + x)
+    try:
+        rep["pack"] = _pack_details(d, size) if not zp else []
+    except Exception as e:
+        rep["pack"] = []
+        w.append("analisis kemasan gagal: %s" % type(e).__name__)
+    try:
+        rep["xor"] = _xor_hunt(d) if not zp else []
+    except Exception as e:
+        rep["xor"] = []
+        w.append("perburuan XOR gagal: %s" % type(e).__name__)
+    for x in rep["xor"][:2]:
+        w.append("kata kunci tersembunyi setelah dekode %s 0x%02X: %s (kemungkinan string / payload terenkode satu byte)" % (x["op"], x["key"], ", ".join(x["words"])))
+    rep["ctph"] = ""
+    if fuzzy and not zp:
+        try:
+            rep["ctph"] = ctph(d[:CTPH_SAMPLE])
+        except Exception as e:
+            w.append("CTPH gagal: %s" % type(e).__name__)
+
+
+def _render_v97(rep: dict, a, compact: bool, defang: bool) -> None:
+    mo, dn = rep.get("macho"), rep.get("dotnet")
+    if mo:
+        a("Mach-O : %s %s-bit %s, %s%s | entry: %s | tanda tangan: %s | PIE: %s%s" % (
+            mo["arch"], mo["bits"], mo["type"], mo["endian"] + "-endian", (" | " + mo["platform"]) if mo["platform"] else "",
+            mo["entry"] or "-", "ada" if mo["signed"] else "tidak ada", "ya" if mo["pie"] else "tidak", " | TERENKRIPSI" if mo["encrypted"] else ""))
+        if mo["fat"] and len(mo["fat"]) > 1:
+            a("   universal: " + ", ".join("%s (%s)" % (x[0], _human(x[2])) for x in mo["fat"][:6]))
+        if not compact:
+            if mo["dylibs"] or mo["weak"]:
+                a("   dylib (%d): %s%s" % (len(mo["dylibs"]) + len(mo["weak"]), ", ".join(mo["dylibs"][:10]), (" | lemah: " + ", ".join(mo["weak"][:4])) if mo["weak"] else ""))
+            if mo["rpaths"]:
+                a("   RPATH: " + ", ".join(mo["rpaths"][:4]))
+            if mo["segments"]:
+                a("   segmen: " + ", ".join("%s %s %.1f" % (s["name"], s["prot"], s["ent"]) for s in mo["segments"][:8]))
+            if mo["imports"]:
+                a("   simbol impor (%d): %s" % (len(mo["imports"]), ", ".join(mo["imports"][:25])))
+            if mo["uuid"]:
+                a("   UUID: " + mo["uuid"])
+    if dn:
+        a(".NET   : runtime %s | %s%s | %d nama di #Strings | %d string pengguna (#US)" % (
+            dn["runtime"], "IL murni" if dn["ilonly"] else "campuran (ada native)", ", strong-name" if dn["strong"] else "", dn["n_names"], len(dn["us"])))
+        if not compact:
+            a("   stream: " + ", ".join("%s (%s)" % (n, _human(s)) for n, s in dn["streams"][:8]))
+            hot = [u for u in dn["us"] if re.search(r"(?i)https?://|\\\\|\.exe|\.dll|powershell|cmd|\.onion|password|token|key", u)][:8]
+            if hot:
+                a("   string pengguna menarik: " + " | ".join(_df(x, defang) for x in hot))
+    for line in rep.get("pack") or []:
+        a("Kemasan: " + line)
+    for x in (rep.get("xor") or [])[: (1 if compact else 4)]:
+        a("Perburuan satu-byte: %s kunci 0x%02X -> %s%s" % (x["op"], x["key"], ", ".join(x["words"]), (" | URL: " + " | ".join(_df(u, defang) for u in x["urls"])) if x["urls"] else ""))
+    if rep.get("ctph") and not compact:
+        a("CTPH   : %s%s" % (rep["ctph"], " (sampel %s pertama)" % _human(CTPH_SAMPLE) if rep["size"] > CTPH_SAMPLE else ""))
+
+
+def _score_v97(rep: dict, add) -> None:
+    mo, dn = rep.get("macho"), rep.get("dotnet")
+    if mo:
+        if any(s["prot"][1:] == "WX" for s in mo["segments"]):
+            add(1, "segmen Mach-O W+X")
+        if any(s["ent"] > 7.2 and s["fsize"] > 16384 and s["name"] != "__LINKEDIT" for s in mo["segments"]) and not mo["encrypted"]:
+            add(1, "segmen Mach-O berentropi tinggi")
+    if dn and dn["obf"]:
+        add(2, "metadata .NET menunjukkan obfuskasi")
+    x = rep.get("xor") or []
+    if x:
+        strong = any(w_ in ("This program cannot be run", "https://", "http://", "powershell", "cmd.exe") for r_ in x for w_ in r_["words"])
+        add(3 if strong else 1, "kata kunci tersembunyi di balik dekode satu-byte")
+
+
+# ----------------------------- keluarga sampel (folder) ---------------------
+
+
+def _families(items: list[dict], fuzzy: bool) -> list[dict]:
+    fam: list[dict] = []
+    for key, label in (("imphash", "imphash sama"), ("rich", "rich header sama"), ("macho_uuid", "UUID Mach-O sama")):
+        g: dict[str, list[str]] = {}
+        for it in items:
+            if it.get(key):
+                g.setdefault(it[key], []).append(it["rel"])
+        fam += [{"basis": label, "members": v} for v in g.values() if len(v) > 1]
+    if fuzzy:
+        cand = [it for it in items if it.get("ctph")][:150]
+        seen: set[int] = set()
+        for i, x in enumerate(cand):
+            if i in seen:
+                continue
+            grp = [x["rel"]]
+            for j in range(i + 1, len(cand)):
+                if j not in seen and cand[j]["sha256"] != x["sha256"] and ctph_compare(x["ctph"], cand[j]["ctph"]) >= 70:
+                    grp.append(cand[j]["rel"])
+                    seen.add(j)
+            if len(grp) > 1:
+                fam.append({"basis": "CTPH >= 70", "members": grp})
+    return fam[:12]
+
+
+# ----------------------------- laporan Markdown -----------------------------
+
+
+def triage_md(path, defang: bool = True) -> str:
+    """Laporan Markdown siap simpan / tempel: ringkasan, skor, kemampuan, IOC, draf YARA. Hanya-baca."""
+    try:
+        rep = triage(path)
+    except Exception as e:
+        return "# Triase gagal\n\n`%s: %s`" % (type(e).__name__, str(e)[:120])
+    ind = rep["ind"]
+    L = ["# Laporan Triase REA v%s: %s" % (VERSION, _clean(rep["name"])), "",
+         "| Hal | Nilai |", "|---|---|", "| Jenis | %s |" % _clean(rep["kind"]).replace("|", "/"), "| Ukuran | %s |" % _human(rep["size"]),
+         "| SHA-256 | `%s` |" % rep["sha256"], "| SHA-1 | `%s` |" % rep["sha1"], "| MD5 | `%s` |" % rep["md5"],
+         "| Entropi | %.2f / 8.00 |" % rep["entropy"]]
+    if rep.get("ctph"):
+        L.append("| CTPH | `%s` |" % rep["ctph"])
+    pe = rep.get("pe")
+    if pe and not pe.get("broken") and pe.get("imphash"):
+        L.append("| imphash | `%s` |" % pe["imphash"])
+    L += ["", "## Skor heuristik: %d (%s)" % (rep["score"], rep["level"]), "", "_Petunjuk dari fakta terukur, bukan vonis._", ""]
+    L += ["- " + _clean(x) for x in rep["why"]] or ["- tidak ada tanda"]
+    if ind["caps"]:
+        L += ["", "## Indikasi kemampuan", ""]
+        for cap, hit in ind["caps"].items():
+            L.append("- **%s**: %s%s" % (cap, ", ".join(_clean(h) for h in hit), (" (%s)" % ATTACK[cap]) if cap in ATTACK else ""))
+    if rep["warn"]:
+        L += ["", "## Perhatian", ""] + ["- " + _clean(x) for x in rep["warn"][:25]]
+    for lab, key in (("URL", "urls"), ("IP kandidat", "ips"), ("Email", "emails"), ("Registry", "reg")):
+        if ind[key]:
+            L += ["", "## %s" % lab, ""] + ["- `%s`" % _clean(_df(x, defang)) for x in ind[key][:25]]
+    if rep.get("pack"):
+        L += ["", "## Kemasan / toolchain", ""] + ["- " + _clean(x) for x in rep["pack"]]
+    for label, hint in rep.get("tools", []):
+        L.append("- %s: %s" % (_clean(label), _clean(hint)))
+    L += ["", "## Draf YARA (WAJIB diuji terhadap file sah)", "", "```yara", yara_draft(rep), "```", "",
+          "---", "REA v%s | by: %s | dihitung statis dari bytes file, tanpa menjalankannya." % (VERSION, AUTHOR)]
+    return "\n".join(L)
+
+
+# ----------------------------- API JSON untuk Iris / Hermes -----------------
+
+_API_ACTIONS = ("capabilities", "triage", "json", "ioc", "yara", "md", "similar", "hex", "compare", "list", "extract", "dir", "ctph")
+
+
+def _api_path(p) -> Path:
+    """Jika REA_ROOTS (dipisah os.pathsep) diisi, hanya path di bawah akar itu yang boleh dibaca / ditulis."""
+    pp = Path(str(p)).expanduser().resolve()
+    roots = [x for x in os.environ.get("REA_ROOTS", "").split(os.pathsep) if x]
+    if roots and not any(pp == Path(r).resolve() or Path(r).resolve() in pp.parents for r in roots):
+        raise PermissionError("path di luar REA_ROOTS: %s" % pp.name)
+    return pp
+
+
+def rea_api(request) -> dict:
+    """Satu pintu JSON untuk agen. request: dict atau string JSON, contoh {"action": "triage", "path": "x.exe", "compact": true}.
+    Selalu mengembalikan dict {"ok": bool, ...}; tidak pernah melempar. Aksi: lihat _API_ACTIONS."""
+    try:
+        req = json.loads(request) if isinstance(request, (str, bytes)) else dict(request)
+        act = str(req.get("action", "")).lower()
+        mc = max(0, int(req.get("max_chars", 12000)))
+        trim = lambda t: t if not mc or len(t) <= mc else t[:mc - 30] + "\n[...dipangkas supaya muat...]"
+        if act == "capabilities":
+            return {"ok": True, "version": VERSION, "actions": list(_API_ACTIONS), "rea_extract": _extract_mod() is not None,
+                    "rea_binary": _has_binary(), "roots_restricted": bool(os.environ.get("REA_ROOTS"))}
+        if act == "triage":
+            p = _api_path(req["path"])
+            if p.is_dir():
+                return {"ok": True, "action": act, "text": trim(triage_dir_text(str(p), defang=bool(req.get("defang", True))))}
+            rep = triage(p)
+            return {"ok": True, "action": act, "score": rep["score"], "level": rep["level"], "sha256": rep["sha256"], "kind": rep["kind"],
+                    "text": trim(render(rep, compact=bool(req.get("compact", False)), defang=bool(req.get("defang", True)), max_chars=mc))}
+        if act in ("json", "ioc"):
+            return {"ok": True, "action": act, "data": json.loads(triage_json(_api_path(req["path"]), ioc_only=act == "ioc"))}
+        if act == "yara":
+            return {"ok": True, "action": act, "text": yara_draft(triage(_api_path(req["path"]), fuzzy=False))}
+        if act == "md":
+            return {"ok": True, "action": act, "text": trim(triage_md(_api_path(req["path"]), defang=bool(req.get("defang", True))))}
+        if act == "ctph":
+            data, _sz = _read_sample(_api_path(req["path"]))
+            return {"ok": True, "action": act, "ctph": ctph(data), "sample": len(data)}
+        if act == "similar":
+            return {"ok": True, "action": act, "data": similarity(_api_path(req["a"]), _api_path(req["b"]))}
+        if act == "hex":
+            return {"ok": True, "action": act, "text": trim(hex_text(_api_path(req["path"]), int(req.get("offset", 0)), int(req.get("length", 256))))}
+        if act == "compare":
+            return {"ok": True, "action": act, "text": trim(compare_text(_api_path(req["a"]), _api_path(req["b"])))}
+        if act == "list":
+            return {"ok": True, "action": act, "text": trim(container_text(_api_path(req["path"]), max_chars=mc))}
+        if act == "extract":
+            m = container_extract(_api_path(req["path"]), _api_path(req["outdir"]), pattern=req.get("pattern"), scan=bool(req.get("scan", False)))
+            return {"ok": m.get("status") == "success", "action": act, "manifest": m}
+        if act == "dir":
+            return {"ok": True, "action": act, "text": trim(triage_dir_text(str(_api_path(req["path"])), defang=bool(req.get("defang", True))))}
+        return {"ok": False, "error": "aksi tidak dikenal: %s" % act[:40], "actions": list(_API_ACTIONS)}
+    except Exception as e:
+        return {"ok": False, "error": "%s: %s" % (type(e).__name__, str(e)[:160])}
+
+
+def _has_binary() -> bool:
+    try:
+        import rea_binary  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -1826,9 +2770,25 @@ if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [-
     import sys
     argv = sys.argv[1:]
     cdir = None
+    if "--api" in argv:      # --api '{"action": "triage", "path": "x.exe"}'  (JSON satu baris untuk agen)
+        t = argv[argv.index("--api") + 1:]
+        print(json.dumps(rea_api(t[0] if t else "{}"), ensure_ascii=False, indent=2, default=str))
+        raise SystemExit(0)
+    if "--similar" in argv:  # --similar A B
+        t = argv[argv.index("--similar") + 1:]
+        print(similar_text(t[0], t[1]) if len(t) > 1 else "pemakaian: --similar A B")
+        raise SystemExit(0)
+    if "--md" in argv:       # --md FILE  -> laporan Markdown
+        t = argv[argv.index("--md") + 1:]
+        print(triage_md(t[0]) if t else "pemakaian: --md FILE")
+        raise SystemExit(0)
+    if "--ctph" in argv:     # --ctph FILE
+        t = argv[argv.index("--ctph") + 1:]
+        print(ctph(_read_sample(t[0])[0]) if t else "pemakaian: --ctph FILE")
+        raise SystemExit(0)
     if "--hex" in argv:      # --hex FILE [OFFSET [LENGTH]]
         t = argv[argv.index("--hex") + 1:]
-        print(hex_text(t[0], t[1] if len(t) > 1 else 0, int(t[2]) if len(t) > 2 else 256) if t else "pemakaian: --hex FILE [OFFSET [LENGTH]]")
+        print(hex_text(t[0], int(t[1], 0) if len(t) > 1 else 0, int(t[2], 0) if len(t) > 2 else 256) if t else "pemakaian: --hex FILE [OFFSET [LENGTH]]")
         raise SystemExit(0)
     if "--compare" in argv:  # --compare A B
         t = argv[argv.index("--compare") + 1:]
@@ -1851,7 +2811,7 @@ if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [-
     args = [x for x in argv if not x.startswith("--")]
     flags = {x for x in argv if x.startswith("--")}
     if not args:
-        print("pemakaian: python rea_triage.py <file|folder> [--compact] [--json] [--ioc] [--raw (tanpa defang)] [--yara] [--carve DIR] | --hex FILE [OFFSET [LENGTH]] | --compare A B | --list <container> | --extract OUTDIR <container> [pola] [--scan]")
+        print("pemakaian: python rea_triage.py <file|folder> [--compact] [--json] [--ioc] [--raw (tanpa defang)] [--yara] [--carve DIR] | --hex FILE [OFFSET [LENGTH]] | --compare A B | --list <container> | --extract OUTDIR <container> [pola] [--scan] | --similar A B | --md FILE | --ctph FILE | --api JSON")
     elif Path(args[0]).is_dir():
         print(triage_dir_text(args[0], defang="--raw" not in flags))
     elif "--json" in flags or "--ioc" in flags:
