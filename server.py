@@ -6,6 +6,15 @@ Alur:
   klien (WebSocket) -> teks user -> 9Router (stream) -> per baris
   -> VOICEVOX (speaker 2) -> kirim {teks, audio wav base64, moras, emosi} ke klien
 
+Perubahan v79 (fun fact: salah terjemah "kepala bulan-bulanan memiliki tiga jantung", seharusnya gurita / cumi-cumi / sefalopoda):
+  - Prompt fun fact: wajib istilah baku Indonesia dan nama hewan / benda yang nyata (gurita, cumi-cumi, sotong, dst.), dilarang menerjemahkan
+    istilah asing kata per kata, dengan contoh benar dan contoh salah.
+  - Saringan lokal sebelum dikirim ke overlay: tolak kalimat yang masih berbahasa Inggris, frasa janggal "bulan-bulanan" sebagai subjek,
+    dan kalimat tanpa kata kerja / terlalu pendek.
+  - Verifikasi kedua oleh model (FUNFACT_VERIFY=1, bawaan aktif; 0 untuk mematikan): fakta diperiksa benar / tidaknya dan wajar / tidaknya
+    kalimat Indonesianya. Dijawab SALAH = ditolak (overlay memakai fakta bawaan). Verifikasi timeout / galat = fakta tetap dipakai (tidak lebih buruk dari dulu).
+  - Total waktu tetap di bawah FUNFACT_TIMEOUT (maks. 48 dtk), jadi tidak melewati FUN_GEN_WAIT di index.html.
+
 Perubahan v71 (sandbox Docker Hermes, butir 15 tier list):
   - HERMES_SANDBOX=1: Iris tahu agen berjalan di kontainer Docker. D:\\praktek\\_hermes <-> /workspace/out (bisa ditulis); lokasi lewat
     HERMES_SANDBOX_WIN. Mount hanya-baca /workspace/praktek hanya dianggap ada kalau HERMES_SANDBOX_RO_WIN diisi (bawaan kosong).
@@ -129,6 +138,11 @@ import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse
 from dotenv import load_dotenv
+
+try:   # game teka-teki; kalau iris_games.py tidak ada, server jalan tanpa /tekateki
+    import iris_games as ig
+except ImportError:
+    ig = None
 
 # by: KangJiho. v73: terjemah layar berupa GAMBAR. Kalau Pillow belum terpasang, server tetap jalan dan hanya fitur ini yang menolak.
 try:
@@ -1899,12 +1913,47 @@ async def handle_lesson_start(ws: WebSocket, client: httpx.AsyncClient, history,
         await safe_send(ws, {"type": "done", "interrupted": False})
 
 
+# Game teka-teki: Balasan dari iris_games -> segmen overlay
+GAME_EMO = {"netral": "neutral", "senang": "happy", "sedih": "sad", "penasaran": "surprised",
+            "menggoda": "tease", "bingung": "confused", "berpikir": "neutral"}
+
+
+async def handle_game_replies(ws: WebSocket, client: httpx.AsyncClient, replies: list) -> None:
+    """Kirim Balasan game sebagai segmen. Hanya teka-teki Jepang yang disuarakan (VOICEVOX hanya bisa Jepang);
+    teks Indonesia tampil di bubble saja. Tidak menyentuh riwayat chat LLM."""
+    try:
+        for b in replies:
+            emo = GAME_EMO.get(b.emosi, "neutral")
+            jp = (b.ucapkan or "").strip()[:SPEAK_MAX_JP] if b.bahasa == "ja" else ""
+            audio_b64, moras = None, []
+            if jp:
+                try:
+                    wav, moras = await synthesize(client, jp, emo)
+                    audio_b64 = base64.b64encode(wav).decode("ascii")
+                except Exception as e:   # VOICEVOX mati: teks tetap tampil
+                    await safe_send(ws, {"type": "error", "message": f"VOICEVOX: {e!r}"})
+            seg = {"type": "segment", "text": b.teks, "jp": jp, "emotion": emo, "audio": audio_b64, "moras": moras}
+            if b.klip:
+                seg["clip"] = b.klip   # nama klip VRMA; overlay memutarnya kalau ada
+            await safe_send(ws, seg)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        print(f"[tekateki] galat: {type(e).__name__}: {str(e)[:300]!r}", flush=True)
+    finally:
+        await safe_send(ws, {"type": "done", "interrupted": False})
+
+
 # ----------------------------------------------------------------------------
 # v27: fun fact yang dibuat model (/funfact topik ...)
 # ----------------------------------------------------------------------------
 FUNFACT_PROMPT = (
     "Beri SATU fun fact singkat yang benar dan mudah diverifikasi{topic}. Jangan mengarang angka, tahun, atau nama; "
     "kalau ragu, pilih fakta lain yang kamu yakin. Jangan ulangi atau mirip dengan: {seen}.\n"
+    "Aturan bahasa Indonesia: pakai istilah baku yang umum dipakai orang Indonesia (mis. gurita, cumi-cumi, sotong, lebah madu, paus biru). "
+    "Subjek harus hewan / benda / tempat nyata. JANGAN menerjemahkan istilah asing kata per kata dan JANGAN memakai kiasan atau idiom "
+    "(contoh SALAH: \"Kepala bulan-bulanan memiliki tiga jantung\" dari salah terjemah cephalopod; contoh BENAR: \"Gurita memiliki tiga jantung.\"). "
+    "Kalau tidak yakin padanan Indonesianya, pilih fakta lain.\n"
     "Balas HANYA satu baris persis format: FAKTA: <fakta bahasa Indonesia, maksimal 150 karakter> ||| "
     "<terjemahan Jepang santai, maksimal 90 karakter, hanya tulisan Jepang (tanpa emoji dan tanpa huruf Latin; angka boleh)>. Tanpa teks lain."
 )
@@ -1915,6 +1964,73 @@ JP_CHAR_RE = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]")
 # dan $env:FUNFACT_MODEL (model/combo 9Router yang lebih cepat khusus fun fact; kosong = NINEROUTER_MODEL).
 FUNFACT_TIMEOUT = min(max(env_float("FUNFACT_TIMEOUT", 45.0), 5.0), 48.0)
 FUNFACT_MODEL = os.getenv("FUNFACT_MODEL", "").strip() or MODEL
+
+# Game teka-teki (/tekateki). Logikanya ada di iris_games.py. Bank bawaan: data/tekateki.json; teka-teki buatan model disimpan di
+# data/tekateki_dinamis.json. GAME_MODEL = model/combo 9Router untuk membuat dan memeriksa teka-teki baru (kosong = NINEROUTER_MODEL).
+# GAME_AUTOGEN=0 mematikan pembuatan otomatis (hanya memakai bank bawaan). Teka-teki Jepang buatan model hanya dibuat bila pemeriksa aktif.
+GAME_MODEL = os.getenv("GAME_MODEL", "").strip() or MODEL
+GAME_AUTOGEN = os.getenv("GAME_AUTOGEN", "1").strip().lower() not in ("0", "false", "off", "mati", "tidak")
+GAME = None
+if ig is not None:
+    try:
+        _gd = BASE_DIR / "data"
+        GAME = ig.GameTekaTeki(
+            _gd / "tekateki.json", _gd / "tekateki_state.json",
+            dinamis_path=_gd / "tekateki_dinamis.json",
+            pembuat=ig.buat_pembuat(NINEROUTER_URL, NINEROUTER_KEY, GAME_MODEL) if GAME_AUTOGEN else None,
+            pemeriksa=ig.buat_pemeriksa(NINEROUTER_URL, NINEROUTER_KEY, GAME_MODEL) if GAME_AUTOGEN else None,
+        )
+        for _w in GAME.peringatan:
+            print(f"[tekateki] {_w}", flush=True)
+        if not GAME.bank:
+            print("[tekateki] bank kosong: taruh data/tekateki.json di folder server", flush=True)
+    except Exception as _e:   # game rusak tidak boleh menjatuhkan server
+        print(f"[tekateki] dimatikan: {type(_e).__name__}: {_e}", flush=True)
+        GAME = None
+# v79: pemeriksaan kedua oleh model (benar / salah + kalimat wajar). FUNFACT_VERIFY=0 mematikan.
+FUNFACT_VERIFY = os.getenv("FUNFACT_VERIFY", "1").strip().lower() not in ("0", "false", "off", "no", "")
+FUNFACT_VERIFY_RESERVE = 12.0    # sisa waktu yang disisihkan untuk verifikasi dari FUNFACT_TIMEOUT
+FUNFACT_VERIFY_PROMPT = (
+    "Periksa fun fact berikut dengan teliti.\nFakta: {fact}\n"
+    "Balas HANYA satu baris. Tulis OK kalau faktanya benar dan umum diketahui DAN kalimat Indonesianya wajar, memakai istilah baku "
+    "dan bukan terjemahan harfiah yang janggal. Kalau tidak, tulis: SALAH: <alasan singkat>. Kalau kamu tidak yakin, tulis SALAH."
+)
+FUNFACT_VERIFY_RE = re.compile(r"^\W*(OK|SALAH)\b[\s:,.-]*(.*)$", re.I)
+_FF_ENG_RE = re.compile(r"\b(the|of|and|with|have|has|are|is|that|which|their)\b", re.I)
+_FF_BAD_RE = re.compile(r"bulan-bulanan|\bcephalopod|\bsefalopod[ae]?\s+kepala", re.I)
+
+
+def funfact_suspicious(idn: str) -> str:
+    """v79: alasan menolak fakta berdasarkan pemeriksaan lokal murah ('' = lolos)."""
+    if _FF_BAD_RE.search(idn):
+        return "frasa janggal / salah terjemah"
+    if len(_FF_ENG_RE.findall(idn)) >= 2:
+        return "masih berbahasa Inggris"
+    if len(idn.split()) < 3:
+        return "terlalu pendek untuk sebuah fakta"
+    return ""
+
+
+async def verify_funfact(client: httpx.AsyncClient, fact: str, timeout: float) -> tuple[bool | None, str]:
+    """v79: (True, '') benar | (False, alasan) salah | (None, '') tidak bisa diperiksa (timeout / galat / format lain)."""
+    messages = [{"role": "system", "content": "Kamu pemeriksa fakta yang ketat dan jujur. Kamu lebih suka menolak fakta yang diragukan."},
+                {"role": "user", "content": FUNFACT_VERIFY_PROMPT.format(fact=fact)}]
+
+    async def run():
+        async for line in clean_lines(stream_lines(client, messages, FUNFACT_MODEL)):
+            m = FUNFACT_VERIFY_RE.match(line)
+            if m:
+                return (m.group(1).upper() == "OK"), m.group(2).strip()
+        return None, ""
+
+    try:
+        ok, why = await asyncio.wait_for(run(), timeout)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:   # termasuk TimeoutError: verifikasi gagal TIDAK boleh menggagalkan fakta
+        print(f"[funfact] verifikasi dilewati: {type(e).__name__}")
+        return None, ""
+    return ok, why
 
 
 def clean_funfact_seen(raw) -> list[str]:
@@ -1933,7 +2049,7 @@ async def handle_funfact(ws: WebSocket, client: httpx.AsyncClient, topic: str, s
             topic=(f" tentang topik: {topic}" if topic and topic.lower() not in ("umum", "bebas", "acak") else " (topik bebas)"),
             seen=" / ".join(seen) or "(belum ada)",
         )
-        messages = [{"role": "system", "content": "Kamu penulis fun fact yang teliti dan jujur. Kamu tidak pernah mengarang fakta."},
+        messages = [{"role": "system", "content": "Kamu penulis fun fact yang teliti dan jujur. Kamu tidak pernah mengarang fakta dan selalu memakai istilah baku bahasa Indonesia."},
                     {"role": "user", "content": prompt}]
 
         got: list[str] = []
@@ -1952,11 +2068,11 @@ async def handle_funfact(ws: WebSocket, client: httpx.AsyncClient, topic: str, s
             return None
 
         try:
-            m = await asyncio.wait_for(generate(), FUNFACT_TIMEOUT)
+            m = await asyncio.wait_for(generate(), max(5.0, FUNFACT_TIMEOUT - (FUNFACT_VERIFY_RESERVE if FUNFACT_VERIFY else 0.0)))
         except asyncio.TimeoutError:
             ket = (f"baris pertama baru datang setelah {first:.1f} dtk tapi bukan format FAKTA" if first is not None
                    else "belum ada satu baris pun dari model")
-            print(f"[funfact] gagal: model '{FUNFACT_MODEL}' tidak selesai dalam {FUNFACT_TIMEOUT:.0f} dtk ({ket}). "
+            print(f"[funfact] gagal: model '{FUNFACT_MODEL}' tidak selesai dalam {max(5.0, FUNFACT_TIMEOUT - (FUNFACT_VERIFY_RESERVE if FUNFACT_VERIFY else 0.0)):.0f} dtk ({ket}). "
                   f"Coba $env:FUNFACT_MODEL=<model yang lebih cepat> atau naikkan $env:FUNFACT_TIMEOUT (maks. 48).")
             await safe_send(ws, result)
             return
@@ -1965,8 +2081,19 @@ async def handle_funfact(ws: WebSocket, client: httpx.AsyncClient, topic: str, s
         else:
             idn, jp = m.group(1).strip().strip("\"'"), m.group(2).strip()
             if 8 <= len(idn) <= 170 and 4 <= len(jp) <= 120 and JP_CHAR_RE.search(jp):
-                result = {"type": "funfact", "ok": True, "id": idn, "jp": jp}
-                print(f"[funfact] ok ({time.monotonic() - t0:.1f} dtk, model '{FUNFACT_MODEL}')")
+                bad = funfact_suspicious(idn)
+                verdict: bool | None = None
+                if not bad and FUNFACT_VERIFY:
+                    left = min(20.0, max(6.0, t0 + 47.0 - time.monotonic()))
+                    verdict, why = await verify_funfact(client, idn, left)
+                    if verdict is False:
+                        bad = "ditolak pemeriksa: " + (why[:120] or "tanpa alasan")
+                if bad:
+                    print(f"[funfact] ditolak ({bad}): {idn[:150]!r}")
+                else:
+                    result = {"type": "funfact", "ok": True, "id": idn, "jp": jp}
+                    print(f"[funfact] ok ({time.monotonic() - t0:.1f} dtk, model '{FUNFACT_MODEL}', verifikasi: "
+                          f"{'lolos' if verdict else 'dilewati' if verdict is None else 'gagal'})")
             else:
                 print(f"[funfact] gagal: fakta ditolak validasi (id {len(idn)} huruf, jp {len(jp)} huruf, ada kana/kanji: {bool(JP_CHAR_RE.search(jp))}): {m.group(0)[:200]!r}")
     except asyncio.CancelledError:
@@ -2595,10 +2722,24 @@ async def ws_endpoint(ws: WebSocket):
                         current_is_agent = False
                         if c == "belajar":
                             history.lesson = None
+                            if GAME is not None:
+                                GAME.aktif = None   # satu mode dalam satu waktu
                             current = asyncio.create_task(handle_lesson_start(ws, client, history, a.strip()))
                         else:
                             current = asyncio.create_task(handle_command_lines(ws, client, memory_command(c, a)))
                         continue
+                    if GAME is not None and text and not images and not (current and not current.done() and current_is_agent):
+                        # game teka-teki: /tekateki, atau pesan apa pun saat ronde berjalan (dianggap tebakan). None = bukan urusan game
+                        g_text = unwrap_explain(text).strip()
+                        g_first = g_text.split(None, 1)[0].casefold() if g_text else ""
+                        if g_first in ig.PERINTAH_UTAMA or GAME.sedang_main():
+                            g_rep = await asyncio.to_thread(GAME.tangani, g_text)   # sinkron dan menyentuh disk
+                            if g_rep is not None:
+                                await cancel_current()
+                                history.lesson = None
+                                current_is_agent = False
+                                current = asyncio.create_task(handle_game_replies(ws, client, g_rep))
+                                continue
                     if text and history.lesson and not images and not unwrap_explain(text).startswith("/"):
                         # soal /belajar menunggu: pesan ini dianggap jawaban (satu soal, satu jawaban)
                         if current and not current.done():

@@ -1213,6 +1213,7 @@ function reactToSegment(emotion, isErr, seg) {
   emotion = baseEmo(emotion);   // v41
   if (quiet || !SET.idle || asleep || isErr) return;
   if (clipAct) return;                                // klip VRMA masih jalan
+  if (seg && seg.clip) { const gk = findClip(seg.clip); if (gk && playClip(gk)) return; }   // game teka-teki: server menyebut klip (angguk, geleng, tari_ceria, ...)
   if (seg) {                                          // v46: frasa dulu, sebelum gerbang emosi (yang dicocokkan hanya teks ucapan, bukan pikiran batin)
     const nowP = performance.now() / 1000;
     const pc = matchPhrase((seg.text || '') + ' ' + (seg.jp || ''));
@@ -5165,6 +5166,7 @@ const HELP = [
   '/funfact [sekarang|10-30|mati]  Iris menyebut fun fact di waktu acak (5-60 menit, bawaan nyala; bisa juga diatur di Pengaturan)',
   '/funfact topik <topik>  fakta dibuat model sesuai topik (game, luar angkasa, ...); /funfact bawaan = hanya daftar bawaan; /funfact model = kembali ke buatan model',
   '/kana [hira|kata|campur] [lengkap] [kombinasi]  kuis kana lokal: Iris menampilkan satu huruf, kamu ketik romaji-nya (10 soal per ronde; ? = lihat jawaban; /kana stop = selesai; lengkap = ikut dakuten; kombinasi = ikut きゃ, しゅ, ちょ dst.)',
+  '/tekateki [id|jp|campur]  main teka-teki (なぞなぞ): Iris memberi teka-teki, ketik jawabanmu; /petunjuk, /menyerah, /tekateki lewati|skor|stop',
   '/belajar [topik]  latihan Jepang: Iris mengucapkan satu kalimat, kamu menebak artinya',
   '/mood [reset|mati|nyala]  lihat suasana hati Iris (bertahan antarhari)',
   '/ingat <hal>      suruh Iris mengingat sesuatu (disimpan lokal)',

@@ -1,0 +1,145 @@
+{
+  "versi": 1,
+  "teka_teki": [
+    {
+      "id": "id-001",
+      "bahasa": "id",
+      "pertanyaan": "Makin banyak diambil, makin besar. Apa itu?",
+      "jawaban": ["lubang"],
+      "varian": ["lobang"],
+      "petunjuk": [
+        "Biasanya ada di tanah.",
+        "Orang membuatnya dengan menggali.",
+        "Diawali huruf L."
+      ],
+      "penjelasan": "Semakin banyak tanah yang diambil, lubangnya semakin besar."
+    },
+    {
+      "id": "id-002",
+      "bahasa": "id",
+      "pertanyaan": "Aku punya kota tapi tidak ada rumah, punya gunung tapi tidak ada pohon, punya air tapi tidak ada ikan. Aku apa?",
+      "jawaban": ["peta"],
+      "varian": ["peta dunia", "atlas", "map"],
+      "petunjuk": [
+        "Sering dipakai saat bepergian.",
+        "Bentuknya selembar kertas atau tampilan di layar ponsel.",
+        "Diawali huruf P."
+      ],
+      "penjelasan": "Di peta ada gambar kota, gunung, dan laut, tapi semuanya cuma gambar."
+    },
+    {
+      "id": "id-003",
+      "bahasa": "id",
+      "pertanyaan": "Apa yang selalu naik tapi tidak pernah turun?",
+      "jawaban": ["umur"],
+      "varian": ["usia"],
+      "petunjuk": [
+        "Bertambah setiap ulang tahun.",
+        "Tidak ada yang bisa menghentikannya.",
+        "Dihitung dalam tahun."
+      ],
+      "penjelasan": "Umur terus bertambah dan tidak pernah berkurang."
+    },
+    {
+      "id": "id-004",
+      "bahasa": "id",
+      "pertanyaan": "Punya kepala dan ekor tapi tidak punya badan. Apa itu?",
+      "jawaban": ["koin"],
+      "varian": ["uang logam", "uang koin", "logam", "receh", "recehan"],
+      "petunjuk": [
+        "Ada di dompet atau celengan.",
+        "Sering dilempar untuk menentukan pilihan.",
+        "Terbuat dari logam."
+      ],
+      "penjelasan": "Sisi depan koin disebut kepala dan sisi belakangnya disebut ekor."
+    },
+    {
+      "id": "id-005",
+      "bahasa": "id",
+      "pertanyaan": "Apa yang makin basah kalau dipakai untuk mengeringkan?",
+      "jawaban": ["handuk"],
+      "varian": ["anduk"],
+      "petunjuk": [
+        "Ada di kamar mandi.",
+        "Dipakai setelah mandi.",
+        "Terbuat dari kain yang tebal."
+      ],
+      "penjelasan": "Handuk menyerap air dari badan, jadi dia sendiri yang jadi basah."
+    },
+    {
+      "id": "ja-001",
+      "bahasa": "ja",
+      "pertanyaan": "パンはパンでも、食べられないパンは？",
+      "baca": "パンはパンでも、たべられないパンは？",
+      "terjemah": "Sama-sama 「pan」, tapi pan apa yang tidak bisa dimakan?",
+      "jawaban": ["フライパン"],
+      "varian": ["ふらいぱん", "furaipan", "frypan", "fry pan", "wajan", "penggorengan"],
+      "petunjuk": [
+        "Ada di dapur.",
+        "Dipakai untuk menggoreng telur.",
+        "Diawali ふ (fu)."
+      ],
+      "penjelasan": "フライパン (furaipan) adalah wajan datar. Akhirannya sama dengan パン (roti), tapi tentu tidak bisa dimakan."
+    },
+    {
+      "id": "ja-002",
+      "bahasa": "ja",
+      "pertanyaan": "上は大水、下は大火事。なーんだ？",
+      "baca": "うえはおおみず、したはおおかじ。なーんだ？",
+      "terjemah": "Atasnya banjir besar, bawahnya kebakaran besar. Apa itu?",
+      "jawaban": ["お風呂"],
+      "varian": ["おふろ", "風呂", "ふろ", "ofuro", "furo", "bak mandi", "bak air panas"],
+      "petunjuk": [
+        "Dipakai tiap malam di rumah Jepang.",
+        "Airnya dipanaskan dari bawah.",
+        "Diawali お (o)."
+      ],
+      "penjelasan": "お風呂 (ofuro) adalah bak mandi air panas. Airnya di atas, dan api yang memanaskannya ada di bawah."
+    },
+    {
+      "id": "ja-003",
+      "bahasa": "ja",
+      "pertanyaan": "朝は四本足、昼は二本足、夜は三本足。なーんだ？",
+      "baca": "あさはよんほんあし、ひるはにほんあし、よるはさんぼんあし。なーんだ？",
+      "terjemah": "Pagi berkaki empat, siang berkaki dua, malam berkaki tiga. Apa itu?",
+      "jawaban": ["人間"],
+      "varian": ["にんげん", "人", "ひと", "ningen", "hito", "manusia"],
+      "petunjuk": [
+        "Ini teka-teki terkenal dari Sphinx.",
+        "Pagi, siang, dan malam melambangkan tahap kehidupan.",
+        "Kaki ketiga adalah tongkat."
+      ],
+      "penjelasan": "人間 (ningen) adalah manusia: merangkak saat bayi, berjalan dengan dua kaki saat dewasa, dan memakai tongkat saat tua."
+    },
+    {
+      "id": "ja-004",
+      "bahasa": "ja",
+      "pertanyaan": "前から読んでも後ろから読んでも同じ、赤い野菜は？",
+      "baca": "まえからよんでもうしろからよんでもおなじ、あかいやさいは？",
+      "terjemah": "Dibaca dari depan atau dari belakang hasilnya sama. Sayur merah apa itu?",
+      "jawaban": ["トマト"],
+      "varian": ["とまと", "tomato"],
+      "petunjuk": [
+        "Sering ada di salad dan saus.",
+        "Warnanya merah dan bentuknya bulat.",
+        "Hanya tiga kana: ト・マ・ト."
+      ],
+      "penjelasan": "トマト (tomato) terdiri dari tiga kana, dan dibaca terbalik tetap トマト."
+    },
+    {
+      "id": "ja-005",
+      "bahasa": "ja",
+      "pertanyaan": "雨のあとにかかるけれど、渡れない橋は？",
+      "baca": "あめのあとにかかるけれど、わたれないはしは？",
+      "terjemah": "Jembatan yang muncul setelah hujan tapi tidak bisa diseberangi. Apa itu?",
+      "jawaban": ["虹"],
+      "varian": ["にじ", "niji", "pelangi"],
+      "petunjuk": [
+        "Warnanya banyak.",
+        "Muncul ketika hujan dan matahari bertemu.",
+        "Dibaca に-じ, hanya dua kana."
+      ],
+      "penjelasan": "虹 (niji) adalah pelangi, jembatan warna-warni di langit yang tidak bisa diseberangi."
+    }
+  ]
+}

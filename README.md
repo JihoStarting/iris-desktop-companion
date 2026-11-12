@@ -121,6 +121,7 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - **Komentar layar otomatis** (`/pantau`, ditandai 👁)
 - **Bicara lewat mikrofon** (STT, opsional) dengan faster-whisper. Model, bahasa, dan kosakata bantu bisa disetel lewat `.env`; ucapan yang diawali kata kerja aksi (mis. "Cek ...", "Cari ...") tetap dijalankan sebagai tugas walau Whisper menambahkan tanda tanya, dan jawaban singkat seperti "iya" atau "lanjut aja" setelah Iris menawarkan `/agen` menjalankan tugasnya. Lihat [Bicara lewat mikrofon](#bicara-lewat-mikrofon)
 - **Mode belajar bahasa Jepang** (`/belajar`): Iris memberi kalimat Jepang, kamu menebak arti atau mengulang ucapannya, lalu dikoreksi. Ada opsi menyerah untuk melihat jawaban
+- **Teka-teki** (`/tekateki`): Iris memberi teka-teki Indonesia atau なぞなぞ Jepang, kamu mengetik jawabannya. Ada petunjuk bertahap yang mengurangi poin, poin, rangkaian benar, dan skor yang tersimpan. Stok teka-teki baru dibuat model di latar (model dipilih lewat `GAME_MODEL` di `.env`, `GAME_AUTOGEN=0` mematikannya). Logika ada di `iris_games.py`, bank di `data/tekateki.json`
 - **Kuis kana** (`/kana`): Iris menampilkan satu kana, kamu mengetik romaji. Diperiksa lokal tanpa model dan tanpa server; ejaan Hepburn dan Kunrei diterima. Pilih `hira`, `kata`, atau `campur`, tambahkan `lengkap` untuk dakuten dan handakuten, dan `kombinasi` untuk kana kombinasi (きゃ, しゅ, ちょ dan seterusnya). Satu ronde 10 soal; jawaban salah muncul lagi di ronde yang sama, dan ringkasan akhir memuat skor serta kana yang perlu diulang. Tanda panjang (ー) dan っ kecil belum ada
 - **Perintah aplikasi lokal** (`/lokal`): membuka aplikasi dari daftar putih yang ditetapkan di `main.js`
 
@@ -432,6 +433,7 @@ Ketik di kotak input overlay. Ketik `/help` untuk daftar lengkap di aplikasi. Pe
 | `/clip` | Tanya isi clipboard |
 | `/pantau` | Komentar layar otomatis (ditandai 👁) |
 | `/belajar [topik]` | Mode belajar bahasa Jepang, mis. `/belajar makanan` |
+| `/tekateki [id\|jp\|campur]` | Main teka-teki; saat ronde jalan, pesan biasa dihitung tebakan. `/petunjuk`, `/menyerah`, `/tekateki lewati\|skor\|stop` |
 | `/kana [hira\|kata\|campur] [lengkap] [kombinasi]` | Kuis kana lokal; `stop` atau `/kana stop` mengakhiri |
 
 ### Memori dan penampilan
