@@ -1696,6 +1696,20 @@ async def repair_line(client: httpx.AsyncClient, line: str) -> str | None:
     return None
 
 
+# Penjaga suara: bagian "Jepang" dari LLM kadang berisi bahasa Indonesia (tanpa kana / kanji, atau campur kata Indonesia).
+# VOICEVOX akan membacanya dengan aneh, jadi baris seperti itu diperbaiki sekali; kalau tetap gagal, tampil tanpa suara.
+_ID_WORDS_RE = re.compile(
+    r"\b(dan|yang|tapi|atau|dengan|untuk|bukan|jadi|sama|lagi|nggak|gak|ga|kayak|kalau|buat|lebih|juga|aku|itu|cuma|masih|belum|sudah|udah|bisa|tidak|karena|dari|pada|ini)\b",
+    re.I)
+
+
+def jp_speakable(jp: str) -> bool:
+    """True kalau teks layak dibacakan suara Jepang: ada kana / kanji dan tidak bercampur kalimat Indonesia."""
+    if not re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", jp or ""):
+        return False
+    return len(_ID_WORDS_RE.findall(jp)) < 2
+
+
 async def process_line(ws: WebSocket, client: httpx.AsyncClient, line: str, thought: str = "") -> str:
     """Kembalikan baris yang benar-benar dipakai (sudah diperbaiki), supaya riwayat tidak menyimpan format yang salah."""
     m = LINE_RE.match(line)
@@ -1721,12 +1735,25 @@ async def process_line(ws: WebSocket, client: httpx.AsyncClient, line: str, thou
     if emotion not in EMOTIONS:
         emotion = "neutral"
 
+    if not jp_speakable(jp):
+        # minta LLM menulis ulang kalimat Jepangnya saja; teks Indonesia asli tetap dipakai utuh untuk bubble
+        fixed = await repair_line(client, f"[{emotion}] {idn}")
+        fm = LINE_RE.match(fixed) if fixed else None
+        if fm and jp_speakable(fm.group(2)):
+            print(f"[{stamp()}] bagian Jepang bukan Jepang, diperbaiki: {jp[:40]!r}", flush=True)
+            jp = fm.group(2)
+            line = f"[{emotion}] {jp} ||| {idn}"
+        else:
+            print(f"[{stamp()}] bagian Jepang bukan Jepang, tampil tanpa suara: {jp[:40]!r}", flush=True)
+            jp = ""
+
     audio_b64, moras = None, []
-    try:
-        wav, moras = await synthesize(client, jp, emotion)
-        audio_b64 = base64.b64encode(wav).decode("ascii")
-    except Exception as e:  # VOICEVOX bermasalah: tetap kirim teks
-        await safe_send(ws, {"type": "error", "message": f"VOICEVOX: {e!r}"})
+    if jp:
+        try:
+            wav, moras = await synthesize(client, jp, emotion)
+            audio_b64 = base64.b64encode(wav).decode("ascii")
+        except Exception as e:  # VOICEVOX bermasalah: tetap kirim teks
+            await safe_send(ws, {"type": "error", "message": f"VOICEVOX: {e!r}"})
 
     seg = {
         "type": "segment", "text": idn, "jp": jp,
@@ -1919,12 +1946,16 @@ GAME_EMO = {"netral": "neutral", "senang": "happy", "sedih": "sad", "penasaran":
 
 
 async def handle_game_replies(ws: WebSocket, client: httpx.AsyncClient, replies: list) -> None:
-    """Kirim Balasan game sebagai segmen. Hanya teka-teki Jepang yang disuarakan (VOICEVOX hanya bisa Jepang);
-    teks Indonesia tampil di bubble saja. Tidak menyentuh riwayat chat LLM."""
+    """Kirim Balasan game sebagai segmen. Yang disuarakan adalah kalimat Jepang di Balasan.ucapkan (VOICEVOX hanya bisa
+    Jepang); teks di bubble tetap Indonesia. Tidak menyentuh riwayat chat LLM."""
     try:
         for b in replies:
             emo = GAME_EMO.get(b.emosi, "neutral")
-            jp = (b.ucapkan or "").strip()[:SPEAK_MAX_JP] if b.bahasa == "ja" else ""
+            # v-suara-game: semua balasan yang membawa kalimat Jepang disuarakan (bubble tetap Indonesia).
+            # Teka-teki Indonesia dan reaksi (benar / salah / petunjuk) membawa kalimat Jepang pendek dari iris_games.
+            jp = (b.ucapkan or "").strip()[:SPEAK_MAX_JP]
+            if jp and not jp_speakable(jp):
+                jp = ""
             audio_b64, moras = None, []
             if jp:
                 try:

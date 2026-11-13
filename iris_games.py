@@ -49,7 +49,15 @@ HINDARI_MAKS = 20         # pertanyaan terbaru yang dikirim ke LLM supaya tidak 
 PERCOBAAN_BUAT = 2        # berapa kali LLM dicoba per permintaan sebelum menyerah
 
 PERINTAH_UTAMA = {"/tekateki", "/riddle", "/nazonazo"}
-PERINTAH_PINTAS = {"/petunjuk": "petunjuk", "/menyerah": "menyerah"}
+PERINTAH_PINTAS = {
+    "/petunjuk": "petunjuk", "/hint": "petunjuk", "/clue": "petunjuk",
+    "/menyerah": "menyerah", "/nyerah": "menyerah", "/giveup": "menyerah",
+    "/skip": "lewati",
+}
+# Kata biasa (tanpa garis miring) saat ronde berjalan. Tebakan yang benar selalu dicek lebih dulu.
+_KATA_NYERAH = {"nyerah", "menyerah", "giveup", "nyerahh", "nyerahlah"}
+_KATA_PETUNJUK = {"petunjuk", "hint", "clue", "bantuan", "petunjuknya"}
+_KATA_LEWATI = {"skip", "lewati", "lewat"}
 
 _SUB = {
     "petunjuk": "petunjuk", "hint": "petunjuk", "clue": "petunjuk",
@@ -70,6 +78,23 @@ _FILLER = {
     "kayaknya", "sepertinya", "deh", "kah",
 }
 _PUNCT = re.compile(r"[^\w\s\u30fc]", re.UNICODE)
+
+# Suara: VOICEVOX hanya bisa bahasa Jepang, jadi reaksi berbahasa Indonesia disuarakan lewat kalimat Jepang pendek
+# (teks bubble tetap Indonesia). Dipilih acak supaya tidak monoton.
+_SUARA_JP = {
+    "teka_id": ["なぞなぞだよ。わかるかな？", "なぞなぞいくよ。答えてみてね。"],
+    "salah": ["うーん、ちがうよ。", "おしい、かな？もういっかい。", "ざんねん、ちがうなあ。", "ふふ、まだまだだね。"],
+    "benar": ["せいかい！すごいね！", "あたり！やるじゃん。", "正解だよ！おめでとう。"],
+    "petunjuk": ["ヒントをあげるね。", "しかたないなあ、ヒントだよ。"],
+    "menyerah": ["ざんねん、こたえはこれだよ。", "あらら、ギブアップだね。"],
+    "stop": ["うん、またあそぼうね。"],
+    "skor": ["スコアだよ。がんばってるね。"],
+}
+
+
+def _jp(kunci: str) -> str:
+    return random.choice(_SUARA_JP[kunci])
+
 
 _KOMENTAR_SALAH = [
     "Hmm, bukan itu~",
@@ -199,11 +224,63 @@ def normalisasi(s: str) -> str:
     return "".join(kata)
 
 
+def _kata(s: str) -> list:
+    """Pecah jadi kata-kata ternormalisasi (spasi dipertahankan), kata pengisi dibuang."""
+    s = unicodedata.normalize("NFKC", s or "").casefold()
+    s = _ke_hiragana(s)
+    s = _PUNCT.sub(" ", s)
+    return [k for k in s.split() if k not in _FILLER]
+
+
+def _selisih_maks1(a: str, b: str) -> bool:
+    """True kalau a dan b sama atau hanya beda satu huruf (ganti / sisip / hapus / tukar dua huruf berdekatan)."""
+    if a == b:
+        return True
+    if abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        beda = [i for i in range(len(a)) if a[i] != b[i]]
+        if len(beda) == 1:
+            return True
+        return (len(beda) == 2 and beda[1] == beda[0] + 1
+                and a[beda[0]] == b[beda[1]] and a[beda[1]] == b[beda[0]])
+    if len(a) > len(b):
+        a, b = b, a
+    i = 0
+    while i < len(a) and a[i] == b[i]:
+        i += 1
+    return a[i:] == b[i + 1:]
+
+
+def _latin(s: str) -> bool:
+    return bool(s) and all(ord(c) < 0x250 for c in s)
+
+
 def cocok(tebakan: str, teka: Teka) -> bool:
+    """Cocok bila (1) sama persis setelah dinormalisasi, atau untuk jawaban beraksara Latin: (2) semua kata jawaban
+    ada berurutan di dalam tebakan pendek (mis. "koin logam" untuk "koin"), atau (3) salah ketik satu huruf pada
+    jawaban satu kata sepanjang 4 huruf lebih (mis. "coin" untuk "koin"). Tidak butuh LLM."""
     t = normalisasi(tebakan)
     if not t:
         return False
-    return any(t == normalisasi(a) for a in teka.semua_jawaban)
+    jaw = [normalisasi(a) for a in teka.semua_jawaban]
+    if t in jaw:
+        return True
+    kt = _kata(tebakan)
+    if not kt or len(kt) > 6:
+        return False
+    for a in teka.semua_jawaban:
+        ka = _kata(a)
+        if not ka or not all(_latin(k) for k in ka) or not all(_latin(k) for k in kt):
+            continue
+        n = len(ka)
+        # (2) kata jawaban muncul berurutan di tebakan
+        if len(kt) <= n + 3 and any(kt[i:i + n] == ka for i in range(len(kt) - n + 1)):
+            return True
+        # (3) salah ketik satu huruf (hanya jawaban satu kata, minimal 4 huruf)
+        if n == 1 and len(ka[0]) >= 4 and len(kt) <= 3 and any(len(k) >= 4 and _selisih_maks1(k, ka[0]) for k in kt):
+            return True
+    return False
 
 
 # ----------------------------------------------------------------------
@@ -409,7 +486,7 @@ class GameTekaTeki:
                     return self.mulai(_MODE[arg])
                 return [Balasan(
                     "Pakai: /tekateki [id|jp|campur], /tekateki petunjuk, "
-                    "/tekateki menyerah, /tekateki lewati, /tekateki stop, "
+                    "/tekateki menyerah (atau /nyerah), /tekateki lewati, /tekateki stop, "
                     "/tekateki skor",
                     emosi="bingung", klip="miring")]
             if cmd in PERINTAH_PINTAS and self.aktif:
@@ -417,6 +494,15 @@ class GameTekaTeki:
             return None  # perintah lain lewat, ronde tetap hidup
 
         if self.aktif:
+            if not cocok(t, self.aktif.teka):
+                kt = set(_kata(t))
+                n = len(_kata(t))
+                if kt & _KATA_NYERAH and n <= 5:
+                    return self.menyerah()
+                if kt & _KATA_PETUNJUK and n <= 3:
+                    return self.petunjuk()
+                if kt & _KATA_LEWATI and n <= 2:
+                    return self.lewati()
             return self.jawab(t)
         return None
 
@@ -539,7 +625,8 @@ class GameTekaTeki:
         teks += "\n(/petunjuk kalau buntu, /menyerah kalau nyerah)"
         return Balasan(
             teks, emosi="penasaran", klip="miring",
-            ucapkan=teka.baca or teka.pertanyaan, bahasa=teka.bahasa,
+            ucapkan=(teka.baca or teka.pertanyaan) if teka.bahasa == "ja" else _jp("teka_id"),
+            bahasa=teka.bahasa,
         )
 
     def jawab(self, tebakan: str) -> list[Balasan]:
@@ -565,7 +652,8 @@ class GameTekaTeki:
         if r.salah % SALAH_SEBELUM_TAWAR == 0 and sisa > 0:
             teks += " Mau petunjuk? Ketik /petunjuk."
         return [Balasan(teks, emosi="menggoda",
-                        klip="geleng" if r.salah == 1 else "miring")]
+                        klip="geleng" if r.salah == 1 else "miring",
+                        ucapkan=_jp("salah"), bahasa="ja")]
 
     def _benar(self) -> list[Balasan]:
         r = self.aktif
@@ -586,7 +674,7 @@ class GameTekaTeki:
             teks += f"\n{teka.penjelasan}"
         return [Balasan(teks, emosi="senang",
                         klip="tari_ceria" if tanpa_petunjuk else "angguk",
-                        bahasa="id")]
+                        ucapkan=_jp("benar"), bahasa="ja")]
 
     def petunjuk(self) -> list[Balasan]:
         r = self.aktif
@@ -605,7 +693,8 @@ class GameTekaTeki:
         r.petunjuk_dipakai += 1
         poin = max(1, POIN_DASAR - r.petunjuk_dipakai)
         teks += f"\n(Kalau benar sekarang: {poin} poin)"
-        return [Balasan(teks, emosi="berpikir", klip="dagu")]
+        return [Balasan(teks, emosi="berpikir", klip="dagu",
+                        ucapkan=_jp("petunjuk"), bahasa="ja")]
 
     def menyerah(self) -> list[Balasan]:
         r = self.aktif
@@ -619,7 +708,8 @@ class GameTekaTeki:
         teks = f"Yah, menyerah ya~ Jawabannya: {teka.jawaban[0]}."
         if teka.penjelasan:
             teks += f"\n{teka.penjelasan}"
-        return [Balasan(teks, emosi="menggoda", klip="dagu")]
+        return [Balasan(teks, emosi="menggoda", klip="dagu",
+                        ucapkan=_jp("menyerah"), bahasa="ja")]
 
     def lewati(self) -> list[Balasan]:
         r = self.aktif
@@ -637,7 +727,8 @@ class GameTekaTeki:
         jawaban = r.teka.jawaban[0]
         self.aktif = None
         return [Balasan(f"Oke, selesai dulu. Jawaban yang tadi: {jawaban}.",
-                        emosi="senang", klip="angguk")]
+                        emosi="senang", klip="angguk",
+                        ucapkan=_jp("stop"), bahasa="ja")]
 
     def skor(self) -> list[Balasan]:
         s = self.stat
@@ -645,7 +736,7 @@ class GameTekaTeki:
                 f"Dilewati: {s['lewati']}\n"
                 f"Poin: {s['poin']} | Beruntun: {s['streak']} "
                 f"(terbaik {s['streak_terbaik']})")
-        return [Balasan(teks, emosi="senang")]
+        return [Balasan(teks, emosi="senang", ucapkan=_jp("skor"), bahasa="ja")]
 
     # --- penyimpanan ---------------------------------------------------
     def _muat_stat(self) -> dict:

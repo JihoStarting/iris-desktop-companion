@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('companion', {
   quit: () => ipcRenderer.send('quit'),
   // Panel chat dibuka / ditutup: main.js memanjangkan / memendekkan jendela
   setChatOpen: (open) => ipcRenderer.send('chat-open', !!open),
+  // v63: mode fokus nyala / mati -> main.js melonggarkan batas atas jendela selama mode fokus (handler 'set-quiet' di main.js)
+  setQuiet: (on) => ipcRenderer.send('set-quiet', !!on),
   // v47: jendela menempel di tepi kiri layar? -> {left}. Dipakai index.html untuk memindah menu / popover ke kanan karakter
   winSide: () => ipcRenderer.invoke('win-side'),
   // v48: panel /chrome pindah ke kanan karakter ('right') atau kembali ke kiri ('left'); renderer mengunci / melepas lebar #root supaya karakter tidak melompat

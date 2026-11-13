@@ -90,10 +90,14 @@ def harden(out, kind):
     out["untrusted"] = True
     out["notice"] = _NOTICE
     seen = []
+    # Kolom state (title, url, host) ikut terkirim di SEMUA jenis respons dan title dikendalikan halaman: selalu dibersihkan dan dipindai.
+    for k in ("title", "url", "host", "account"):
+        if isinstance(out.get(k), str):
+            seen.append(out[k]); out[k] = clean_text(out[k], 500)
+    if isinstance(out.get("akun"), dict) and isinstance(out["akun"].get("nama"), str):
+        out["akun"]["nama"] = clean_text(out["akun"]["nama"], 100)
     if kind == "state":
-        for k in ("title", "url", "account"):
-            if k in out:
-                seen.append(out[k]); out[k] = clean_text(out[k], 500)
+        pass
     elif kind == "text":
         for k in ("text", "content"):
             if isinstance(out.get(k), str):
@@ -102,7 +106,7 @@ def harden(out, kind):
         els = out.get("elements") if isinstance(out.get("elements"), list) else None
         for e in (els or []):
             if isinstance(e, dict):
-                for k in ("text", "label", "title", "placeholder"):
+                for k in ("text", "label", "title", "placeholder", "name", "tag", "type"):
                     if isinstance(e.get(k), str):
                         e[k] = clean_text(e[k], 300); seen.append(e[k])
                 if "href" in e:
@@ -138,7 +142,11 @@ def main(argv):
     if cmd == "state":
         out = harden(get("/web/state"), "state")
     elif cmd == "text":
-        out = harden(get("/web/text" + (f"?max={min(int(argv[2]), MAX_TEXT)}" if len(argv) > 2 else "")), "text")
+        try:
+            n = max(200, min(int(argv[2]), MAX_TEXT)) if len(argv) > 2 else None
+        except ValueError:
+            sys.exit("maks_karakter harus angka, mis.: python3 iris_web.py text 8000")
+        out = harden(get("/web/text" + (f"?max={n}" if n else "")), "text")
     elif cmd == "elements":
         out = harden(get("/web/elements"), "elements")
     elif cmd == "shot":
