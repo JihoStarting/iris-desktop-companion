@@ -1,64 +1,154 @@
 <p align="center">
-  <img src="docs/img/iris-launcher-logo.png" alt="Logo IRIS" width="280">
+  <img src="docs/img/iris-launcher-logo.png" alt="Logo IRIS" width="260">
 </p>
 
-# IRIS: AI Companion Desktop Overlay
+<h1 align="center">IRIS</h1>
 
-> *A desktop AI companion overlay for Windows + WSL2: VRM avatar, VOICEVOX voice, and a Hermes Agent bridge that can do real tasks on your computer. Documentation is in Indonesian.*
+<p align="center">
+  <strong>Teman AI di desktop: avatar 3D, suara Jepang, dan agen yang benar-benar bisa bekerja di komputermu.</strong><br>
+  <em>A desktop AI companion overlay for Windows + WSL2: VRM avatar, VOICEVOX voice, and a Hermes Agent bridge that can do real tasks on your computer. Documentation is in Indonesian.</em>
+</p>
 
-![License](https://img.shields.io/badge/license-All%20rights%20reserved-red)
-![Electron](https://img.shields.io/badge/Electron-overlay-47848F)
-![Python](https://img.shields.io/badge/Python-FastAPI-3776AB)
-![Platform](https://img.shields.io/badge/platform-Windows%20%2B%20WSL2-0078D6)
+<p align="center">
+  <img alt="Versi" src="https://img.shields.io/badge/versi-v1.0.0-blue">
+  <img alt="Status" src="https://img.shields.io/badge/status-aktif%20dikembangkan-brightgreen">
+  <img alt="Electron" src="https://img.shields.io/badge/Electron-overlay-47848F">
+  <img alt="Python" src="https://img.shields.io/badge/Python-FastAPI-3776AB">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%2B%20WSL2-0078D6">
+  <img alt="Lisensi" src="https://img.shields.io/badge/lisensi-All%20rights%20reserved-red">
+</p>
 
-IRIS adalah teman AI yang tinggal di desktop. Wajahnya avatar 3D (VRM) yang melayang di atas aplikasi lain, suaranya dari VOICEVOX, dan tangannya adalah **Hermes Agent** yang bisa mengerjakan tugas nyata di komputer (membuka folder, mencari file, menjalankan perintah, mencari di web).
+<p align="center">
+  <a href="#mulai-cepat">Mulai cepat</a> ·
+  <a href="#fitur">Fitur</a> ·
+  <a href="#arsitektur">Arsitektur</a> ·
+  <a href="#perintah-chat">Perintah</a> ·
+  <a href="#keamanan">Keamanan</a> ·
+  <a href="#pemecahan-masalah">Pemecahan masalah</a>
+</p>
+
+---
+
+IRIS adalah teman AI yang tinggal di desktop. Wajahnya avatar 3D (VRM) yang melayang di atas aplikasi lain, suaranya dari VOICEVOX, dan tangannya adalah **Hermes Agent** yang mengerjakan tugas nyata di komputer: membuka folder, mencari file, menjalankan perintah, dan mencari di web.
 
 Proyek ini dibuat sebagai proyek pribadi dan masih terus dikembangkan.
 
----
+## Sorotan
+
+| | |
+|---|---|
+| **Avatar hidup** | Model VRM dalam jendela transparan: ekspresi, mood, ganti baju, tema musiman, dan 9 klip gerak |
+| **Suara per emosi** | VOICEVOX dengan nada dan kecepatan yang mengikuti emosi, lip-sync, dan mesin GPU (DirectML) |
+| **Agen yang aman** | Tugas `/agen` berjalan di sandbox Docker tanpa jaringan, dengan kartu izin **Izinkan sekali / Tolak** di overlay |
+| **Terjemah layar** | OCR Jepang atau Inggris, diterjemahkan ke Indonesia dan digambar di atas teks asli |
+| **Bedah file statis** | `/rea` membedah exe, dll, apk, jar, dan firmware tanpa menjalankannya |
+| **Mini-browser** | Panel browser dengan sepuluh akun terpisah, dan jembatan baca-saja untuk Hermes |
+| **Belajar** | Mode belajar Jepang, kuis kana, dan game teka-teki |
+| **Satu klik** | `IrisLauncher.exe` menyalakan semua layanan berurutan dan aman dijalankan berulang |
 
 ## Status
 
-- Hermes Agent dipasang: 28 September 2026
-- Overlay mulai dikembangkan: 28 Oktober 2026
-- Dipublikasikan di GitHub: 5 November 2026
-- Versi terbaru: v1.0.0 (peluncur `IrisLauncher.exe`)
-- Status: aktif dikembangkan sebagai proyek pribadi
-- Terakhir diperbarui: 13 November 2026 (dokumen disinkronkan dengan catatan kerja. Perubahan 12 November: game teka-teki `/tekateki` (lihat [Game teka-teki](#game-teka-teki-tekateki)); `rea_triage.py` v97 beserta `rea_extract.py` dan `rea_binary.py`; kalimat Jepang yang ternyata bukan Jepang diperbaiki sekali atau ditampilkan tanpa suara; Mode fokus kini memberi tahu `main.js`; pembersih jembatan baca-saja ikut membersihkan judul, URL, dan nama elemen. Tinjauan kode 13 November mencatat beberapa temuan kecil yang belum diperbaiki; lihat [Status pengujian](#status-pengujian). Sebelumnya, 11 November 2026: klip gerak VRMA dipakai jauh lebih sering: tag emosi, frasa ucapan, sentuhan, dan gerak idle memakai klip, dan lima klip seluruh badan ditambahkan; lihat [Animasi klip VRMA](#animasi-klip-vrma); sebelumnya, 10 November 2026 siang, `/rea` v94: celah ReDoS dan injeksi prompt lewat isi sampel ditutup, triase lokal diperluas ke ELF, PDF, OLE2, RTF, LNK, dan skrip; sebelumnya, 10 November 2026: perintah `/rea` untuk membedah file secara statis lewat Hermes, dengan triase lokal tanpa model; folder kerja agen bisa ditambah, mis. Downloads; terminal agen kembali di sandbox Docker tanpa jaringan; sebelumnya, 8 November 2026: statistik fokus `/statistik`, kuis kana `/kana`, dan sapaan sesuai waktu `/sapa`; tombol putar suara pada ucapan otomatis; bubble menghindari menu yang terbuka; penolakan lewat kartu izin tidak lagi disampaikan Iris sebagai "gagal"; sebelumnya: agen Hermes berjalan di sandbox Docker dan setiap tindakan berisiko meminta persetujuan lewat kartu di overlay; tombol Stop menghentikan agen Hermes; status server di peluncur dicek lewat `/ping`; VOICEVOX bisa berjalan di GPU; jeda sambung ulang WebSocket bertahap; perbaikan path berspasi; terjemah layar OCR Jepang/Inggris dengan suara dan pratinjau besar; ikon tray berwarna; tawaran aksi saat menyalin; ekspor/impor konfigurasi; `/rangkum`; lihat [Keamanan](#keamanan) dan [Status pengujian](#status-pengujian))
+| | |
+|---|---|
+| Hermes Agent dipasang | 28 September 2026 |
+| Overlay mulai dikembangkan | 28 Oktober 2026 |
+| Dipublikasikan di GitHub | 5 November 2026 |
+| Versi terbaru | v1.0.0 (peluncur `IrisLauncher.exe`) |
+| Terakhir diperbarui | 14 November 2026 (sinkron dengan catatan kerja sampai 13 November), lihat [Riwayat pembaruan](#riwayat-pembaruan) |
 
-Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan belum diuji penuh. Daftarnya ada di [Status pengujian](#status-pengujian).
-
----
+> **Tentang status uji.** Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan belum diuji penuh. Fitur yang belum terbukti ditandai *(eksperimental)* di bawah, dan daftar lengkapnya ada di [Status pengujian](#status-pengujian).
 
 ## Daftar isi
 
-- [Status](#status)
+- [Mulai cepat](#mulai-cepat): [Prasyarat](#prasyarat), [Instalasi](#instalasi), [Menjalankan](#menjalankan)
 - [Fitur](#fitur)
-- [Arsitektur](#arsitektur)
-- [Teknologi](#teknologi)
-- [Prasyarat](#prasyarat)
-- [Instalasi](#instalasi)
+- [Arsitektur](#arsitektur) dan [Teknologi](#teknologi)
 - [Konfigurasi](#konfigurasi)
-- [Menjalankan](#menjalankan)
 - [Peluncur, cek kesehatan, dan layanan](#peluncur-cek-kesehatan-dan-layanan)
-- [Perintah chat](#perintah-chat)
-- [Pintasan keyboard](#pintasan-keyboard)
-- [Bicara lewat mikrofon](#bicara-lewat-mikrofon)
-- [Terjemah layar (OCR)](#terjemah-layar-ocr)
-- [Membedah file dengan `/rea`](#membedah-file-dengan-rea)
-- [Game teka-teki `/tekateki`](#game-teka-teki-tekateki)
-- [Animasi klip VRMA](#animasi-klip-vrma)
-- [Mini-browser `/chrome`](#mini-browser-chrome)
-- [Jembatan baca-saja untuk Hermes](#jembatan-baca-saja-untuk-hermes)
+- Referensi pemakaian: [Perintah chat](#perintah-chat), [Pintasan keyboard](#pintasan-keyboard)
+- Panduan fitur: [Bicara lewat mikrofon](#bicara-lewat-mikrofon), [Terjemah layar](#terjemah-layar-ocr), [`/rea`](#membedah-file-dengan-rea), [Animasi VRMA](#animasi-klip-vrma), [Mini-browser](#mini-browser-chrome), [Jembatan baca-saja](#jembatan-baca-saja-untuk-hermes)
 - [Kemampuan Hermes Agent](#kemampuan-hermes-agent)
 - [Keamanan](#keamanan)
-- [Status pengujian](#status-pengujian)
-- [Rencana](#rencana)
-- [Struktur proyek](#struktur-proyek)
-- [Aset](#aset)
+- [Status pengujian](#status-pengujian) dan [Rencana](#rencana)
+- [Struktur proyek](#struktur-proyek), [Aset](#aset)
 - [Pemecahan masalah](#pemecahan-masalah)
-- [Dokumentasi](#dokumentasi)
-- [Lisensi](#lisensi)
+- [Dokumentasi](#dokumentasi), [Riwayat pembaruan](#riwayat-pembaruan), [Lisensi](#lisensi)
+
+---
+
+## Mulai cepat
+
+Ringkasnya: pasang dependensi, isi `.env` (terutama `COMPANION_TOKEN`), jalankan server dan overlay, atau cukup pakai peluncur. Rinciannya ada di tiga bagian berikut; panduan langkah demi langkah ada di [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
+
+### Prasyarat
+
+| Kebutuhan | Keterangan |
+|---|---|
+| Windows 10/11 | Overlay berjalan di Windows |
+| Node.js 18+ | Untuk Electron |
+| Python 3.11+ | Untuk `server.py` |
+| VOICEVOX Engine | Berjalan di port `50021` (opsional, tanpa ini Iris menjawab lewat teks saja). Peluncur menjalankan `vv-engine\run.exe` (build DirectML, mis. versi 0.25.2) dengan GPU yang mendukung DirectX 12; tanpa folder itu ia memakai unit `voicevox` di WSL (CPU). Folder `vv-engine` tidak ada di repositori, letakkan sendiri di folder proyek |
+| 9Router atau endpoint LLM kompatibel OpenAI | Berjalan di `localhost:20128` secara bawaan |
+| WSL2 + Hermes Agent | Opsional, hanya untuk fitur `/agen` |
+| faster-whisper | Opsional, hanya untuk bicara lewat mikrofon |
+
+Disarankan RAM 16 GB jika Hermes dan model lokal dijalankan bersamaan. Batas memori WSL di proyek ini diset 4 GB lewat `.wslconfig`.
+
+### Instalasi
+
+```powershell
+git clone https://github.com/JihoStarting/iris-desktop-companion.git
+cd iris-desktop-companion
+
+# Dependency Node
+npm install
+
+# Virtual environment Python
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# Konfigurasi
+copy .env.example .env
+```
+
+Kalau PowerShell menolak menjalankan `Activate.ps1` karena kebijakan eksekusi, jalankan dulu `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` di jendela yang sama. Alternatifnya, pakai `.\.venv\Scripts\python.exe` langsung tanpa aktivasi.
+
+Lalu buka `.env` dan isi dengan nilai milikmu sendiri. **`COMPANION_TOKEN` wajib diisi** (minimal 16 karakter); server langsung berhenti dengan pesan `[FATAL]` kalau kosong. Buat tokennya dengan:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+**Jangan pernah meng-commit file `.env`.**
+
+Panduan langkah demi langkah: [docs/QUICKSTART.md](docs/QUICKSTART.md)
+
+### Menjalankan
+
+#### Cara manual
+
+Buka dua terminal di folder proyek.
+
+**Terminal 1: server**
+
+```powershell
+.\.venv\Scripts\python.exe server.py
+```
+
+**Terminal 2: overlay**
+
+```powershell
+npm start
+```
+
+Cek kesehatan layanan di `http://127.0.0.1:8765/health`. Untuk sekadar memastikan server hidup (tanpa memeriksa layanan lain), buka `http://127.0.0.1:8765/ping`; jawabannya `{"ok":true}`.
+
+> Karena `COMPANION_TOKEN` wajib, halaman `http://127.0.0.1:8765` di browser tidak bisa dipakai untuk chat (browser tidak dapat mengirim header token). Gunakan overlay Electron. Halaman tes `dev/test_client.html` hanya tersedia bila kamu sengaja menjalankan server dengan `COMPANION_ALLOW_NO_TOKEN=1` dan token kosong.
+
+#### Lewat peluncur
+
+`IrisLauncher.exe` menjalankan WSL, layanan pendukung, server, dan overlay sekaligus. Bangun sendiri dengan `IrisLauncher-src\build.bat` (memakai `csc.exe` bawaan Windows, tanpa memasang apa pun), atau unduh dari tab Releases bila tersedia.
 
 ---
 
@@ -67,89 +157,72 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 ### Avatar dan tampilan
 
 - Avatar VRM 3D dalam jendela Electron transparan yang selalu di atas, dengan klik tembus di area kosong
-- Ekspresi dan gerak halus (pegas teredam, crossfade), bernapas, berkedip asimetris, dan menatap kursor dengan lirikan yang tenang
-- Gerak kepala saat bicara mengikuti energi suara; pose `think` ditahan selama agen bekerja
-- **Mood** yang bertahan antarhari: skor tersimpan dan memengaruhi ekspresi, ambang ngambek, sapaan, dan nada bicara (`/mood`)
-- **Ganti baju**: maid (bawaan), gaun pesta prom, dan seragam sekolah. Baju juga bisa berganti otomatis menurut situasi dan musim (tidur, fokus, sesi belajar, malam)
-- **Tema warna**: Iris (bawaan), empat musim, dan Otomatis, lengkap dengan efek jatuh musiman (`/tema`)
-- **Tampilan badan**: tubuh penuh sampai kaki atau setengah badan (`/badan`), kamera dihitung ulang tanpa restart
-- Bayangan siluet yang berubah per keadaan (diam, diangkat, mengintip, duduk), render HD (`/bayangan`)
-- Bubble di atas kepala dengan teks Indonesia, kalimat Jepang berlabel 日本語, dan garis aksen sesuai emosi. Bubble panjang bisa digulir dan tidak keluar jendela. Bubble juga bergeser ke kanan menjauhi menu, Pengaturan, Timer, dan popover lain yang sedang terbuka supaya tidak tertimpa
-- **Pikiran batin**: kadang Iris menampilkan satu baris bisikan hati berukuran kecil dan miring di atas bubble (tidak disuarakan dan tidak masuk riwayat). Saklar di Pengaturan
-- **Klip gerak VRMA** (9 klip di `assets/animations/`): 4 klip kecil buatan sendiri (`angguk`, `geleng`, `miring`, `tunduk`; hanya punggung, dada, leher, dan kepala) dan 5 klip seluruh badan (`dagu`, `melambai`, `hormat`, `tari_ceria`, `duduk_iris`). Diputar lewat gerbang emosi, frasa ucapan, sentuhan, gerak idle, dan reaksi game teka-teki; lihat [Animasi klip VRMA](#animasi-klip-vrma). `duduk_iris` belum dipakai oleh `/duduk`
-- Kualitas gambar adaptif: `auto`, `tinggi`, `normal`, `hemat`. Mode auto turun sendiri kalau frame lambat (`/kualitas`)
-- Seluruh UI (menu, bubble, bar input, panel) dijaga tetap di dalam layar; jendela yang dilepas jauh dari tepi meluncur balik ke area kerja
+- Gerak natural: ekspresi dengan pegas teredam dan crossfade, bernapas, berkedip asimetris, dan tatapan tenang mengikuti kursor. Kepala bergerak mengikuti energi suara, dan pose `think` ditahan selama agen bekerja
+- **Mood** yang bertahan antarhari (`/mood`): skor tersimpan dan memengaruhi ekspresi, ambang ngambek, sapaan, dan nada bicara
+- **Kustomisasi:** ganti baju (maid bawaan, gaun pesta prom, seragam sekolah; bisa berganti otomatis menurut situasi dan musim), tema warna Iris, empat musim, dan Otomatis dengan efek jatuh musiman (`/tema`), tampilan tubuh penuh atau setengah badan (`/badan`), bayangan siluet HD per keadaan (`/bayangan`), dan kualitas gambar adaptif `auto`, `tinggi`, `normal`, `hemat` (`/kualitas`)
+- **Bubble** di atas kepala: teks Indonesia, kalimat Jepang berlabel 日本語, garis aksen sesuai emosi, bisa digulir, tidak keluar jendela, dan bergeser menjauhi menu atau popover yang terbuka
+- **Pikiran batin:** kadang satu baris bisikan hati kecil dan miring di atas bubble (tidak disuarakan dan tidak masuk riwayat). Saklar di Pengaturan
+- **Klip gerak VRMA** (9 klip): dipicu oleh emosi, frasa ucapan, sentuhan, dan gerak idle. Lihat [Animasi klip VRMA](#animasi-klip-vrma)
+- Seluruh UI dijaga di dalam layar; jendela yang dilepas jauh dari tepi meluncur balik ke area kerja
 
 ### Interaksi dengan karakter
 
-- **Seret karakter** langsung, atau lewat tombol grip di bar. Keduanya punya saklar sendiri, dan satu selalu tersisa supaya Iris tidak terkunci (`/angkat`)
-- Pose **diangkat**: badan berayun seperti bandul dengan titik gantung di kepala, lengan terkulai, reaksi bersuara saat diangkat dan dilepas
-- Reaksi sakit dan suara saat menabrak sisi atau pojok layar
-- **Sembunyi di tepi layar** dan **mengintip**: dilepas dekat tepi layar, Iris langsung bersembunyi, lalu muncul lagi saat kursor menempel atau diklik (`/sembunyi`)
+- **Seret karakter** langsung atau lewat tombol grip di bar. Keduanya punya saklar sendiri, dan satu selalu tersisa supaya Iris tidak terkunci (`/angkat`)
+- Pose **diangkat** (badan berayun seperti bandul, reaksi bersuara) serta reaksi sakit saat menabrak sisi atau pojok layar
+- **Sembunyi di tepi layar dan mengintip** (`/sembunyi`): dilepas dekat tepi, Iris bersembunyi, lalu muncul lagi saat kursor menempel atau diklik
 - **Duduk di tepi atas jendela lain** (`/duduk`). Bawaan mati karena menyentuh privasi; yang dibaca hanya posisi dan ukuran jendela, bukan judul, nama proses, atau isinya
-- **Colek dan elus**: colek berkali-kali dibalas "geli", gumaman, lalu ngambek 10 detik. Tahan klik kiri di kepala untuk mengelus
-- Klik bagian tubuh (kepala, badan, lengan, tangan) dibalas suara dengan variasi kalimat, dan gerak klip VRMA bila ada
+- **Colek dan elus:** colek berkali-kali dibalas "geli", gumaman, lalu ngambek 10 detik; tahan klik kiri di kepala untuk mengelus. Klik bagian tubuh dibalas suara berbeda-beda
 - **Menu aksi cepat** lewat klik kanan karakter, dan ikon tray untuk pengaturan
 - Bar input auto-sembunyi dengan garis petunjuk hijau yang "bernapas" (merah saat server mati, cyan saat agen bekerja)
-- **Mode fokus**: karakter dan bubble hilang, hanya garis petunjuk tipis yang tersisa, dan klik tembus
-- **Tidur otomatis** saat tidak ada aktivitas (bawaan 5 menit), bangun saat kursor bergerak atau diklik
+- **Mode fokus:** karakter dan bubble hilang, hanya garis tipis tersisa, dan klik tembus. Sejak 12 November 2026 mode ini juga diberitahukan ke `main.js` lewat `setQuiet` di `preload.js` *(eksperimental)*
+- **Tidur otomatis** saat tidak ada aktivitas (bawaan 5 menit); bangun saat kursor bergerak atau diklik
 
 ### Obrolan dan suara
 
-- Obrolan dengan persona Iris (gaya santai, campuran Indonesia dan Jepang)
-- Suara per emosi lewat VOICEVOX: kecepatan, nada, dan intonasi menyesuaikan emosi kalimat, lip-sync berbasis mora, dan cache suara lokal. Mesin VOICEVOX bisa berjalan di Windows dengan GPU (DirectML) atau CPU, dipilih di Pengaturan peluncur
-- Reaksi lokal (colek, sapaan, timer, dan sebagainya) bersuara tanpa memanggil model
-- Pesan galat ikut dibacakan (timeout, tidak tersambung, galat lain)
-- **Penjaga bagian Jepang**: sebelum disuarakan, kalimat Jepang dari model diperiksa (harus ada kana atau kanji dan tidak bercampur kata Indonesia). Bila gagal, diperbaiki sekali lewat model; bila tetap gagal, kalimat tampil tanpa suara dan VOICEVOX tidak dipanggil. Teks bubble tidak diubah. Memakai satu panggilan model tambahan per baris bermasalah. Baru ditulis, belum dites di PC
-- Sapaan menurut waktu (pagi, siang, sore, malam)
-- **Fun fact** acak bersuara di selang waktu yang bisa diatur. Diambil dari 30 fakta bawaan atau dibuat model sesuai topik (`/funfact`). Fakta buatan model wajib memakai istilah baku Indonesia, disaring lokal dari kalimat Inggris atau yang janggal, lalu diverifikasi sekali lagi oleh model (`FUNFACT_VERIFY`, bawaan aktif; bila verifikasi timeout atau galat, fakta tetap dipakai)
-- Alarm, jam (ucapan tiap jam), timer, Pomodoro, dan pengingat istirahat
-- **Statistik fokus** (`/statistik`): sesi Pomodoro "Fokus" yang selesai penuh dicatat per hari (hanya jumlah sesi dan menit, disimpan lokal maksimal 120 hari). Laporan 7 hari terakhir memuat batang, total, rata-rata per hari, dan rantai hari berturut-turut. Sesi yang dibatalkan dan `/timer` biasa tidak dihitung
-- **Sapaan sesuai waktu** (`/sapa`, bawaan mati): satu kalimat tetap per slot waktu (pagi, siang, sore, malam, larut) sekali sehari tanpa memanggil model, dengan jarak minimal 90 menit antar sapaan. Tidak muncul saat mode fokus, tidur, merekam, suara dibisukan, chat terbuka, atau terjemah berjalan
-- Panel chat dengan riwayat, tombol Hapus, "Mode jelaskan", tombol memanjangkan kotak chat, dan popup **Salin link**
-- Reaksi spontan Iris dan ucapan otomatis (sapaan, fun fact, pengingat istirahat, jam) tercatat di riwayat chat sebagai kotak sendiri dengan tombol salin, suka, dan tidak suka. Tombol putar ulang suara pada ucapan otomatis baru ditulis dan belum diuji
-- **Ekspor percakapan** ke satu berkas HTML mandiri (gelap di layar, terang saat dicetak) di folder Downloads (`/ekspor`)
-- **Pilihan bernomor**: perintah seperti `/baju`, `/tema`, `/alarm`, dan `/lokal daftar` menampilkan daftar, lalu cukup ketik angkanya
+- Obrolan dengan persona Iris (gaya santai, campuran Indonesia dan Jepang) dan sapaan menurut waktu
+- **Suara per emosi lewat VOICEVOX:** kecepatan, nada, dan intonasi menyesuaikan emosi, lip-sync berbasis mora, dan cache suara lokal. Mesin berjalan di Windows dengan GPU (DirectML) atau CPU, dipilih di Pengaturan peluncur
+- Reaksi lokal (colek, sapaan, timer, dan sebagainya) bersuara tanpa memanggil model, dan pesan galat ikut dibacakan
+- **Pemeriksa bagian Jepang** (`jp_speakable()`, 12 November 2026) *(eksperimental)*: kalimat "Jepang" dari model yang ternyata tanpa kana atau kanji, atau bercampur kata Indonesia, diperbaiki sekali lewat model; bila tetap gagal, kalimat tampil tanpa suara dan VOICEVOX tidak dipanggil. Biayanya satu panggilan model tambahan per baris bermasalah
+- **Fun fact** acak bersuara (`/funfact`): dari 30 fakta bawaan atau dibuat model sesuai topik. Fakta buatan model diperiksa lagi (istilah baku Indonesia wajib, kalimat Inggris atau janggal disaring, lalu diverifikasi sekali lagi; `FUNFACT_VERIFY`, bawaan aktif)
+- **Alarm, jam, timer, Pomodoro, dan pengingat istirahat**
+- **Statistik fokus** (`/statistik`): sesi Pomodoro "Fokus" yang selesai penuh dicatat per hari (hanya jumlah sesi dan menit, lokal, maksimal 120 hari), dengan laporan 7 hari berisi batang, total, rata-rata, dan rantai hari berturut-turut
+- **Sapaan sesuai waktu** (`/sapa`, bawaan mati): satu kalimat tetap per slot waktu, sekali sehari, tanpa memanggil model, dengan jarak minimal 90 menit. Tidak muncul saat mode fokus, tidur, merekam, suara dibisukan, chat terbuka, atau terjemah berjalan
+- **Panel chat** dengan riwayat, tombol Hapus, "Mode jelaskan", tombol memanjangkan kotak, dan popup **Salin link**. Ucapan otomatis tercatat sebagai kotak sendiri dengan tombol salin, suka, dan tidak suka; tombol putar ulang suara pada ucapan otomatis *(eksperimental)*
+- **Ekspor percakapan** ke satu berkas HTML mandiri di Downloads (`/ekspor`)
+- **Pilihan bernomor:** `/baju`, `/tema`, `/alarm`, dan `/lokal daftar` menampilkan daftar, lalu cukup ketik angkanya
 - Pil status koneksi `V 9 H` (VOICEVOX, 9Router, Hermes) dan titik bar hijau, kuning, atau merah (`/status`)
 
 ### Penglihatan, input, dan belajar
 
-- Lampirkan gambar lewat tempel (`Ctrl+V`), tombol klip, atau seret berkas; thumbnail bisa diklik, ada penampil besar dengan zoom, Salin gambar, dan Simpan
+- **Lampiran gambar** lewat tempel (`Ctrl+V`), tombol klip, atau seret berkas; thumbnail bisa diklik, dengan penampil besar (zoom, Salin gambar, Simpan)
 - **Screenshot layar** langsung jadi lampiran (tombol kamera, pintasan, atau tray)
-- **Terjemah layar**: teks Jepang atau Inggris di layar dikenali lewat OCR, diterjemahkan ke Indonesia, lalu hasilnya digambar menimpa teks asli dan dibuka di penampil besar. Iris ikut mengucapkan kalimat pembuka dan penutup. Bahasa sumber dipilih Auto, Jepang, atau Inggris lewat pil di menu; tombol berhenti membatalkan prosesnya. Lihat [Terjemah layar](#terjemah-layar-ocr)
-- **Tawaran aksi saat menyalin** (bawaan mati, `/tawar`): setelah kamu menyalin teks, muncul popup kecil Terjemah, Rangkum, atau Perbaiki. Teks yang mirip kata sandi, token, atau nomor kartu tidak pernah ditawarkan
-- **`/rangkum`**: merangkum halaman yang terbuka di `/chrome`, sebuah link, atau sebuah file
-- **Tanya clipboard**: teks atau gambar di clipboard dikirim sebagai pertanyaan
-- **Komentar layar otomatis** (`/pantau`, ditandai 👁)
-- **Bicara lewat mikrofon** (STT, opsional) dengan faster-whisper. Model, bahasa, dan kosakata bantu bisa disetel lewat `.env`; ucapan yang diawali kata kerja aksi (mis. "Cek ...", "Cari ...") tetap dijalankan sebagai tugas walau Whisper menambahkan tanda tanya, dan jawaban singkat seperti "iya" atau "lanjut aja" setelah Iris menawarkan `/agen` menjalankan tugasnya. Lihat [Bicara lewat mikrofon](#bicara-lewat-mikrofon)
-- **Mode belajar bahasa Jepang** (`/belajar`): Iris memberi kalimat Jepang, kamu menebak arti atau mengulang ucapannya, lalu dikoreksi. Ada opsi menyerah untuk melihat jawaban
-- **Kuis kana** (`/kana`): Iris menampilkan satu kana, kamu mengetik romaji. Diperiksa lokal tanpa model dan tanpa server; ejaan Hepburn dan Kunrei diterima. Pilih `hira`, `kata`, atau `campur`, tambahkan `lengkap` untuk dakuten dan handakuten, dan `kombinasi` untuk kana kombinasi (きゃ, しゅ, ちょ dan seterusnya). Satu ronde 10 soal; jawaban salah muncul lagi di ronde yang sama, dan ringkasan akhir memuat skor serta kana yang perlu diulang. Tanda panjang (ー) dan っ kecil belum ada
-- **Game teka-teki** (`/tekateki`): Iris memberi teka-teki Indonesia, Jepang, atau campuran, kamu menebak lewat chat, dengan `/petunjuk` dan `/menyerah`. Bank bawaan ditambah teka-teki buatan model. Lihat [Game teka-teki](#game-teka-teki-tekateki). Baru ditulis dan belum dicoba di overlay
-- **Perintah aplikasi lokal** (`/lokal`): membuka aplikasi dari daftar putih yang ditetapkan di `main.js`
+- **Terjemah layar:** teks Jepang atau Inggris dikenali lewat OCR, diterjemahkan ke Indonesia, lalu digambar menimpa teks asli. Lihat [Terjemah layar](#terjemah-layar-ocr)
+- **Tawaran aksi saat menyalin** (`/tawar`, bawaan mati): popup Terjemah, Rangkum, atau Perbaiki. Teks yang mirip kata sandi, token, atau nomor kartu tidak pernah ditawarkan
+- **`/rangkum`:** merangkum halaman `/chrome`, sebuah link, atau sebuah file. **`/clip`:** menanyakan isi clipboard. **`/pantau`:** komentar layar otomatis (ditandai 👁)
+- **Bicara lewat mikrofon** (STT opsional, faster-whisper). Lihat [Bicara lewat mikrofon](#bicara-lewat-mikrofon)
+- **Belajar bahasa Jepang:** `/belajar` (Iris memberi kalimat Jepang, kamu menebak arti atau mengulang ucapannya, lalu dikoreksi) dan `/kana` (kuis kana yang diperiksa lokal tanpa model; Hepburn dan Kunrei diterima, dengan opsi `hira`, `kata`, `campur`, `lengkap`, `kombinasi`; tanda panjang ー dan っ kecil belum ada)
+- **Game teka-teki** (`/tekateki`, 12 November 2026) *(eksperimental)*: teka-teki Indonesia, Jepang, atau campuran dengan petunjuk (`/petunjuk`) dan menyerah (`/menyerah`). Poin 3 dikurangi jumlah petunjuk (minimal 1) dengan hitungan beruntun, dan ronde kedaluwarsa setelah 600 detik. Bank bawaan di `data/tekateki.json`, tambahan dibuat model (maksimal 200 tersimpan). Tanpa `iris_games.py` server tetap jalan tanpa `/tekateki`
+- **Perintah aplikasi lokal** (`/lokal`): membuka aplikasi dari daftar putih di `main.js`
 
 ### Agen dan memori
 
-- **Jembatan Hermes Agent** (`/agen`, `/agent`, `/h`): memberi tugas ke agen di WSL, lengkap dengan indikator "sedang memproses" berhitung detik, heartbeat, tombol Stop (menghentikan agen di Hermes bila `HERMES_STREAM=1`), dan batas waktu
-- **Konfirmasi tugas berbahaya**: tugas `/agen` yang berbau hapus, pindah, timpa, atau format file ditahan dulu dan muncul kartu "Iris mau menjalankan ini. Lanjut?" dengan tombol Jalankan dan Batal
-- **Persetujuan tindakan agen**: bila Hermes menandai sebuah perintah berisiko, overlay menampilkan kartu izin dengan tombol **Izinkan sekali** atau **Tolak**. Tanpa jawaban, koneksi putus, atau Stop berarti ditolak; pilihan "selalu" dan "sesi" tidak pernah ditawarkan. Bila kamu menekan Tolak, Iris menyampaikan bahwa perintah sengaja tidak dijalankan karena penolakanmu (baris `[Catatan Iris]`), bukan sebagai kegagalan agen
-- **Sandbox Docker**: terminal agen berjalan di kontainer tanpa jaringan yang hanya bisa menulis ke folder kerja (satu folder bawaan; bisa ditambah lewat `docker_volumes` Hermes, lihat [Keamanan](#keamanan)). Tugas `/agen` dengan path di luar folder kerja bawaan ditolak sebelum dikirim, dan Iris memeriksa disk sendiri lalu menambahkan baris `[Verifikasi Iris]` pada hasil (karena laporan agen tidak selalu benar)
-- **Bedah file** (`/rea`): Hermes membedah satu file atau folder (exe, dll, apk, jar, firmware, js) secara statis, tanpa menjalankannya. Ada mode `cepat` (hanya triase lokal, tanpa Hermes), standar, dan `dalam`. Triase lokal mengenali PE, ELF, APK/JAR/OOXML, PDF, OLE2, RTF, LNK, dan skrip, dengan skor heuristik beralasan (petunjuk, bukan vonis). Lihat [Membedah file dengan `/rea`](#membedah-file-dengan-rea)
-- Kartu **Hasil tugas** dengan tombol Salin. Path WSL di laporan otomatis diubah menjadi path Windows, termasuk folder berspasi (`C:\Users\<user>\...`)
-- Hermes menerima konteks 10 pesan terakhir hanya bila tugas merujuk ke percakapan, dan tahu folder Windows lewat `HERMES_WIN_HOME`
-- Iris dilarang mengaku bisa membuat, mengubah, atau menghapus file di obrolan biasa; ia menyuruh memakai `/agen`. Laporan agen disampaikan netral dan bersumber
-- **Memori ringan**: `/ingat`, `/memori`, `/lupa` (maksimal 40 hal, 200 karakter per hal). Isi yang mirip rahasia ditolak
-- **Riwayat obrolan persisten**: 20 pesan terakhir, kedaluwarsa 3 hari, gambar tidak pernah disimpan, pasangan pesan berisi kata rahasia tidak ditulis
-- **Mini-browser** multi-akun (`/chrome`), lihat [bagiannya](#mini-browser-chrome)
+- **Jembatan Hermes Agent** (`/agen`, `/agent`, `/h`): memberi tugas ke agen di WSL, lengkap dengan indikator "sedang memproses", heartbeat, tombol Stop (menghentikan agen di Hermes bila `HERMES_STREAM=1`), dan batas waktu
+- **Dua lapis pengaman tindakan:** tugas `/agen` berbau hapus, pindah, timpa, atau format file ditahan dulu dengan kartu "Iris mau menjalankan ini. Lanjut?"; perintah yang ditandai Hermes menampilkan kartu izin **Izinkan sekali** atau **Tolak** (tanpa jawaban, koneksi putus, atau Stop berarti ditolak; pilihan "selalu" dan "sesi" tidak pernah ditawarkan). Penolakan disampaikan Iris sebagai keputusanmu (baris `[Catatan Iris]`), bukan kegagalan agen
+- **Sandbox Docker:** terminal agen berjalan di kontainer tanpa jaringan yang hanya bisa menulis ke folder kerja. Tugas dengan path di luar folder kerja ditolak sebelum dikirim, dan Iris memeriksa disk sendiri lalu menambahkan baris `[Verifikasi Iris]` karena laporan agen tidak selalu benar. Lihat [Keamanan](#keamanan)
+- **Bedah file** (`/rea`): analisis statis file atau folder dengan mode `cepat`, standar, dan `dalam`. Lihat [Membedah file dengan `/rea`](#membedah-file-dengan-rea)
+- Kartu **Hasil tugas** dengan tombol Salin; path WSL di laporan otomatis menjadi path Windows (`C:\Users\<user>\...`), termasuk folder berspasi. Hermes menerima konteks 10 pesan terakhir hanya bila tugas merujuk ke percakapan
+- Iris dilarang mengaku bisa membuat, mengubah, atau menghapus file di obrolan biasa, dan menyuruh memakai `/agen`. Laporan agen disampaikan netral dan bersumber
+- **Memori ringan:** `/ingat`, `/memori`, `/lupa` (maksimal 40 hal, 200 karakter per hal; isi yang mirip rahasia ditolak)
+- **Riwayat obrolan persisten:** 20 pesan terakhir, kedaluwarsa 3 hari, gambar tidak pernah disimpan, pasangan pesan berisi kata rahasia tidak ditulis
+- **Mini-browser multi-akun** (`/chrome`). Lihat [bagiannya](#mini-browser-chrome)
 
 ### Infrastruktur
 
 - `IrisLauncher.exe`: peluncur satu klik dengan indikator hijau per layanan. Menutup peluncur ikut mematikan semua layanan (bisa dimatikan di Pengaturan), dan menu **Keluar** di overlay bisa mematikan semuanya lewat peluncur
 - Kotak **Mesin suara VOICEVOX** (GPU atau CPU) di Pengaturan peluncur; bila folder `vv-engine` tidak ada, peluncur memakai unit `voicevox` di WSL (CPU)
-- **Ikon tray berwarna**: titik di pojok ikon hijau (semua aktif), kuning (ada yang bermasalah), merah (tidak merespons), atau abu (server Iris tidak terhubung), lengkap dengan petunjuk perbaikan satu baris di menu tray
+- **Ikon tray berwarna** (hijau semua aktif, kuning ada yang bermasalah, merah tidak merespons, abu server tidak terhubung) dengan petunjuk perbaikan satu baris di menu tray
 - **Ekspor dan impor konfigurasi** pengaturan overlay (`/config ekspor`, `/config impor`)
-- `iris-doctor.ps1`: cek kesehatan seluruh sistem
-- `iris-start.ps1` dan `iris-stop.ps1`: start dan stop berurutan, aman dijalankan berulang
-- `9router.service`: 9Router berjalan sebagai layanan systemd di WSL
+- `iris-doctor.ps1` (cek kesehatan), `iris-start.ps1` dan `iris-stop.ps1` (start dan stop berurutan, aman dijalankan berulang), dan `9router.service` (9Router sebagai layanan systemd di WSL)
 - `.wslconfig` dengan batas memori WSL 4 GB dan `networkingMode=mirrored` (supaya WSL menjangkau VOICEVOX di Windows lewat `localhost`)
 
 ---
@@ -181,9 +254,9 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 | `iris_web.py` | CLI untuk membaca panel mini-browser (dipakai agen) |
 | `iris_translate_img.py` | OCR dan penggambar ulang terjemahan layar (winocr atau Tesseract) |
 | `rea_triage.py` | Triase statis file untuk `/rea` (hash, jenis, header, impor, string, IOC, indikasi kemampuan, skor heuristik, draf YARA); hanya pustaka standar Python. Versi saat ini v97 |
-| `rea_extract.py` | Ekstraksi dan penjelajahan container untuk `/rea` (ZIP, TAR/gz, GZIP, ISO 9660, ISO PSP); dipanggil dari `rea_triage.py` lewat impor malas, opsional. Belum diaudit |
-| `rea_binary.py` | Binary Workbench untuk `/rea` (hex view, data inspector, pencarian, perbandingan, patch dengan undo); impor malas, opsional. Belum diaudit |
-| `iris_games.py` | Logika game teka-teki `/tekateki` (`GameTekaTeki`); impor opsional di `server.py` |
+| `rea_extract.py` | Penjelajah container untuk `/rea`: ZIP, TAR/gz, GZIP, ISO 9660, ISO PSP (impor malas, opsional; belum diperiksa) |
+| `rea_binary.py` | Binary Workbench: hex view, data inspector, pencarian, perbandingan, dan patch berundo (impor malas, opsional; belum diperiksa) |
+| `iris_games.py` | Game teka-teki `/tekateki` (opsional) |
 
 ---
 
@@ -195,54 +268,6 @@ Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan 
 - **LLM:** 9Router (endpoint OpenAI-compatible)
 - **Agen:** Hermes Agent di WSL2
 - **Peluncur:** `IrisLauncher` (C# dan PowerShell, kode di [`IrisLauncher-src/`](IrisLauncher-src/))
-
----
-
-## Prasyarat
-
-| Kebutuhan | Keterangan |
-|---|---|
-| Windows 10/11 | Overlay berjalan di Windows |
-| Node.js 18+ | Untuk Electron |
-| Python 3.11+ | Untuk `server.py` |
-| VOICEVOX Engine | Berjalan di port `50021` (opsional, tanpa ini Iris menjawab lewat teks saja). Peluncur menjalankan `vv-engine\run.exe` (build DirectML, mis. versi 0.25.2) dengan GPU yang mendukung DirectX 12; tanpa folder itu ia memakai unit `voicevox` di WSL (CPU). Folder `vv-engine` tidak ada di repositori, letakkan sendiri di folder proyek |
-| 9Router atau endpoint LLM kompatibel OpenAI | Berjalan di `localhost:20128` secara bawaan |
-| WSL2 + Hermes Agent | Opsional, hanya untuk fitur `/agen` |
-| faster-whisper | Opsional, hanya untuk bicara lewat mikrofon |
-
-Disarankan RAM 16 GB jika Hermes dan model lokal dijalankan bersamaan. Batas memori WSL di proyek ini diset 4 GB lewat `.wslconfig`.
-
----
-
-## Instalasi
-
-```powershell
-git clone https://github.com/JihoStarting/iris-desktop-companion.git
-cd iris-desktop-companion
-
-# Dependency Node
-npm install
-
-# Virtual environment Python
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-
-# Konfigurasi
-copy .env.example .env
-```
-
-Kalau PowerShell menolak menjalankan `Activate.ps1` karena kebijakan eksekusi, jalankan dulu `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` di jendela yang sama. Alternatifnya, pakai `.\.venv\Scripts\python.exe` langsung tanpa aktivasi.
-
-Lalu buka `.env` dan isi dengan nilai milikmu sendiri. **`COMPANION_TOKEN` wajib diisi** (minimal 16 karakter); server langsung berhenti dengan pesan `[FATAL]` kalau kosong. Buat tokennya dengan:
-
-```powershell
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
-**Jangan pernah meng-commit file `.env`.**
-
-Panduan langkah demi langkah: [docs/QUICKSTART.md](docs/QUICKSTART.md)
 
 ---
 
@@ -312,47 +337,19 @@ Semua pengaturan dibaca dari file `.env` (di folder proyek atau di folder user W
 | `IRIS_TL_FONT_JP` | Font Jepang untuk menggambar hasil (bawaan Meiryo, Yu Gothic, atau Noto CJK) |
 | `IRIS_TL_DEBUG=1` | Simpan `iris_tl_debug.png` dan `iris_tl_debug.json` (kotak hijau diterjemahkan, merah tidak) |
 | `IRIS_TL_VOICE=0` | Iris tidak bicara saat terjemah layar |
-| `IRIS_HEALTH_CONNECT` | Batas sambung (detik, bawaan 1,5) per layanan saat `/health` memeriksa VOICEVOX, 9Router, dan Hermes |
-| `FUNFACT_TIMEOUT` | Batas total waktu pembuatan fun fact oleh model, termasuk verifikasi (detik, bawaan 45, maksimal 48) |
-| `FUNFACT_MODEL` | Model khusus untuk fun fact (opsional) |
-| `FUNFACT_VERIFY=0` | Matikan verifikasi kedua fun fact oleh model (bawaan aktif) |
-| `GAME_MODEL` | Model untuk membuat dan memeriksa teka-teki (kosong = `NINEROUTER_MODEL`) |
+| `FUNFACT_VERIFY` | `0` mematikan verifikasi kedua fun fact buatan model (bawaan `1`; verifikasi yang timeout atau galat tetap memakai fakta) |
+| `FUNFACT_TIMEOUT` | Batas total waktu pembuatan fun fact (detik, maksimal 48) |
+| `GAME_MODEL` | Model untuk teka-teki buatan model (kosong = `NINEROUTER_MODEL`) |
 | `GAME_AUTOGEN=0` | Matikan pembuatan teka-teki otomatis oleh model |
-| `IRIS_SIT_FALL` | Jarak jatuh maksimum (piksel) ke tepi atas jendela saat Iris dilepas di udara untuk `/duduk` (bawaan 700) |
+| `IRIS_WEB_KEEP` | Jumlah tab `/chrome` yang tetap hidup (1 sampai 10, bawaan 3; yang paling lama tidak dipakai dibuang dulu; 1 = satu akun hidup) |
+| `IRIS_LAUNCHER_EXE` | Diisi otomatis oleh peluncur. Bila ada, menu **Keluar** menawarkan "matikan semua" lewat `IrisLauncher.exe --stop-all`; tanpanya Keluar hanya menutup overlay |
+| `IRIS_SIT_FALL` | Jarak jatuh maksimum dari udara ke tepi atas jendela di bawahnya untuk `/duduk` (bawaan 700) |
+| `IRIS_SIT_BAR` | Ruang kosong di bawah karakter dalam jendela, dipakai menebak posisi dasar karakter saat dilepas (bawaan 74) |
+| `IRIS_HIT_SPEED` | Ambang kecepatan seret untuk reaksi saat menabrak pojok layar (bawaan 650) |
+| `IRIS_EDGE_SPEED` | Ambang kecepatan seret untuk reaksi saat menabrak sisi layar (bawaan 900) |
+| `IRIS_HEALTH_CONNECT` | Batas sambung (detik, bawaan 1,5) per layanan saat `/health` memeriksa VOICEVOX, 9Router, dan Hermes |
 
-Membuat token untuk `COMPANION_TOKEN`:
-
-```powershell
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
----
-
-## Menjalankan
-
-### Cara manual
-
-Buka dua terminal di folder proyek.
-
-**Terminal 1: server**
-
-```powershell
-.\.venv\Scripts\python.exe server.py
-```
-
-**Terminal 2: overlay**
-
-```powershell
-npm start
-```
-
-Cek kesehatan layanan di `http://127.0.0.1:8765/health`. Untuk sekadar memastikan server hidup (tanpa memeriksa layanan lain), buka `http://127.0.0.1:8765/ping`; jawabannya `{"ok":true}`.
-
-> Karena `COMPANION_TOKEN` wajib, halaman `http://127.0.0.1:8765` di browser tidak bisa dipakai untuk chat (browser tidak dapat mengirim header token). Gunakan overlay Electron. Halaman tes `dev/test_client.html` hanya tersedia bila kamu sengaja menjalankan server dengan `COMPANION_ALLOW_NO_TOKEN=1` dan token kosong.
-
-### Lewat peluncur
-
-`IrisLauncher.exe` menjalankan WSL, layanan pendukung, server, dan overlay sekaligus. Bangun sendiri dengan `IrisLauncher-src\build.bat` (memakai `csc.exe` bawaan Windows, tanpa memasang apa pun), atau unduh dari tab Releases bila tersedia.
+Cara membuat token ada di bagian [Instalasi](#instalasi).
 
 ---
 
@@ -445,9 +442,10 @@ Ketik di kotak input overlay. Ketik `/help` untuk daftar lengkap di aplikasi. Pe
 | `/pantau` | Komentar layar otomatis (ditandai 👁) |
 | `/belajar [topik]` | Mode belajar bahasa Jepang, mis. `/belajar makanan` |
 | `/kana [hira\|kata\|campur] [lengkap] [kombinasi]` | Kuis kana lokal; `stop` atau `/kana stop` mengakhiri |
-| `/tekateki [id\|jp\|campur]` (alias `/riddle`, `/nazonazo`) | Game teka-teki; `/tekateki lewati\|skor\|stop`. Lihat [Game teka-teki](#game-teka-teki-tekateki) |
-| `/petunjuk` (alias `/hint`, `/clue`) | Minta petunjuk saat ronde teka-teki berjalan |
-| `/menyerah` (alias `/nyerah`, `/giveup`), `/skip` | Menyerah atau melewati ronde teka-teki |
+| `/tekateki [id\|jp\|campur]` (alias `/riddle`, `/nazonazo`) | Mulai game teka-teki; `/tekateki lewati`, `/tekateki skor`, `/tekateki stop` |
+| `/petunjuk` (alias `/hint`, `/clue`) | Minta petunjuk pada ronde berjalan |
+| `/menyerah` (alias `/nyerah`, `/giveup`) | Menyerah dan lihat jawabannya |
+| `/skip` | Lewati teka-teki ini (sama dengan `/tekateki lewati`) dan mulai yang baru |
 
 ### Memori dan penampilan
 
@@ -549,33 +547,17 @@ Path berspasi boleh diketik tanpa kutip; kata setelah path menjadi fokus analisi
 
 Alias mode: `quick`, `fast`, `standard`, `deep`.
 
-- **Triase lokal** (`rea_triage.py` v97, tanpa model dan tanpa menjalankan file): hash (SHA-256, SHA-1, MD5), jenis file (PE, ELF, ZIP/APK/JAR/OOXML, DEX, WASM, Mach-O, PDF, OLE2, RTF, LNK, skrip PowerShell/JS/VBS/BAT), entropi, dan indikasi kemampuan dari nama API persis (injeksi, anti-debug, jaringan, persistensi, kripto, `ptrace`, `dlopen`, `execve`, dan sejenisnya) dengan pemetaan perkiraan ke ATT&CK. **PE:** arsitektur, subsystem, timestamp, ASLR/DEP/CFG, .NET, tanda tangan (CN penandatangan dibaca dari blob; keabsahan tanda tangan tidak diperiksa), bagian beserta entropi dan flag, import, delay-import, export, resource dan info versi, Rich header, checksum header, imphash, dan overlay (blob tanda tangan tidak dihitung sebagai overlay). **ELF:** header, section, segmen, status stripped, impor dinamis, pustaka `NEEDED`, dan ekspor. **Arsip dan dokumen:** isi zip/APK/JAR/OOXML (izin Android, `Main-Class`, berkas tertanam, zip-slip, relasi eksternal, makro), PDF (JavaScript, `OpenAction`, `Launch`, nama berobfuskasi, data setelah EOF), OLE2 (makro, pemicu otomatis, Equation Editor), dan skrip (obfuskasi, unduh-eksekusi). **String dan IOC:** string ASCII dan UTF-16 (URL, kandidat IP, email, kunci registry, path Windows, kandidat kredensial yang disamarkan), IOC dalam bentuk defang, hasil dekode base64, PE tertanam (polos atau XOR satu byte), dan konstanta kripto (AES, SHA, MD5, CRC32, ChaCha/Salsa, Blowfish, tabel Base64). **Keluaran:** skor heuristik beralasan (tiap alasan menyebut buktinya), penanda pembuat atau pengemas dengan saran langkah lanjut, dan draf YARA. Pemindaian dibatasi 32 MB pertama. **Tambahan v97:** Mach-O penuh, metadata .NET, CTPH (hash fuzzy), perburuan XOR, ADD, dan ROL satu byte, detail kemasan (packer), serta pengelompokan keluarga sampel pada triase folder; keluaran juga tersedia sebagai Markdown (`triage_md`) dan API terstruktur (`rea_api`) untuk Iris dan Hermes.
-- **Modul tambahan (v95 sampai v97, di-push 12 November 2026):** `rea_extract.py` (ekstraksi dan penjelajahan ZIP, TAR/gz, GZIP, ISO 9660, dan ISO PSP) dan `rea_binary.py` (hex view, data inspector, pencarian, perbandingan file, dan patch dengan undo) dipanggil dari `rea_triage.py` lewat impor malas. Keduanya opsional: tanpa mereka, hanya fungsi container dan hex yang tidak tersedia. Penomoran ini berbeda dari spesifikasi di [Rencana](#rencana). Keduanya belum diaudit dan belum dites di PC, dan cara memakainya langsung dari overlay belum didokumentasikan.
+- **Triase lokal** (`rea_triage.py`, fitur di bawah sampai v94; v97 menambah Mach-O penuh, metadata .NET, CTPH, perburuan XOR/ADD/ROL satu byte, detail kemasan, dan pengelompokan keluarga sampel di mode folder; tanpa model dan tanpa menjalankan file): hash (SHA-256, SHA-1, MD5), jenis file (PE, ELF, ZIP/APK/JAR/OOXML, DEX, WASM, Mach-O, PDF, OLE2, RTF, LNK, skrip PowerShell/JS/VBS/BAT), entropi, dan indikasi kemampuan dari nama API persis (injeksi, anti-debug, jaringan, persistensi, kripto, `ptrace`, `dlopen`, `execve`, dan sejenisnya) dengan pemetaan perkiraan ke ATT&CK. **PE:** arsitektur, subsystem, timestamp, ASLR/DEP/CFG, .NET, tanda tangan (CN penandatangan dibaca dari blob; keabsahan tanda tangan tidak diperiksa), bagian beserta entropi dan flag, import, delay-import, export, resource dan info versi, Rich header, checksum header, imphash, dan overlay (blob tanda tangan tidak dihitung sebagai overlay). **ELF:** header, section, segmen, status stripped, impor dinamis, pustaka `NEEDED`, dan ekspor. **Arsip dan dokumen:** isi zip/APK/JAR/OOXML (izin Android, `Main-Class`, berkas tertanam, zip-slip, relasi eksternal, makro), PDF (JavaScript, `OpenAction`, `Launch`, nama berobfuskasi, data setelah EOF), OLE2 (makro, pemicu otomatis, Equation Editor), dan skrip (obfuskasi, unduh-eksekusi). **String dan IOC:** string ASCII dan UTF-16 (URL, kandidat IP, email, kunci registry, path Windows, kandidat kredensial yang disamarkan), IOC dalam bentuk defang, hasil dekode base64, PE tertanam (polos atau XOR satu byte), dan konstanta kripto (AES, SHA, MD5, CRC32, ChaCha/Salsa, Blowfish, tabel Base64). **Keluaran:** skor heuristik beralasan (tiap alasan menyebut buktinya), penanda pembuat atau pengemas dengan saran langkah lanjut, dan draf YARA. Pemindaian dibatasi 32 MB pertama.
 - **Akurasi:** jawaban agen berformat terstruktur (ringkasan, arsitektur, perilaku beserta bukti, IOC, risiko, yang tidak pasti, langkah lanjut), dan klaim penting wajib menyebut bukti dengan label `TERBUKTI` atau `DUGAAN`. Kartu hasil menaruh triase di atas dan tafsiran agen di bawah.
 - **Folder:** `/rea <folder>` mengemas folder (tanpa symlink atau junction Windows) jadi satu zip di `rea-input`. Triase folder berperingkat dan menandai duplikat. Folder kosong atau terlalu besar ditolak dengan pesan jelas.
-- **Pengerasan (v94):** isi sampel diperlakukan sebagai data tidak tepercaya. Teks triase (URL, nama, hasil dekode, info versi) dibungkus penanda `<<<DATA_SAMPEL_TIDAK_DIPERCAYA_...>>>` di tugas agen, dengan instruksi melaporkan, bukan menuruti; penanda palsu di dalam sampel dinetralkan dan karakter kontrol dibuang. Keluaran laporan disanitasi (karakter kontrol dan pembalik arah teks diganti `?`). Regex triase dibatasi supaya file besar berisi huruf berurutan tidak membuat triase macet (ReDoS pada versi lama). Riwayat Iris untuk `/rea` hanya memuat hash, jenis, dan skor, tanpa string dari sampel. Kartu hasil bisa memuat baris "Peringatan: sampel berisi instruksi yang diabaikan." bila agen menemukan teks mirip perintah di dalam sampel. Pengerasan v96.1: ukuran dibaca lewat `fstat`, kerja entropi dan MD5 dibatasi, dekompresi ZIP dibatasi, dan keluaran disanitasi.
+- **Pengerasan (v94):** isi sampel diperlakukan sebagai data tidak tepercaya. Teks triase (URL, nama, hasil dekode, info versi) dibungkus penanda `<<<DATA_SAMPEL_TIDAK_DIPERCAYA_...>>>` di tugas agen, dengan instruksi melaporkan, bukan menuruti; penanda palsu di dalam sampel dinetralkan dan karakter kontrol dibuang. Keluaran laporan disanitasi (karakter kontrol dan pembalik arah teks diganti `?`). Regex triase dibatasi supaya file besar berisi huruf berurutan tidak membuat triase macet (ReDoS pada versi lama). Riwayat Iris untuk `/rea` hanya memuat hash, jenis, dan skor, tanpa string dari sampel. Kartu hasil bisa memuat baris "Peringatan: sampel berisi instruksi yang diabaikan." bila agen menemukan teks mirip perintah di dalam sampel.
 - **Ekstraksi payload (opsional):** dengan `REA_CARVE=1`, payload tertanam disalin ke `rea-input\carved`. Bawaan mati karena bisa memicu Windows Defender.
 - **Laporan:** bagian skor dan PERHATIAN tidak lagi terpotong di kartu `/rea cepat` (versi muat-anggaran), sedangkan berkas laporan memuat versi penuh. Kartu hasil memuat sampai `REA_MAX_CHARS` karakter; laporan penuh ditulis ke `rea-reports/rea-<tanggal>-<jam>.md` dan path-nya ditempel di akhir kartu. Hasil tampil sebagai kartu mentah tanpa ceritaan ulang oleh Iris.
 - **Pembersihan:** setiap `/rea` yang menyalin file menghapus berkas lama di `rea-input`, termasuk subfolder `carved` (lebih dari `REA_KEEP_DAYS`). Triase tetap berjalan walau `HERMES_SANDBOX=0` (file tidak disalin dan tidak ada carve di lokasi sumber).
 
 > **Anggap hasilnya petunjuk, bukan temuan.** Triase murni statis: tanpa dekompilasi, emulasi, atau jaringan, dan "indikasi kemampuan" hanya petunjuk dari nama API (program sah juga memakainya; IP bisa saja nomor versi). Laporan agen pernah memuat klaim yang saling bertentangan pada file yang diuji. Verifikasi dengan sumber atau hash (mis. VirusTotal) sebelum menyimpulkan. Laporan berisi analisis berkas pribadimu, jadi jangan masukkan `rea-reports/` ke repositori.
 
-Batas: tidak ada dekompilasi, emulasi, atau parsing resource DEX; deteksi XOR, ADD, dan ROL hanya satu byte (batas 4 MB pertama berlaku sejak v92 dan belum diperiksa ulang untuk v97); imphash varian Iris bisa berbeda dari `pefile`; konstanta kripto ikut memicu aturan "string ransomware + API kripto", jadi installer sah yang memakai AES bisa bernilai lebih tinggi; VBA terkompresi di OLE2 bisa menyembunyikan sebagian pola makro; arsip 7z dan RAR hanya dikenali jenisnya; file di atas 32 MB hanya dipindai bagian awalnya; sandbox tanpa jaringan membuat alat yang perlu unduhan gagal; seret-lepas file ke overlay belum ada. Status uji ada di [Status pengujian](#status-pengujian).
-
----
-
-## Game teka-teki `/tekateki`
-
-Iris memberi satu teka-teki, kamu menjawab lewat chat biasa. Logikanya ada di `iris_games.py` (`GameTekaTeki`) dan terhubung ke `server.py` serta `index.html`. Tanpa `iris_games.py`, server tetap jalan dan `/tekateki` tidak tersedia.
-
-- **Perintah:** `/tekateki [id|jp|campur]` (alias `/riddle`, `/nazonazo`), `/petunjuk` (`/hint`, `/clue`), `/menyerah` (`/nyerah`, `/giveup`), `/skip`, serta `/tekateki lewati`, `/tekateki skor`, dan `/tekateki stop`.
-- **Selama ronde berjalan:** pesan biasa dianggap tebakan; kata seperti "nyerah", "petunjuk", dan "skip" dikenali bila bukan tebakan yang benar. Perintah slash lain (mis. `/tema`, `/status`) tetap jalan.
-- **Poin:** 3 dikurangi jumlah petunjuk yang dipakai (minimal 1), dengan hitungan beruntun. Iris menawarkan petunjuk setiap 3 tebakan salah. Ronde kedaluwarsa setelah 600 detik, dan 30 teka-teki terakhir tidak diulang.
-- **Sumber:** bank bawaan `data/tekateki.json`, ditambah teka-teki buatan model di `data/tekateki_dinamis.json` (maksimal 200). State disimpan di `data/tekateki_state.json`. Teka-teki Jepang buatan model hanya dibuat bila pemeriksa aktif.
-- **Suara dan gerak:** reaksi disuarakan lewat kalimat Jepang pendek; teka-teki Indonesia tampil sebagai teks tanpa suara. Klip `miring`, `dagu`, `angguk`, `geleng`, dan `tari_ceria` dipakai bila berkasnya ada.
-- **Konfigurasi:** `GAME_MODEL` dan `GAME_AUTOGEN=0` (lihat [Konfigurasi](#konfigurasi)).
-
-> **Status.** Di-push ke `main` pada 12 November 2026 (commit `3be44bd`), belum dicoba di overlay (VOICEVOX dan klip), dan `tests/test_iris_games*.py` belum ada. Tinjauan kode 13 November menemukan tiga hal yang belum diperbaiki: tebakan negatif seperti "bukan api" dianggap benar; pemicu isi ulang otomatis bisa tidak pernah jalan bila satu bahasa punya lebih dari 32 teka-teki; dan pemeriksa kebocoran jawaban terlalu kasar sehingga menolak teka-teki yang sah. Lihat [Status pengujian](#status-pengujian).
+Batas: tidak ada dekompilasi, emulasi, atau parsing resource DEX; deteksi XOR hanya satu byte pada 4 MB pertama; imphash varian Iris bisa berbeda dari `pefile`; konstanta kripto ikut memicu aturan "string ransomware + API kripto", jadi installer sah yang memakai AES bisa bernilai lebih tinggi; VBA terkompresi di OLE2 bisa menyembunyikan sebagian pola makro; arsip 7z dan RAR hanya dikenali jenisnya; file di atas 32 MB hanya dipindai bagian awalnya; sandbox tanpa jaringan membuat alat yang perlu unduhan gagal; seret-lepas file ke overlay belum ada. Status uji ada di [Status pengujian](#status-pengujian).
 
 ---
 
@@ -639,12 +621,18 @@ Panel browser kecil di samping karakter dengan **sepuluh slot akun** yang masing
 | `/chrome` | Buka akun terakhir |
 | `/chrome <nama>` | Sama, memakai nama akun |
 | `/chrome 3 https://situs.com` | Akun 3 dengan alamat lain |
-| `/chrome tutup` | Tutup panel dan buang prosesnya |
+| `/chrome sembunyi` | Sembunyikan panel, tab tiap akun tetap hidup (juga `Ctrl+Alt+W` dan tombol ➖) |
+| `/chrome tutup` | Tutup panel dan buang semua tab (hemat RAM) |
+| `/chrome reset` | Buang semua tab; semua pil kembali ke link awal (login tetap tersimpan) |
+| `/chrome besar`, `kecil`, `ukuran` | Ukuran panel (besar = 640x720; `ukuran` bolak-balik). Ukuran bebas: tahan tombol ⤡ di pojok panel lalu geser |
+| `/chrome ke <alamat\|kata>` | Buka alamat di panel yang terbuka (kata biasa = cari di Google) |
+| `/chrome <alamat>` | Buka alamat itu di akun terakhir |
 | `/chrome daftar` atau `/akun` | Tampilkan semua slot |
 | `/chrome mundur`, `maju`, `muat`, `beranda` | Navigasi (juga `Alt+←`, `Alt+→`, `F5`) |
 | `/chrome ram` | RAM dan CPU renderer panel, GPU, dan total proses |
 | `/chrome elemen` | Daftar elemen yang terlihat (uji jembatan baca-saja) |
 | `/chrome jembatan` | Status jembatan baca-saja |
+| `/akun nama <nomor\|nama> <nama baru>` | Ganti nama akun (login tetap tersimpan) |
 | `/akun tambah <nama> [link]` | Buat akun di slot kosong pertama |
 | `/akun link <nomor\|semua> <url\|baru>` | Ganti link awal |
 | `/akun hapus <nama>` | Hapus akun beserta sesi loginnya |
@@ -669,7 +657,6 @@ Memungkinkan Hermes membaca isi panel mini-browser (tanpa mengklik atau mengisi 
 - Mendengar hanya di `127.0.0.1` (port bawaan 8767), hanya metode `GET`, permintaan berheader `Origin` ditolak, token dibandingkan timing-safe, batas laju 30 permintaan per 10 detik
 - Isian formulir tidak pernah dikirim (hanya nama isian dan penanda apakah itu password), URL dikirim tanpa query dan hash
 - Semua hasil bertanda `untrusted: true`: isi halaman adalah data, bukan perintah
-- Klien `iris_web.py` membersihkan dan memindai pola injeksi pada judul, URL, host, nama akun, serta `name`, `tag`, dan `type` elemen (12 November 2026; belum dites di PC). Pembersihan hanya berlaku lewat klien itu: panggilan langsung ke jembatan (mis. `curl` dengan token) tidak melewatinya
 
 | Rute | Isi |
 |---|---|
@@ -686,17 +673,19 @@ Klien: `python3 iris_web.py state | text [maks] | elements | shot [berkas.jpg]`.
 
 ## Kemampuan Hermes Agent
 
-Hermes Agent berjalan di WSL2 dan menjadi "tangan" Iris lewat `/agen`. Kemampuan utamanya:
+Hermes Agent berjalan di WSL2 dan menjadi "tangan" Iris lewat `/agen`.
 
-- **Terminal dan sistem:** perintah bash di WSL dan PowerShell di Windows, proses latar, cron
-- **File dan disk:** baca, tulis, cari isi file, analisis penggunaan disk
-- **Kode:** menulis dan menyunting kode, menjalankan build dan tes, operasi git
-- **Browser:** mengendalikan Chrome lewat Chrome DevTools Protocol
-- **Web dan riset:** pencarian web (backend Exa), ekstraksi halaman, pencarian paper di ArXiv, riset multi-sudut
-- **Dokumen dan media:** PDF, Word, Excel, PowerPoint, transkrip YouTube, analisis gambar
-- **Data:** SQLite, JSON, CSV, Airtable
-- **Integrasi:** Telegram, Notion, Google Workspace
-- **Skill kustom** (40+): mis. `deep-research`, `academic-writer`, `excalidraw`, `oss-forensics`, `laptop-storage-analyzer`, dan `isi-form-otomatis`. Skill dimuat per tugas
+| Area | Kemampuan |
+|---|---|
+| Terminal dan sistem | Perintah bash di WSL dan PowerShell di Windows, proses latar, cron |
+| File dan disk | Baca, tulis, cari isi file, analisis penggunaan disk |
+| Kode | Menulis dan menyunting kode, menjalankan build dan tes, operasi git |
+| Browser | Mengendalikan Chrome lewat Chrome DevTools Protocol |
+| Web dan riset | Pencarian web (backend Exa), ekstraksi halaman, pencarian paper di ArXiv, riset multi-sudut |
+| Dokumen dan media | PDF, Word, Excel, PowerPoint, transkrip YouTube, analisis gambar |
+| Data | SQLite, JSON, CSV, Airtable |
+| Integrasi | Telegram, Notion, Google Workspace |
+| Skill kustom (40+) | Mis. `deep-research`, `academic-writer`, `excalidraw`, `oss-forensics`, `laptop-storage-analyzer`, dan `isi-form-otomatis`; dimuat per tugas |
 
 Laporan Hermes ditampilkan apa adanya di kartu "Hasil tugas". Iris menyampaikannya secara netral dan bersumber, dan hanya menyatakan berhasil bila laporan Hermes jelas menyatakannya.
 
@@ -708,95 +697,119 @@ Laporan Hermes ditampilkan apa adanya di kartu "Hasil tugas". Iris menyampaikann
 
 ## Keamanan
 
-IRIS dirancang untuk berjalan lokal dan memberi agen akses ke komputermu, jadi beberapa pengaman dipasang:
+IRIS berjalan lokal dan memberi agen akses ke komputermu, jadi pengamannya berlapis. Prinsipnya: **jangan mengandalkan satu pagar saja**. Kartu konfirmasi dan detektor berbasis pola punya celah, karena itu terminal agen dikurung di sandbox.
+
+### Akses dan autentikasi
 
 - Server hanya mendengar di `127.0.0.1`.
-- **`COMPANION_TOKEN` wajib** (minimal 16 karakter). Koneksi `/ws` dilindungi token lewat header `X-Iris-Token` (kode penolakan 1008), plus pengecekan `Origin`. Server menolak start bila token kosong atau terlalu pendek; satu-satunya pengecualian adalah `COMPANION_ALLOW_NO_TOKEN=1` untuk pengembangan. Karena agen bisa menjalankan perintah di komputermu, jangan pakai pengecualian itu untuk pemakaian sehari-hari
-- Perintah `/agen` yang berpotensi berbahaya (hapus, pindah, timpa, format file) meminta konfirmasi dulu. Daftar kata pemicu bisa disetel, `/health` menampilkan `agent_confirm`, dan konfirmasi sekali pakai kedaluwarsa dalam 120 detik. Batasnya: pemeriksaan ini hanya membaca teks permintaanmu, bukan tindakan yang dipilih agen, jadi ini jaring pengaman untuk salah ketik dan salah paham
-- **Persetujuan tindakan agen.** Perintah yang ditandai Hermes menunggu klik **Izinkan sekali** atau **Tolak** di overlay. Sistemnya gagal-aman (tanpa jawaban = tolak), hanya `once` dan `deny` yang pernah dikirim ke Hermes, dan mode persetujuan Hermes diset `manual`. Perintah yang tidak ditandai detektor Hermes tidak menghasilkan kartu. Detektor itu berbasis pola dan punya celah: pada uji 9 November 2026, `rm` dengan path berkutip lolos tanpa kartu, jadi kartu bukan batas yang bisa diandalkan sendirian (itulah alasan terminal agen dikurung di sandbox)
-- **Sandbox Docker** (8 November 2026). Terminal agen berjalan di kontainer; yang bisa ditulis hanya folder kerja (bawaan satu folder) dan home sandbox, sedangkan drive dan folder lain di komputermu tidak terlihat. Dengan `HERMES_SANDBOX=1`, Iris menolak tugas dengan path di luar sandbox. Batasnya: agen tetap bisa menghapus atau mengubah isi folder kerjanya, dan jaringan kontainer dimatikan (`docker_network: false`; terbukti 8 November 2026: `network=none`, DNS gagal dari dalam kontainer), jadi isi folder kerja tidak bisa dikirim keluar lewat terminal agen. Alat web bawaan Hermes berjalan di luar kontainer dan masih bisa membuka situs, sehingga jalur itu belum tertutup. **Menambah folder kerja melonggarkan kurungan.** Contoh: folder Downloads dipasang sebagai volume kedua di `docker_volumes` Hermes (10 November 2026): mount aktif dan baca terbukti, tetapi penghapusan di sana belum terbukti melewati kartu persetujuan (belum diuji dengan nama berspasi, yang memakai path berkutip). Bila perlu, pasang subfolder khusus alih-alih seluruh Downloads, hindari wildcard, dan cek hasilnya dengan `dir`. Folder tambahan belum dipetakan di Iris, jadi `/agen` di overlay tetap menolak path-nya; gunakan Hermes langsung (mis. lewat Telegram) dengan path kontainer
-- **`/rea` memperlakukan isi file sebagai data tidak tepercaya.** Audit kode 10 November 2026 menemukan dan menutup tujuh celah di jalur ini: ReDoS di triase, injeksi prompt lewat string sampel, catatan riwayat yang memuat string sampel, keluaran laporan tanpa sanitasi, junction Windows pada pengemasan folder, peringatan overlay palsu pada file bertanda tangan, dan triase yang ikut terlewat saat sandbox mati. Perlindungan dari injeksi tetap bergantung pada kepatuhan model dan belum diuji dengan sampel injeksi di PC asli
-- **Laporan agen tidak selalu benar.** Agen pernah melaporkan "berhasil dihapus" padahal tidak ada tindakan sama sekali. Jangan percaya laporan begitu saja; cek dengan `dir` atau `ls`. Iris menambah `[Verifikasi Iris]` hanya untuk path di folder kerja agen
-- **Injeksi prompt dari isi web.** Isi halaman diperlakukan sebagai data, bukan perintah (aturan di prompt agen dan pembersih di `iris_web.py`). Perlindungan ini bergantung pada kepatuhan model dan baru lulus 2 uji, jadi jangan menganggapnya pagar teknis
-- Kunci API dan token tidak pernah ditulis di dokumen atau chat; bila ada yang bocor, ganti dan restart layanan terkait. Jangan beri `sudo` tanpa password di WSL
-- Semua jendela menolak navigasi, jendela baru, dan `<webview>`
-- Memori dan riwayat menolak menyimpan isi yang mirip rahasia (kata sandi dan sejenisnya)
-- Panel mini-browser berjalan terisolasi (sandbox, tanpa preload, tanpa akses kamera, mikrofon, atau notifikasi, navigasi hanya ke `https://`)
-- Jembatan baca-saja mati secara bawaan dan berlapis (lihat [bagiannya](#jembatan-baca-saja-untuk-hermes))
-- Fitur yang menyentuh privasi (duduk di jendela lain) **mati secara bawaan**
-- Log terminal hanya mencatat panjang dan sidik token, bukan isinya, dan URL dipotong sampai path. Endpoint `/health` tidak bertoken, jadi hanya menampilkan `ws_token` sebagai "aktif" atau "KOSONG", tanpa panjang atau sidik
-- DevTools tidak tersedia di versi rilis (aplikasi yang dipaketkan)
+- **`COMPANION_TOKEN` wajib** (minimal 16 karakter). Koneksi `/ws` dilindungi token lewat header `X-Iris-Token` (kode penolakan 1008) plus pengecekan `Origin`. Server menolak start bila token kosong atau terlalu pendek; satu-satunya pengecualian adalah `COMPANION_ALLOW_NO_TOKEN=1` untuk pengembangan. Karena agen bisa menjalankan perintah di komputermu, jangan pakai pengecualian itu untuk pemakaian sehari-hari.
+- Kunci API dan token tidak pernah ditulis di dokumen atau chat; bila ada yang bocor, ganti dan restart layanan terkait. Jangan beri `sudo` tanpa password di WSL.
+- Log terminal hanya mencatat panjang dan sidik token, bukan isinya, dan URL dipotong sampai path. Endpoint `/health` tidak bertoken, jadi hanya menampilkan `ws_token` sebagai "aktif" atau "KOSONG".
 
-Hal yang perlu kamu jaga sendiri:
+### Kendali tindakan agen
 
-- Riwayat obrolan dan memori tersimpan polos di disk. Jangan taruh folder proyek di drive yang tersinkron ke cloud
-- Log server memuat teks chat
+- **Konfirmasi tugas berbahaya.** Perintah `/agen` yang berpotensi berbahaya (hapus, pindah, timpa, format file) meminta konfirmasi dulu; daftar kata pemicu bisa disetel, `/health` menampilkan `agent_confirm`, dan konfirmasi sekali pakai kedaluwarsa dalam 120 detik. Batasnya: pemeriksaan ini hanya membaca teks permintaanmu, bukan tindakan yang dipilih agen, jadi ini jaring pengaman untuk salah ketik dan salah paham.
+- **Persetujuan tindakan agen.** Perintah yang ditandai Hermes menunggu klik **Izinkan sekali** atau **Tolak** di overlay. Sistemnya gagal-aman (tanpa jawaban = tolak), hanya `once` dan `deny` yang pernah dikirim ke Hermes, dan mode persetujuan Hermes diset `manual`. Detektor Hermes berbasis pola dan punya celah: pada uji 9 November 2026, `rm` dengan path berkutip lolos tanpa kartu.
+- **Sandbox Docker** (8 November 2026). Terminal agen berjalan di kontainer; yang bisa ditulis hanya folder kerja (bawaan satu folder) dan home sandbox, sedangkan drive dan folder lain tidak terlihat. Dengan `HERMES_SANDBOX=1`, Iris menolak tugas dengan path di luar sandbox. Jaringan kontainer dimatikan (`docker_network: false`; terbukti 8 November 2026: `network=none`, DNS gagal dari dalam kontainer), jadi isi folder kerja tidak bisa dikirim keluar lewat terminal agen.
+  - **Batas:** agen tetap bisa menghapus atau mengubah isi folder kerjanya, dan alat web bawaan Hermes berjalan di luar kontainer sehingga masih bisa membuka situs.
+  - **Menambah folder kerja melonggarkan kurungan.** Contoh: Downloads dipasang sebagai volume kedua di `docker_volumes` (10 November 2026): mount aktif dan baca terbukti, tetapi penghapusan di sana belum terbukti melewati kartu persetujuan (belum diuji dengan nama berspasi). Bila perlu, pasang subfolder khusus alih-alih seluruh Downloads, hindari wildcard, dan cek hasilnya dengan `dir`. Folder tambahan belum dipetakan di Iris, jadi `/agen` di overlay tetap menolak path-nya; gunakan Hermes langsung (mis. lewat Telegram) dengan path kontainer.
+- **Laporan agen tidak selalu benar.** Agen pernah melaporkan "berhasil dihapus" padahal tidak ada tindakan sama sekali. Cek dengan `dir` atau `ls`; Iris menambah `[Verifikasi Iris]` hanya untuk path di folder kerja agen.
 
-Berkas sensitif tidak pernah masuk repositori: `.env`, riwayat percakapan, memori, log, arsip, dan folder `vv-engine/` dikecualikan lewat `.gitignore`.
+### Isi tidak tepercaya (injeksi prompt)
 
-Menemukan celah keamanan? Mohon jangan buka issue publik; hubungi pemilik repositori secara langsung.
+- **Isi web.** Halaman diperlakukan sebagai data, bukan perintah (aturan di prompt agen dan pembersih di `iris_web.py`). Perlindungan ini bergantung pada kepatuhan model dan baru lulus 2 uji, jadi jangan menganggapnya pagar teknis.
+- **`/rea`.** Isi file diperlakukan sebagai data tidak tepercaya. Audit kode 10 November 2026 menemukan dan menutup tujuh celah di jalur ini: ReDoS di triase, injeksi prompt lewat string sampel, catatan riwayat yang memuat string sampel, keluaran laporan tanpa sanitasi, junction Windows pada pengemasan folder, peringatan overlay palsu pada file bertanda tangan, dan triase yang terlewat saat sandbox mati. Perlindungan dari injeksi belum diuji dengan sampel injeksi di PC asli.
+- **Pembersihan `iris_web.py`** (12 November 2026) kini mencakup `title`, `url`, `host` halaman dan kolom `name` elemen, dipindai untuk pola injeksi pada jenis `state`, `text`, dan `elements`. Batasnya: aksi `shot` belum melewati pembersihan (hanya ditandai `untrusted`), dan pembersihan hanya ada di klien, jadi agen yang memanggil jembatan langsung (mis. `curl` dengan token) melewatinya. Belum dites di PC.
+
+### Isolasi dan privasi
+
+- Semua jendela menolak navigasi, jendela baru, dan `<webview>`. DevTools tidak tersedia di versi rilis.
+- Panel mini-browser berjalan terisolasi (sandbox, tanpa preload, tanpa akses kamera, mikrofon, atau notifikasi, navigasi hanya ke `https://`).
+- Jembatan baca-saja mati secara bawaan dan berlapis (lihat [bagiannya](#jembatan-baca-saja-untuk-hermes)).
+- Fitur yang menyentuh privasi (duduk di jendela lain) **mati secara bawaan**.
+- Memori dan riwayat menolak menyimpan isi yang mirip rahasia (kata sandi dan sejenisnya).
+- Berkas sensitif tidak pernah masuk repositori: `.env`, riwayat percakapan, memori, log, arsip, dan folder `vv-engine/` dikecualikan lewat `.gitignore`.
+
+### Yang perlu kamu jaga sendiri
+
+- Riwayat obrolan dan memori tersimpan polos di disk. Jangan taruh folder proyek di drive yang tersinkron ke cloud.
+- Log server memuat teks chat, jadi jangan dibagikan sembarangan.
+
+**Melaporkan celah keamanan:** mohon jangan buka issue publik; hubungi pemilik repositori secara langsung.
 
 ---
 
 ## Status pengujian
 
-Fitur di bawah sudah ditulis tetapi **belum lulus uji penuh di PC**. Anggap eksperimental sampai ada konfirmasi.
+Legenda: **Lulus** = dicoba dan berfungsi di PC pengembang · **Sebagian** = ada bukti, tetapi ada bagian yang belum terbukti · **Belum diuji** = ditulis dan lolos pemeriksaan sintaks atau uji di lingkungan penulis kode, belum dicoba di overlay. Fitur bertanda **Belum diuji** sebaiknya dianggap eksperimental.
 
-| Area | Catatan |
+### Belum lulus uji penuh
+
+| Area | Status | Catatan |
+|---|---|---|
+| Terjemah layar (OCR): Jepang, Inggris, Auto, suara, pratinjau besar, tombol berhenti | Sebagian | Jepang terbukti membaik lewat screenshot nyata (8 November 2026): 42 dari 62 blok diterjemahkan tanpa teks sampah "0000"; paragraf pembuka besar masih Jepang dan ada potongan yang menumpuk. Pil bahasa di menu lulus. Mode Inggris dan Auto baru diuji dengan OCR dan model palsu; suara pembuka dan penutup, penampil besar, tombol berhenti, font Jepang, dan penyaring sampah belum dilaporkan dari overlay. Teks merah, tebal, dan tombol kecil masih terlewat |
+| Jawaban Iris soal isi terjemahan (tidak boleh mengarang) | Belum diuji | Belum terbukti dengan model sungguhan; pernah mengarang isi halaman |
+| `/rangkum`: bacaan halaman dan injeksi (v81) | Sebagian | Lulus di overlay. Hanya teks DOM utama yang terbaca (PDF viewer, iframe, dan konten malas tidak); perilaku model terhadap injeksi di halaman belum terbukti |
+| Tombol putar suara pada ucapan otomatis (v89) | Belum diuji | Uji: `/sapa sekarang`, `/funfact`, `/jam`, buka chat, lalu klik ikon speaker di kotaknya |
+| Mini-browser fase 4 (pil akun, hemat RAM, tab diparkir) | Belum diuji | Belum dites di Electron asli |
+| Jembatan baca-saja untuk Hermes | Belum diuji | Kode ada; belum ada skill Hermes yang memakainya |
+| Tugas `/agen` ringan terasa lambat | Terbuka | Penyebab belum dipastikan |
+| Bubble dengan lampiran dekat tepi atas layar | Belum diuji | |
+| `/rea` v82 dan v83 (bedah satu file lewat Hermes, hasil kartu mentah) | Sebagian | Alur ujung ke ujung berjalan di overlay (10 November 2026): laporan keluar sekitar 4,5 menit untuk file 496 KB, penyebab lambat belum diketahui. Laporan agen memuat klaim yang saling bertentangan, jadi anggap petunjuk. Kartu mentah (v83) belum diuji di server asli |
+| `/rea` v91 sampai v93 (triase lokal, mode `cepat` / standar / `dalam`, folder, laporan penuh, carve, draf YARA) | Belum diuji | Lolos `py_compile`, `node --check`, dan tes fungsi di lingkungan penulis kode. Belum diuji di overlay dengan Hermes asli; tampilan kartu 9000 karakter, kecepatan `/rea cepat` pada file besar, dan pengiriman `/rea cepat <folder>` dari `index.html` belum diverifikasi |
+| `/rea` v94 (ReDoS dan injeksi prompt ditutup; impor ELF, PDF, OLE2, RTF, LNK, skrip, delay-import, overlay, checksum PE, konstanta kripto, ATT&CK) | Belum diuji | Lolos uji sandbox: ReDoS lama vs baru diukur (file 3 MB: macet lebih dari 120 detik jadi 0,8 detik), sampel sintetis, PE asli, ELF `/bin/ls`, `--json` valid, folder dengan symlink loop. `server.py` baru diimpor dengan stub. Belum diuji di PC dengan Hermes; parsing delay-import belum bertemu sampel nyata; skor tetap petunjuk, bukan vonis |
+| `/rea` v95 sampai v97 (`rea_extract.py`, `rea_binary.py`, penguatan triase) | Belum diuji | Sintaks dan uji asap lulus di lingkungan penulis kode; `rea_extract.py` dan `rea_binary.py` belum diperiksa. Penomoran v95 sampai v97 di kode berbeda dari spesifikasi REA |
+| Folder kerja tambahan (Downloads) di sandbox | Sebagian | 10 November 2026: mount aktif (`RW: true`) dan baca terbukti lewat Telegram; hapus satu file umpan terlihat berhasil di Explorer, tetapi kartu persetujuan, `Test-Path`, uji Tolak, dan path berspasi belum dilaporkan |
+| Perlindungan injeksi prompt | Sebagian | Lulus 2 uji (`curl` dan file lokal); belum dengan halaman web sungguhan |
+| Persetujuan tindakan agen dan sandbox Docker | Sebagian | Izinkan sekali dan Tolak terbukti di Hermes sungguhan, satu uji per kasus (termasuk `rm` file tunggal, 8 November 2026). Tes otomatis memakai Hermes palsu (28 dan 26 tes lulus) |
+| Tombol kartu izin aktif setelah 0,7 detik (cegah klik ganda) | Sebagian | Tolak dan Izinkan sekali berfungsi; efek jeda terhadap klik ganda belum terbukti dari log. Peringkasan hasil agen lebih tepat (v72) lulus 8 November 2026 |
+| Backend Docker tanpa jaringan dan WSL `mirrored` | Sebagian | Terbukti 9 November 2026: hapus file di luar folder kerja tidak berefek, dan Iris kembali melaporkan VOICEVOX, 9Router, dan Hermes aktif. Satu uji per kasus; suara lewat terminal agen belum diuji |
+| Klip VRMA lebih sering dipakai (11 November 2026) | Belum diuji | Lolos `node --check` dan pemeriksaan isi berkas `.vrma`. Belum dilihat di overlay: seberapa sering klip terasa pas, peralihan klip seluruh badan dari idle, dan klip yang bertumpuk dengan gerak prosedural |
+| Game teka-teki `/tekateki` (12 November 2026) | Belum diuji | Di-push ke `main`; audit statis menunjukkan sambungan ke `server.py` dan `index.html` cocok. Belum dicoba di overlay (suara dan klip), dan `tests/test_iris_games*.py` belum ada |
+| Perbaikan audit 12 November 2026 (Mode fokus `setQuiet`, pembersihan `iris_web.py`, `jp_speakable()`) | Belum diuji | Lolos uji statis dan uji kecil di sandbox. Belum dites di PC: keluar dari Mode fokus, jawaban panjang berbahasa Indonesia (cek log dan suara), dan `iris_web.py text` pada halaman berjudul pola injeksi |
+
+### Sudah lulus
+
+| Area | Bukti |
 |---|---|
-| Terjemah layar (OCR): Jepang, Inggris, Auto, suara, pratinjau besar, tombol berhenti | Jepang terbukti membaik lewat screenshot nyata (8 November 2026): uji terakhir menerjemahkan 42 dari 62 blok tanpa teks sampah "0000"; paragraf pembuka besar masih Jepang dan ada potongan terjemahan yang menumpuk. Pil bahasa Auto / Jepang / Inggris di menu lulus di overlay. Mode Inggris dan Auto baru diuji dengan OCR dan model palsu; suara pembuka dan penutup, penampil besar, tombol berhenti, font Jepang, dan penyaring teks sampah belum dilaporkan dari overlay. Sisa gejala: teks merah, tebal, dan tombol kecil masih terlewat |
-| Jawaban Iris soal isi terjemahan (tidak boleh mengarang) | Ditulis, belum terbukti dengan model sungguhan; pernah mengarang isi halaman |
-| `/rangkum`: bacaan halaman dan injeksi (v81) | Lulus di overlay (dilaporkan pemilik). Hanya teks DOM utama yang terbaca (PDF viewer, iframe, dan konten malas tidak); perilaku model terhadap injeksi di halaman belum terbukti |
-| Tombol putar suara pada ucapan otomatis: sapaan, fun fact, istirahat, jam (v89) | Ditulis dan lolos `node --check`, belum diuji di overlay. Uji: `/sapa sekarang`, `/funfact`, `/jam`, buka chat, lalu klik ikon speaker di kotaknya |
-| Bicara lewat mikrofon: penyetelan 6 Nov (model, kosakata bantu, perintah suara) | Perbaikan perilaku diuji dengan kalimat dari tangkapan layar; pemilik melaporkan tidak ada masalah. Akurasi tetap bergantung pada model dan mikrofon |
-| Mini-browser, fase 4 (pil akun, hemat RAM, tab diparkir) | Belum dites di Electron asli |
-| Tugas `/agen` ringan terasa lambat | Penyebab belum dipastikan |
-| Sambung ulang WebSocket bertahap (jeda 2, 4, 8, maksimal 15 detik) | Diuji 1 kali (server dimatikan sekitar 12 detik, overlay tersambung lagi dan riwayat dipulihkan tanpa dibuka ulang) |
-| VOICEVOX di GPU (DirectML) | Mesin naik dan mendeteksi GPU (RTX 4060 Laptop, DirectML OK, `/version` 0.25.2). Lulus 8 November 2026 lewat perbandingan latensi (kalimat sekitar 75 karakter, `audio_query` + `synthesis`, mesin yang sama): GPU 720, 483, 601 ms lawan CPU 2939 (pemanasan), 1972, 2003, 1899 ms, jadi sekitar 3,6 kali lebih cepat. Baris perintah mesin yang melayani port 50021 memuat `--use_gpu`. Batas: penghitung `GPU Engine` per proses tidak bisa dijadikan bukti di mesin ini, dan pengukuran satu kalimat saja |
-| Batas tunggu stop Hermes di peluncur | Lulus 8 November 2026: chip Hermes dimatikan (4 detik) dan dinyalakan lagi (12 detik) tanpa tampak gagal; batas stop systemd 75 detik |
-| Status server di peluncur lewat `/ping` | Lulus 8 November 2026: chip server tetap Hidup saat Hermes dimatikan, dan `/ping` menjawab 2 sampai 15 ms (`/health` sekitar 2 detik saat ada layanan mati). Sisa kecil: log start masih menulis "menunggu /health" |
-| Persetujuan tindakan agen dan sandbox Docker | Izinkan sekali dan Tolak terbukti di Hermes sungguhan, satu uji per kasus; `rm` file tunggal di sandbox kini juga diuji sekali (8 November 2026: satu kartu Hermes, Izinkan sekali menghapus, Tolak menjaga file). Tes otomatis memakai Hermes palsu (28 dan 26 tes lulus) |
-| `/rea` v82 dan v83 (bedah satu file lewat Hermes, hasil sebagai kartu mentah) | Alur ujung ke ujung berjalan di overlay (10 November 2026): skill termuat dan laporan keluar sekitar 4,5 menit untuk file 496 KB, penyebab lambat belum diketahui. Laporan agen memuat klaim yang saling bertentangan, jadi anggap petunjuk. Kartu mentah tanpa ceritaan ulang (v83) belum diuji di server asli |
-| `/rea` v91 sampai v93 (triase lokal `rea_triage.py`, mode `cepat` / standar / `dalam`, folder berperingkat, laporan penuh, pembersihan otomatis, resource / Rich header PE, carve, draf YARA) | Lolos `py_compile`, `node --check`, dan tes fungsi di lingkungan penulis kode (PE asli, ELF, APK buatan, zip folder, pembersihan, carve PE polos / base64 / XOR). **Belum diuji di overlay dengan Hermes asli**, tampilan kartu 9000 karakter belum dicek, kecepatan `/rea cepat` pada file besar di PC belum diukur, dan apakah `index.html` mengirim `/rea cepat <folder>` belum diverifikasi |
-| `/rea` v94 (celah ReDoS dan injeksi prompt ditutup; impor ELF, PDF, OLE2, RTF, LNK, skrip, delay-import, overlay, checksum PE, konstanta kripto, ATT&CK) | Lolos `py_compile` dan uji sandbox: ReDoS lama vs baru diukur (file 3 MB: macet lebih dari 120 detik jadi 0,8 detik), sampel sintetis (PDF, RTF, skrip, APK, kripto, base64 berisi teks injeksi yang jatuh di dalam penanda), PE asli, ELF `/bin/ls`, `--json` valid, folder dengan symlink loop. `server.py` baru diimpor dengan stub, belum dijalankan penuh. **Belum diuji di PC asli dengan Hermes** (`/rea cepat` dan `/rea` standar pada file sah dan satu sampel berisi teks injeksi buatan sendiri); parsing delay-import belum bertemu sampel nyata; skor tetap petunjuk, bukan vonis |
-| Folder kerja tambahan (Downloads) di sandbox | 10 November 2026: mount aktif (`RW: true`) dan baca terbukti lewat Telegram; hapus satu file umpan terlihat berhasil di Explorer, tetapi kartu persetujuan, `Test-Path`, dan uji Tolak belum dilaporkan, dan kasus path berspasi (berkutip) belum diuji |
-| Backend Docker tanpa jaringan dan WSL `mirrored` | Terbukti 9 November 2026: hapus file di luar folder kerja tidak berefek, dan Iris kembali melaporkan VOICEVOX, 9Router, dan Hermes aktif. Batas: satu uji per kasus; suara lewat terminal agen belum diuji |
-| Perlindungan injeksi prompt | Lulus 2 uji (`curl` dan file lokal), belum dengan halaman web sungguhan |
-| Tombol kartu izin yang aktif setelah 0,7 detik (cegah klik ganda) dan peringkasan hasil agen yang lebih tepat (v72) | Peringkasan hasil agen lulus 8 November 2026 (resep dirangkum, peringatan injeksi disampaikan). Tombol kartu: Tolak dan Izinkan sekali berfungsi; efek jeda 0,7 detik terhadap klik ganda belum terbukti dari log |
-| Jembatan baca-saja untuk Hermes | Kode ada, belum dites; belum ada skill Hermes yang memakainya |
-| Bubble dengan lampiran dekat tepi atas layar | Belum dites |
-| Klip VRMA lebih sering dipakai (11 November 2026: tag, frasa, sentuhan, idle, 5 klip seluruh badan) | Lolos `node --check` dan pemeriksaan isi berkas `.vrma` (durasi dan tulang yang digerakkan). **Belum diuji di overlay**: seberapa sering klip terasa pas, peralihan klip seluruh badan dari idle, dan klip yang bertumpuk dengan gerak prosedural belum dilihat |
-| Audit kode 12 Nov: `setQuiet` di `preload.js`, pembersihan `iris_web.py`, penjaga bagian Jepang (`jp_speakable`) | Perbaikan ditulis di `preload.js`, `iris_web.py`, dan `server.py`; lolos uji statis dan uji kecil di sandbox (pada 17 baris asisten di riwayat, 6 yang bermasalah terdeteksi dan 11 baris Jepang yang sah lolos). **Belum dites di PC.** Uji: `/fokus` lalu keluar dari Mode fokus; satu jawaban panjang berbahasa Indonesia dan cari "bagian Jepang bukan Jepang" di terminal server; `python3 iris_web.py text` dan `elements` pada halaman berjudul pola injeksi. Isi jawaban model tetap bisa salah (mis. istilah jabatan), jadi bagian Indonesia tetap perlu dicek |
-| Game teka-teki `/tekateki` (12 Nov) | Di-push ke `main` (commit `3be44bd`). Audit statis: sambungan ke `server.py` dan `index.html` cocok. **Belum dicoba di overlay** (VOICEVOX dan klip) dan tes otomatis belum ada. Temuan 13 Nov yang belum diperbaiki: tebakan negatif ("bukan api") dianggap benar; pemicu isi ulang otomatis menghitung dari jendela 30 id terakhir, jadi bisa tidak pernah jalan; pemeriksa kebocoran jawaban menolak teka-teki sah (mis. "Kecil tapi bisa membakar hutan" untuk jawaban `api`) |
-| `rea_triage.py` v95 sampai v97, `rea_extract.py`, `rea_binary.py` | Di-push ke `main` (commit `36d4a1f`, 12 Nov). Sintaks dan uji asap lulus di sandbox (mis. `rea_triage.py` pada `/bin/ls`, `--compact` dan `--json`). Belum dites di overlay atau dengan Hermes asli; `rea_extract.py` dan `rea_binary.py` belum diaudit; `rea_triage.py` v97 baru dipindai pola isinya, belum dibaca penuh |
-| Kualitas fun fact buatan model (saringan lokal dan verifikasi kedua, `FUNFACT_VERIFY`) | Ada di `server.py`; belum ada catatan uji di dokumen proyek |
-| Temuan tinjauan kode kedua (13 Nov) yang belum diperbaiki | `server.py`: fakta game yang salah tersimpan di riwayat ("Tujuan: pahami" disuntikkan ke prompt sebagai game yang sedang dimainkan); penyaring rahasia `/ingat` terlalu lebar (menolak tanggal seperti `12-03-2001`). Terjemah layar: serpihan satu aksara dari bilah tab ikut diterjemahkan, sampah OCR kadang ditransliterasi, teks sekitar 10 px sering salah baca. `index.html`: satu aturan CSS `#webpill button` tertimpa aturan di bawahnya (kosmetik). `package.json` belum punya `"private": true` dan `engines`. Semuanya baru temuan, belum diperbaiki dan belum dites |
-
-Yang sudah lulus uji antara lain: jembatan Hermes (termasuk path Windows di kartu hasil), konfirmasi `/agen` berbahaya, token `/ws`, ganti baju, tema, fun fact, alarm dan jam, mood, seret file dan lampiran gambar, ekspor, pilihan bernomor, pil status koneksi, dan peluncur, termasuk menutup peluncur dan menu Keluar yang mematikan semua layanan (`--stop-all`, dilaporkan pemilik berfungsi), serta perbaikan v46 sampai v50 (jaga UI tetap di layar, panel pindah sisi, rambut dan bayangan setengah badan; dilaporkan pemilik sudah beres), serta pikiran batin (dilaporkan pemilik aman). Dari 8 November 2026 malam, lulus di overlay: ikon tray berwarna, ekspor/impor konfigurasi (dengan tangkapan layar), tawaran aksi saat menyalin, `/rangkum`, `/statistik`, `/kana`, dan `/sapa` (dilaporkan pemilik, sebagian tanpa tangkapan layar rinci), bubble yang menghindari menu, reaksi Iris di riwayat chat, serta pesan Iris saat Tolak ditekan (dengan model sungguhan: tidak lagi menyebut "gagal"). Dari 7 November 2026: pembatalan tugas yang benar-benar menghentikan agen Hermes (HTTP 200 `stopping`, status `cancelled`) dan konversi path berspasi (`tests/test_path_berspasi.py`, 13 dari 13 tes proyek lulus).
+| Jembatan Hermes (termasuk path Windows di kartu hasil), konfirmasi `/agen` berbahaya, token `/ws` | Lulus di PC |
+| Ganti baju, tema, fun fact, alarm dan jam, mood, seret file dan lampiran gambar, ekspor, pilihan bernomor, pil status koneksi | Lulus di PC |
+| Peluncur, termasuk menutup peluncur dan menu Keluar yang mematikan semua layanan (`--stop-all`) | Dilaporkan pemilik berfungsi |
+| Perbaikan v46 sampai v50 (UI tetap di layar, panel pindah sisi, rambut dan bayangan setengah badan) dan pikiran batin | Dilaporkan pemilik beres dan aman |
+| VOICEVOX di GPU (DirectML) | 8 November 2026: GPU 720, 483, 601 ms lawan CPU 2939 (pemanasan), 1972, 2003, 1899 ms untuk kalimat sekitar 75 karakter, sekitar 3,6 kali lebih cepat; baris perintah mesin di port 50021 memuat `--use_gpu`. Batas: penghitung `GPU Engine` per proses tidak bisa jadi bukti di mesin ini, dan hanya satu kalimat yang diukur |
+| Batas tunggu stop Hermes di peluncur | 8 November 2026: chip Hermes dimatikan (4 detik) dan dinyalakan lagi (12 detik) tanpa tampak gagal; batas stop systemd 75 detik |
+| Status server di peluncur lewat `/ping` | 8 November 2026: chip server tetap Hidup saat Hermes dimatikan; `/ping` menjawab 2 sampai 15 ms (`/health` sekitar 2 detik saat ada layanan mati). Sisa kecil: log start masih menulis "menunggu /health" |
+| Sambung ulang WebSocket bertahap (jeda 2, 4, 8, maksimal 15 detik) | Diuji 1 kali: server dimatikan sekitar 12 detik, overlay tersambung lagi dan riwayat dipulihkan |
+| Ikon tray berwarna, ekspor/impor konfigurasi, tawaran aksi saat menyalin, `/statistik`, `/kana`, `/sapa`, bubble menghindari menu, reaksi Iris di riwayat chat | Lulus di overlay (8 November 2026 malam; sebagian dilaporkan pemilik tanpa tangkapan layar rinci) |
+| Pesan Iris saat Tolak ditekan | 8 November 2026, model sungguhan: tidak lagi menyebut "gagal" |
+| Bicara lewat mikrofon: penyetelan 6 November | Diuji dengan kalimat dari tangkapan layar; pemilik melaporkan tidak ada masalah. Akurasi tetap bergantung pada model dan mikrofon |
+| Pembatalan tugas yang menghentikan agen Hermes, dan konversi path berspasi | 7 November 2026: HTTP 200 `stopping`, status `cancelled`; `tests/test_path_berspasi.py`, 13 dari 13 tes proyek lulus |
 
 ---
 
 ## Rencana
 
-Ide yang sudah disetujui atau dicatat, **belum ada kodenya**:
+Ide yang sudah disetujui atau dicatat, **belum ada kodenya**.
 
-- Perluasan yang sudah dicatat: statistik fokus lebih rinci (mis. jam fokus mingguan dan `/timer` biasa ikut dihitung) dan kana lanjutan (tanda panjang ー dan っ kecil)
-- REA lanjutan (rancangan di dokumen spesifikasi REA v95 sampai v100). Sebagian sudah dikerjakan dengan penomoran berbeda dari spesifikasi: v95 `rea_extract.py` (ZIP, TAR/gz, GZIP, ISO 9660, ISO PSP), v96 `rea_binary.py` (hex view, data inspector, pencarian, perbandingan, patch berundo), dan v97 penguatan triase serta `rea_api`. Ketiganya belum diaudit penuh dan belum dites di PC, jadi belum diberi label Supported. Belum ada kodenya: pengelola image PSP (ganti file, rebuild ISO), parser arsip game berbasis plugin, dan penjelajah aset Unreal (PAK, IoStore); butir lain di spesifikasi (mis. manifest dan ekstraksi selektif) belum diverifikasi. Triase menjadi modul Security Scanner. Tiap format baru baru diberi label Supported setelah lulus fixture dan tes regresi; kunci enkripsi hanya dari pengguna yang berhak, tanpa bypass DRM
-- Memperbaiki temuan tinjauan kode 13 November (daftar di [Status pengujian](#status-pengujian)) dan menambah tes otomatis untuk `iris_games.py`
-- `/rea`: seret-lepas file ke overlay sebagai pengganti mengetik path; pemetaan folder kerja tambahan (mis. Downloads) di `/agen` overlay
-- Ide yang menunggu keputusan: terjemah langsung (subtitle) di area layar tertentu, reaksi ke suara sistem, pencarian file bahasa alami (butuh keputusan akses folder untuk agen), dan pengingat berbasis aplikasi aktif (bentrok dengan prinsip privasi)
-- Skill Hermes `cek-elearning` dan skill yang memakai jembatan baca-saja
+**Dekat**
+
+- Perluasan yang sudah dicatat: statistik fokus lebih rinci (jam fokus mingguan, `/timer` biasa ikut dihitung) dan kana lanjutan (tanda panjang ー dan っ kecil)
+- `/rea`: seret-lepas file ke overlay sebagai pengganti mengetik path, dan pemetaan folder kerja tambahan (mis. Downloads) di `/agen` overlay
+- REA v95 sampai v100: sebagian sudah ada kodenya dengan penomoran yang berbeda dari spesifikasi (v95 `rea_extract.py`, v96 `rea_binary.py`, v97 penguatan triase; lihat [Membedah file dengan `/rea`](#membedah-file-dengan-rea)). Belum dikerjakan: pengelola image PSP (baca, ekstrak, ganti file, rebuild ISO), parser arsip game berbasis plugin, dan penjelajah aset Unreal (PAK, IoStore). Format baru baru diberi label *Supported* setelah lulus fixture dan tes regresi; kunci enkripsi hanya dari pengguna yang berhak, tanpa bypass DRM
+- Menghubungkan `duduk_iris.vrma` ke `/duduk`; menari mengikuti musik dan perintah `/nari` (klip `tari_ceria.vrma` sudah ada, yang belum ada deteksi musik dan perintahnya)
+
+**Menengah**
+
+- Skill Hermes `cek-elearning` dan skill yang memakai jembatan baca-saja; mini-browser fase 5b dan 5c (Hermes beraksi dengan konfirmasi dan batas domain)
 - Memori otomatis ringan (ringkasan fakta baru yang kamu setujui dulu sebelum disimpan)
 - Auto-start bersama Windows dan skrip setup untuk PC baru
-- Mini-browser fase 5b dan 5c (Hermes beraksi dengan konfirmasi dan batas domain)
-- Menari mengikuti musik dan perintah `/nari` (klip `tari_ceria.vrma` sudah ada; yang belum ada: deteksi musik dan perintah `/nari`), serta menghubungkan `duduk_iris.vrma` ke `/duduk`
-- Angin dari kecepatan kursor (`/angin`)
-- `/catat` dan `/todo`, statistik Pomodoro, jurnal mood harian
-- Mode jangan ganggu otomatis saat game atau aplikasi layar penuh
+- Angin dari kecepatan kursor (`/angin`), `/catat` dan `/todo`, jurnal mood harian, dan mode jangan ganggu otomatis saat game atau aplikasi layar penuh
+
+**Menunggu keputusan atau ditunda**
+
+- Terjemah langsung (subtitle) di area layar tertentu, reaksi ke suara sistem, pencarian file bahasa alami (butuh keputusan akses folder untuk agen), dan pengingat berbasis aplikasi aktif (bentrok dengan prinsip privasi)
 - Pencarian catatan (`/cari`, `/indeks`): ditunda
-- Alternatif TTS dan LLM selain VOICEVOX dan 9Router
-- Wake word dan mode hands-free
-- Dukungan Live2D, macOS, dan Linux
+- Alternatif TTS dan LLM selain VOICEVOX dan 9Router, wake word dan mode hands-free, serta dukungan Live2D, macOS, dan Linux
 
 ---
 
@@ -810,11 +823,11 @@ Ide yang sudah disetujui atau dicatat, **belum ada kodenya**:
 ├── server.py                # backend FastAPI + WebSocket
 ├── iris_web.py              # CLI untuk membaca panel mini-browser (dipakai agen)
 ├── iris_translate_img.py    # OCR dan penggambar terjemahan layar
-├── rea_triage.py            # triase statis file untuk /rea, v97 (hanya pustaka standar)
-├── rea_extract.py           # ekstraksi dan penjelajahan container untuk /rea (opsional)
-├── rea_binary.py            # hex view, data inspector, compare, patch untuk /rea (opsional)
+├── rea_triage.py            # triase statis file untuk /rea, v97
+├── rea_extract.py           # penjelajah container untuk /rea (opsional)
+├── rea_binary.py            # hex view, compare, patch berundo untuk /rea (opsional)
 ├── iris_games.py            # game teka-teki /tekateki (opsional)
-├── data/                    # tekateki.json (bank bawaan), tekateki_dinamis.json (buatan model), tekateki_state.json (state)
+├── data/                    # tekateki.json (bank bawaan); tekateki_dinamis.json dan tekateki_state.json dibuat saat dipakai
 ├── rea-reports/             # laporan /rea (dibuat saat dipakai; jangan di-commit)
 ├── clips.json               # daftar klip (salinan; aplikasi membaca assets/animations/clips.json)
 ├── requirements.txt         # dependency Python
@@ -894,8 +907,6 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 | Chip Hermes tampak gagal mati | Hermes bisa butuh sampai sekitar 70 detik untuk berhenti; peluncur menunggu 75 detik. Kalau tetap tampak gagal, cek `systemctl --user status hermes-gateway` di WSL. Peluncur lama (sebelum build ulang 8 November) hanya menunggu sekitar 12 detik, jadi bangun ulang `IrisLauncher.exe` |
 | Chip server.py tampak Mati padahal server jalan, atau server tidak bisa dinyalakan saat Hermes mati | Peluncur lama menilai server lewat `/health`, yang melambat saat Hermes mati. Perbarui `server.py`, bangun ulang `IrisLauncher.exe` (peluncur kini memakai `/ping`), lalu cek `http://127.0.0.1:8765/ping`. Bila masih salah, lihat di Task Manager apakah `python.exe` benar-benar hilang |
 | Klip gerak jarang main, atau konsol penuh galat 404 klip | Cek saklar **Gerakan acak** di Pengaturan (mati = tanpa klip acak). Hapus entri `clips.json` yang berkasnya tidak ada. Lihat baris "Klip VRMA aksi siap" di konsol untuk klip dan tag yang benar-benar termuat; `idle` hanya ada di klip yang bertag itu. Lihat [Animasi klip VRMA](#animasi-klip-vrma) |
-| `/tekateki` tidak dikenali | `iris_games.py` tidak ada di folder yang sama dengan `server.py` (impornya opsional, server tetap jalan tanpa game). Letakkan berkasnya, lalu restart server |
-| Kalimat Jepang Iris tampil tanpa suara | Penjaga bagian Jepang menilai kalimat itu bukan Jepang (tanpa kana atau kanji, atau bercampur kata Indonesia) dan perbaikan sekali gagal. Cari "bagian Jepang bukan Jepang" di terminal server. Teks di bubble tetap tampil |
 
 Untuk diagnosis lebih lanjut, jalankan overlay dengan `npm start`, buka DevTools dengan `Ctrl+Alt+D`, dan cek tab Console (DevTools tidak tersedia di versi rilis).
 
@@ -907,8 +918,25 @@ Untuk diagnosis lebih lanjut, jalankan overlay dengan `npm start`, buka DevTools
 
 ---
 
+## Riwayat pembaruan
+
+| Tanggal | Perubahan |
+|---|---|
+| **12 November 2026** | Game teka-teki `/tekateki`; `rea_triage.py` v95 sampai v97 (berkas baru `rea_extract.py` dan `rea_binary.py`); audit kode dengan tiga perbaikan: Mode fokus memberi tahu `main.js` lewat `setQuiet` di `preload.js`, pembersihan `iris_web.py` kini mencakup `title`, `url`, `host`, dan `name`, serta kalimat Jepang yang sebenarnya bukan Jepang diperbaiki atau tampil tanpa suara (`jp_speakable()`). Belum dites di PC |
+| **11 November 2026** | Klip gerak VRMA dipakai jauh lebih sering: tag emosi, frasa ucapan, sentuhan, dan gerak idle memakai klip, dan lima klip seluruh badan ditambahkan; lihat [Animasi klip VRMA](#animasi-klip-vrma) |
+| **10 November 2026 siang** | `/rea` v94: celah ReDoS dan injeksi prompt lewat isi sampel ditutup, triase lokal diperluas ke ELF, PDF, OLE2, RTF, LNK, dan skrip |
+| **10 November 2026** | Perintah `/rea` untuk membedah file secara statis lewat Hermes, dengan triase lokal tanpa model; folder kerja agen bisa ditambah (mis. Downloads); terminal agen kembali di sandbox Docker tanpa jaringan |
+| **8 November 2026** | Statistik fokus `/statistik`, kuis kana `/kana`, sapaan sesuai waktu `/sapa`; tombol putar suara pada ucapan otomatis; bubble menghindari menu yang terbuka; penolakan lewat kartu izin tidak lagi disampaikan Iris sebagai "gagal" |
+| **Sebelum 8 November 2026** | Agen Hermes di sandbox Docker dengan persetujuan lewat kartu di overlay; tombol Stop menghentikan agen Hermes; status server di peluncur lewat `/ping`; VOICEVOX di GPU; jeda sambung ulang WebSocket bertahap; perbaikan path berspasi; terjemah layar OCR Jepang/Inggris dengan suara dan pratinjau besar; ikon tray berwarna; tawaran aksi saat menyalin; ekspor/impor konfigurasi; `/rangkum`. Lihat [Keamanan](#keamanan) dan [Status pengujian](#status-pengujian) |
+
+---
+
 ## Lisensi
 
 Repositori ini dapat dilihat publik, tetapi **hak cipta dilindungi (All rights reserved)**: kode tidak boleh disalin, dimodifikasi, disebarkan, atau dipakai ulang tanpa izin tertulis, lihat [LICENSE](LICENSE). Aset pihak ketiga (model, suara, gambar karakter) mengikuti lisensi masing-masing pembuatnya.
 
-Dibuat oleh KangJiho.
+---
+
+<p align="center">
+  Dibuat oleh <strong>KangJiho</strong>
+</p>
