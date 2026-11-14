@@ -35,7 +35,7 @@ Proyek ini dibuat sebagai proyek pribadi dan masih terus dikembangkan.
 
 ## Sorotan
 
-| | |
+| Keunggulan | Keterangan |
 |---|---|
 | **Avatar hidup** | Model VRM dalam jendela transparan: ekspresi, mood, ganti baju, tema musiman, dan 9 klip gerak |
 | **Suara per emosi** | VOICEVOX dengan nada dan kecepatan yang mengikuti emosi, lip-sync, dan mesin GPU (DirectML) |
@@ -48,7 +48,7 @@ Proyek ini dibuat sebagai proyek pribadi dan masih terus dikembangkan.
 
 ## Status
 
-| | |
+| Item | Keterangan |
 |---|---|
 | Hermes Agent dipasang | 28 September 2026 |
 | Overlay mulai dikembangkan | 28 Oktober 2026 |
