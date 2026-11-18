@@ -876,6 +876,217 @@ async function screenshotFromHotkey() {
   win.webContents.send('screenshot', url);
 }
 
+/* ---------- v90: Terjemah layar ala Snipping Tool ----------
+   Alur: Iris disembunyikan, layar tempat kursor berada difoto dengan resolusi asli, lalu jendela layar penuh menampilkan foto beku itu
+   dengan lapisan gelap. Pengguna menyeret kotak; kotak dipotong dari foto yang sama (jadi tidak ada selisih akibat layar bergerak) dan dikirim
+   ke renderer sebagai data URL. Esc atau klik kanan = batal. Hanya atas perintah pengguna; hasil hanya dikirim ke overlay.
+   Halaman pilih area ada di SNIP_HTML di bawah (tanpa berkas tambahan, tanpa preload): halaman memberi tahu main.js lewat judul jendelanya
+   ("snip:cancel" atau "snip:{json kotak}"), dan main.js mengirim foto beku lewat executeJavaScript. */
+const SNIP_HTML = `<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><title>Pilih area</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; cursor: crosshair; user-select: none; font-family: "Segoe UI", system-ui, sans-serif; }
+  #bg { position: fixed; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; -webkit-user-drag: none; }
+  #dim { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); pointer-events: none; }
+  #sel { position: fixed; display: none; box-sizing: border-box; border: 1px solid #9ec1ff; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .45); pointer-events: none; }
+  #size { position: fixed; display: none; padding: 2px 7px; border-radius: 6px; font-size: 12px; color: #fff; background: rgba(20, 24, 40, .85); pointer-events: none; }
+  #hint { position: fixed; left: 50%; top: 18px; transform: translateX(-50%); padding: 8px 16px; border-radius: 999px; font-size: 13px; color: #e8ecff; background: rgba(20, 24, 40, .88); border: 1px solid rgba(158, 193, 255, .35); pointer-events: none; white-space: nowrap; }
+  #hint b { color: #9ec1ff; font-weight: 600; }
+</style></head><body>
+<img id="bg" alt=""><div id="dim"></div><div id="sel"></div><div id="size"></div>
+<div id="hint">Seret untuk memilih area yang mau diterjemahkan &nbsp;·&nbsp; <b id="lang"></b> &nbsp;·&nbsp; Esc atau klik kanan = batal</div>
+<script>
+(function () {
+  var bg = document.getElementById('bg'), dim = document.getElementById('dim'), sel = document.getElementById('sel'),
+      size = document.getElementById('size'), langEl = document.getElementById('lang');
+  var LANG = { ja: 'Bahasa: Jepang', en: 'Bahasa: Inggris', auto: 'Bahasa: Otomatis' };
+  var start = null, rect = null, sent = false;
+  function send(s) { if (sent) return; sent = true; document.title = s; }
+  window.__snipInit = function (d) { if (d && typeof d.image === 'string') bg.src = d.image; langEl.textContent = LANG[d && d.lang] || LANG.auto; };
+  function reset() { start = null; rect = null; sel.style.display = 'none'; size.style.display = 'none'; dim.style.display = 'block'; }
+  function draw(x, y) {
+    x = Math.max(0, Math.min(innerWidth, x)); y = Math.max(0, Math.min(innerHeight, y));
+    var l = Math.min(start.x, x), t = Math.min(start.y, y), w = Math.abs(x - start.x), h = Math.abs(y - start.y);
+    rect = { x: l, y: t, w: w, h: h };
+    sel.style.cssText = 'display:block;left:' + l + 'px;top:' + t + 'px;width:' + w + 'px;height:' + h + 'px';
+    size.textContent = Math.round(w) + ' × ' + Math.round(h);
+    size.style.display = 'block';
+    size.style.left = l + 'px';
+    size.style.top = (t > 28 ? t - 26 : t + h + 6) + 'px';
+  }
+  addEventListener('mousedown', function (e) {
+    if (e.button !== 0 || sent) return;
+    start = { x: e.clientX, y: e.clientY }; rect = null;
+    dim.style.display = 'none';
+    draw(e.clientX, e.clientY);
+  });
+  addEventListener('mousemove', function (e) { if (start) draw(e.clientX, e.clientY); });
+  addEventListener('mouseup', function (e) {
+    if (e.button !== 0 || !start || sent) return;
+    var r = rect; start = null;
+    if (!r || r.w < 12 || r.h < 12) { reset(); return; }   // klik biasa atau kotak terlalu kecil: pilih ulang, bukan batal
+    send('snip:' + JSON.stringify({ x: r.x, y: r.y, w: r.w, h: r.h, vw: innerWidth, vh: innerHeight }));
+  });
+  addEventListener('keydown', function (e) { if (e.key === 'Escape') send('snip:cancel'); });
+  addEventListener('contextmenu', function (e) { e.preventDefault(); send('snip:cancel'); });
+})();
+</script></body></html>`;
+let snipBusy = false;
+const SNIP_MAX_CHARS = 5500000;   // di bawah MAX_IMAGE_CHARS (6 juta) di server.py
+// v99: area kecil diperbesar sebelum dikirim ke OCR (teks kecil sering gagal terbaca). Sisi terpanjang diusahakan >= SNIP_UP_LONG px dan sisi terpendek >= SNIP_UP_SHORT px,
+// maksimal SNIP_UP_MAX kali dan tidak lebih dari SNIP_UP_PIXELS piksel. Di bawah 1,25 kali tidak diperbesar. Gambar hasil tetap ditempel di ukuran asli area.
+const SNIP_UP_LONG = 900, SNIP_UP_SHORT = 120, SNIP_UP_MAX = 4, SNIP_UP_PIXELS = 6000000;
+let lastSnip = null;   // v99: kotak terakhir {displayId, x, y, w, h, vw, vh} (px tampilan layar itu) untuk "ulangi area terakhir"
+async function snipRegion(lang, repeat) {
+  if (snipBusy) return { ok: false, error: 'Pemilihan area masih berjalan.' };
+  snipBusy = true;
+  const alive = () => win && !win.isDestroyed();
+  const wasVisible = alive() && win.isVisible();
+  let sw = null;
+  try {
+    let display;
+    if (repeat) {
+      if (!lastSnip) return { ok: false, error: 'Belum ada area sebelumnya. Pilih area dulu dengan /terjemah.' };
+      display = screen.getAllDisplays().find((d) => d.id === lastSnip.displayId);
+      if (!display) return { ok: false, error: 'Layar tempat area sebelumnya sudah tidak ada. Pilih area baru dengan /terjemah.' };
+      if (Math.abs(display.bounds.width - lastSnip.vw) > 2 || Math.abs(display.bounds.height - lastSnip.vh) > 2) return { ok: false, error: 'Resolusi layar berubah sejak area terakhir dipilih. Pilih area baru dengan /terjemah.' };
+    } else display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const hadPin = pinWin && !pinWin.isDestroyed();
+    closePin();   // v99: terjemahan yang menempel tidak boleh ikut terfoto (OCR akan membaca teks Indonesia hasil sendiri)
+    if (wasVisible) { win.hide(); await new Promise((r) => setTimeout(r, 200)); }
+    else if (hadPin) await new Promise((r) => setTimeout(r, 120));
+    const sf = display.scaleFactor || 1;
+    const size = { width: Math.max(1, Math.round(display.size.width * sf)), height: Math.max(1, Math.round(display.size.height * sf)) };
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size, fetchWindowIcons: false });
+    const src = sources.find((x) => x.display_id === String(display.id)) || sources[0];
+    if (!src || src.thumbnail.isEmpty()) return { ok: false, error: 'Screenshot gagal. Game fullscreen eksklusif bisa tidak terpotret; pakai mode windowed atau borderless.' };
+    const full = src.thumbnail;
+    const preview = 'data:image/jpeg;base64,' + full.toJPEG(80).toString('base64');
+    const L = (lang === 'ja' || lang === 'en') ? lang : 'auto';
+    const rect = repeat ? { x: lastSnip.x, y: lastSnip.y, w: lastSnip.w, h: lastSnip.h, vw: lastSnip.vw, vh: lastSnip.vh } : await new Promise((resolve) => {
+      let timer = null, settled = false;
+      const finish = (r) => { if (settled) return; settled = true; clearTimeout(timer); resolve(r); };
+      timer = setTimeout(() => finish(null), 90000);   // jaring pengaman: jendela pilih tidak pernah menggantung
+      sw = new BrowserWindow({
+        x: display.bounds.x, y: display.bounds.y, width: display.bounds.width, height: display.bounds.height,
+        frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
+        skipTaskbar: true, alwaysOnTop: true, hasShadow: false, show: false, backgroundColor: '#000000',
+        webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+      });
+      sw.setAlwaysOnTop(true, 'screen-saver');
+      sw.setMenuBarVisibility(false);
+      sw.on('closed', () => finish(null));
+      sw.webContents.on('page-title-updated', (e, title) => {
+        e.preventDefault();
+        if (typeof title !== 'string' || !title.startsWith('snip:')) return;
+        if (title === 'snip:cancel') { finish(null); return; }
+        try { const r = JSON.parse(title.slice(5)); finish(r && typeof r === 'object' ? r : null); } catch { finish(null); }
+      });
+      sw.webContents.once('did-finish-load', () => {
+        if (!sw || sw.isDestroyed()) return;
+        sw.webContents.executeJavaScript('window.__snipInit(' + JSON.stringify({ image: preview, lang: L }) + ')').catch(() => {});
+        sw.setBounds(display.bounds);
+        sw.show(); sw.focus();
+      });
+      sw.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(SNIP_HTML)).catch((e) => { console.warn('snip: halaman pilih area gagal dimuat:', e.message || e); finish(null); });
+    });
+    if (sw && !sw.isDestroyed()) sw.destroy();
+    sw = null;
+    if (!rect) return { ok: false, cancelled: true };
+    const fz = full.getSize();
+    const vw = Number(rect.vw) > 0 ? Number(rect.vw) : display.bounds.width, vh = Number(rect.vh) > 0 ? Number(rect.vh) : display.bounds.height;
+    const sx = fz.width / vw, sy = fz.height / vh;
+    const x = Math.max(0, Math.min(fz.width - 1, Math.round(Number(rect.x) * sx))), y = Math.max(0, Math.min(fz.height - 1, Math.round(Number(rect.y) * sy)));
+    const w = Math.min(fz.width - x, Math.round(Number(rect.w) * sx)), h = Math.min(fz.height - y, Math.round(Number(rect.h) * sy));
+    if (!(w >= 8 && h >= 8)) return { ok: false, cancelled: true };
+    lastSnip = { displayId: display.id, x: Number(rect.x), y: Number(rect.y), w: Number(rect.w), h: Number(rect.h), vw, vh };
+    let crop = full.crop({ x, y, width: w, height: h });
+    let scale = Math.min(SNIP_UP_MAX, Math.max(SNIP_UP_LONG / Math.max(w, h), SNIP_UP_SHORT / Math.min(w, h)));
+    while (scale > 1 && w * scale * h * scale > SNIP_UP_PIXELS) scale *= 0.9;
+    if (scale >= 1.25) crop = crop.resize({ width: Math.round(w * scale), height: Math.round(h * scale), quality: 'best' });
+    else scale = 1;
+    const pin = { x: Math.round(display.bounds.x + x / sx), y: Math.round(display.bounds.y + y / sy), width: Math.max(1, Math.round(w / sx)), height: Math.max(1, Math.round(h / sy)) };
+    let url = 'data:image/png;base64,' + crop.toPNG().toString('base64');
+    if (url.length > SNIP_MAX_CHARS) {   // area sangat besar: PNG terlalu panjang untuk server, turun ke JPEG kualitas tinggi
+      for (const q of [92, 85, 75]) { url = 'data:image/jpeg;base64,' + crop.toJPEG(q).toString('base64'); if (url.length <= SNIP_MAX_CHARS) break; }
+    }
+    if (url.length > SNIP_MAX_CHARS) return { ok: false, error: 'Area yang dipilih terlalu besar. Pilih area yang lebih kecil.' };
+    const os_ = crop.getSize();
+    return { ok: true, url, w: os_.width, h: os_.height, srcW: w, srcH: h, scale: Math.round(scale * 100) / 100, pin };
+  } catch (e) {
+    console.warn('snip gagal:', e.message || e);
+    return { ok: false, error: 'Pemilihan area gagal: ' + (e.message || e) };
+  } finally {
+    try { if (sw && !sw.isDestroyed()) sw.destroy(); } catch { /* abaikan */ }
+    if (wasVisible && alive()) win.show();
+    snipBusy = false;
+  }
+}
+
+/* ---------- v99: terjemahan menempel di atas area ----------
+   Hasil terjemah gambar (area yang tadi dipilih) ditampilkan di jendela kecil tanpa bingkai tepat di atas area aslinya di layar, tanpa mengambil fokus.
+   Klik (kiri atau kanan) = tutup; 3 menit = tutup sendiri; /terjemah tutup juga menutup. Jendela ditutup sebelum pemotretan berikutnya supaya tidak ikut terfoto.
+   Halaman jendela ini tanpa preload, tanpa jaringan (CSP: hanya gambar data:), dan hanya menerima gambar dari overlay lewat IPC. */
+const PIN_HTML = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Terjemahan</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<style>html,body{margin:0;height:100%;overflow:hidden;background:transparent;cursor:pointer;user-select:none}#im{display:block;width:100%;height:100%;-webkit-user-drag:none}</style></head>
+<body><img id="im" alt=""><script>
+window.__pinInit = function (u) { if (typeof u === 'string') document.getElementById('im').src = u; };
+function done() { document.title = 'pin:close'; }
+addEventListener('mousedown', done);
+addEventListener('contextmenu', function (e) { e.preventDefault(); done(); });
+</script></body></html>`;
+let pinWin = null, pinTimer = null;
+const PIN_MS = 180000, PIN_MAX_CHARS = 8000000;
+function closePin() {
+  clearTimeout(pinTimer); pinTimer = null;
+  try { if (pinWin && !pinWin.isDestroyed()) pinWin.destroy(); } catch { /* abaikan */ }
+  pinWin = null;
+}
+async function pinImage(url, r) {
+  if (typeof url !== 'string' || url.length > PIN_MAX_CHARS || !/^data:image\/(png|jpeg);base64,[A-Za-z0-9+\/=]+$/.test(url)) return false;
+  if (!r || ![r.x, r.y, r.width, r.height].every((n) => Number.isFinite(Number(n)))) return false;
+  let b = { x: Math.round(Number(r.x)), y: Math.round(Number(r.y)), width: Math.round(Number(r.width)), height: Math.round(Number(r.height)) };
+  if (b.width < 8 || b.height < 8 || b.width > 12000 || b.height > 12000) return false;
+  const d = screen.getDisplayMatching(b).bounds;   // tetap di dalam satu layar
+  b.width = Math.min(b.width, d.width); b.height = Math.min(b.height, d.height);
+  b.x = Math.max(d.x, Math.min(d.x + d.width - b.width, b.x)); b.y = Math.max(d.y, Math.min(d.y + d.height - b.height, b.y));
+  closePin();
+  const pw = new BrowserWindow({
+    x: b.x, y: b.y, width: b.width, height: b.height, useContentSize: true,
+    frame: false, transparent: true, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    skipTaskbar: true, alwaysOnTop: true, focusable: false, hasShadow: false, show: false, backgroundColor: '#00000000',
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  pinWin = pw;
+  pw.setAlwaysOnTop(true, 'screen-saver');
+  pw.setMenuBarVisibility(false);
+  pw.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  pw.webContents.on('will-navigate', (e) => e.preventDefault());
+  pw.on('closed', () => { if (pinWin === pw) { clearTimeout(pinTimer); pinTimer = null; pinWin = null; } });
+  pw.webContents.on('page-title-updated', (e, title) => { e.preventDefault(); if (title === 'pin:close' && pinWin === pw) closePin(); });
+  try {
+    await new Promise((resolve, reject) => {
+      pw.webContents.once('did-finish-load', resolve);
+      pw.webContents.once('did-fail-load', (_e, _c, why) => reject(new Error(why || 'gagal dimuat')));
+      pw.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(PIN_HTML)).catch(reject);
+    });
+    if (pw.isDestroyed()) return false;
+    await pw.webContents.executeJavaScript('window.__pinInit(' + JSON.stringify(url) + ')');
+    pw.setBounds(b);
+    pw.showInactive();
+    pw.setAlwaysOnTop(true, 'screen-saver');
+    pinTimer = setTimeout(closePin, PIN_MS);
+    return true;
+  } catch (e) {
+    console.warn('pin-image gagal:', e && e.message || e);
+    if (pinWin === pw) closePin();
+    return false;
+  }
+}
+
 // Aksi global (hotkey / tray) -> renderer: 'clipboard' (tanya isi clipboard), 'mute' (bisukan lokal), 'menu' (menu aksi cepat)
 function sendAction(name) {
   if (!win || win.isDestroyed()) return;
@@ -1614,10 +1825,22 @@ app.whenReady().then(() => {
   if (!gotLock) return;
 
   // Layani file dari folder proyek lewat app://local/...
+  // v91: daftar putih. Dulu seluruh folder proyek bisa dibaca halaman (app://local/.env, server.py, iris-history.json, iris-memory.json).
+  // Sekarang hanya halaman utama, folder assets, dan modul three / @pixiv di node_modules; segmen berawalan titik atau bertanda ":" ditolak.
+  const APP_ALLOW_FILES = new Set(['/index.html', '/favicon.ico']);
+  const APP_ALLOW_DIRS = ['/assets/', '/node_modules/three/', '/node_modules/@pixiv/'];
+  const appDenied = new Set();
   protocol.handle('app', (request) => {
     const url = new URL(request.url);
-    const rel = decodeURIComponent(url.pathname);
-    const file = path.normalize(path.join(__dirname, rel));
+    let rel;
+    try { rel = decodeURIComponent(url.pathname); } catch { return new Response('bad request', { status: 400 }); }
+    const posix = path.posix.normalize('/' + rel.replace(/\\/g, '/'));
+    const bad = posix.split('/').some((s) => s.startsWith('.') || s.includes(':'));
+    if (bad || !(APP_ALLOW_FILES.has(posix) || APP_ALLOW_DIRS.some((d) => posix.startsWith(d)))) {
+      if (!appDenied.has(posix)) { appDenied.add(posix); console.warn('app:// ditolak (di luar daftar putih):', posix); }
+      return new Response('forbidden', { status: 403 });
+    }
+    const file = path.normalize(path.join(__dirname, posix));
     if (!file.startsWith(__dirname + path.sep)) {
       return new Response('forbidden', { status: 403 });
     }
@@ -1673,6 +1896,8 @@ app.whenReady().then(() => {
   registerShortcut('Control+Alt+G', () => sendAction('talk'));
   // Terjemahkan teks di layar (foto layar lalu Iris menerjemahkan), dari mana saja
   registerShortcut('Control+Alt+T', () => sendAction('translate'));
+  // v99: ulangi terjemah di area terakhir yang dipilih (tanpa menyeret lagi)
+  registerShortcut('Control+Alt+Y', () => sendAction('translate-repeat'));
   // Tanya isi clipboard (teks atau gambar) dan bisukan suara lokal, dari mana saja
   registerShortcut('Control+Alt+V', () => sendAction('clipboard'));
   // Bisukan suara overlay. Bisa dipaksa lewat environment variable IRIS_MUTE_KEY (mis. Control+Alt+J)
@@ -1956,6 +2181,15 @@ ipcMain.on('chat-open', (_e, open) => setChatOpen(open));
 ipcMain.handle('chat-big', (_e, on) => setChatBig(!!on));   // v32
 ipcMain.on('peek', (_e, on) => { if (on) peekHide(); else peekShow(); });
 ipcMain.handle('capture-screen', (_e, opts) => captureScreenDataURL(opts && typeof opts === 'object' ? { quiet: !!opts.quiet, maxSide: opts.maxSide, quality: opts.quality } : {}));
+ipcMain.handle('snip-region', (e, lang, repeat) => {   // v90: Terjemah layar ala Snipping Tool; v99: repeat = ulangi area terakhir
+  if (!win || win.isDestroyed() || e.sender !== win.webContents) return { ok: false, error: 'ditolak' };
+  return snipRegion(typeof lang === 'string' ? lang : 'auto', repeat === true);
+});
+ipcMain.handle('pin-image', async (e, d) => {   // v99: tempel terjemahan di atas area aslinya
+  if (!win || win.isDestroyed() || e.sender !== win.webContents) return false;
+  try { return await pinImage(d && d.url, d && d.rect); } catch { return false; }
+});
+ipcMain.on('pin-close', (e) => { if (win && !win.isDestroyed() && e.sender === win.webContents) closePin(); });
 // v23: detik sejak input terakhir (hanya angka, dari powerMonitor); dipakai /pantau supaya tidak memotret saat pengguna sedang pergi
 ipcMain.handle('idle-time', () => { try { return powerMonitor.getSystemIdleTime(); } catch { return 0; } });
 ipcMain.handle('read-clipboard', () => readClipboardPayload());

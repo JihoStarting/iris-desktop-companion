@@ -101,11 +101,10 @@
   #webpill.show { display: flex; animation: webpillin .45s cubic-bezier(.2, 1.2, .3, 1) .12s both; }
   @keyframes webpillin { from { opacity: 0; transform: translateY(8px) scale(.92); } to { opacity: 1; transform: none; } }
   /* v50: ringkas chip supaya ke-6 slot + ✕ muat berdampingan dengan pil status dan pil V 9 H */
-  #webpill button { padding: 2px 6px; }
   #webpill button.on { max-width: 64px; overflow: hidden; text-overflow: ellipsis; }
   #dock:has(#webpill.show) #status { flex: 1 1 0; min-width: 78px; }   /* status menyusut duluan: ikon + detik tetap kelihatan, teks dipotong ... */
   #dock:has(#webpill.show) #conn.show { flex: none; margin-left: 0; }
-  #webpill button { all: unset; cursor: pointer; padding: 2px 7px; border-radius: 999px; font-weight: 600; white-space: nowrap; color: inherit; }
+  #webpill button { all: unset; cursor: pointer; padding: 2px 6px; border-radius: 999px; font-weight: 600; white-space: nowrap; color: inherit; }
   #webpill button:hover { background: rgba(var(--acc-rgb), 0.18); }
   #webpill button.live:not(.on)::after { content: ''; display: inline-block; width: 4px; height: 4px; margin-left: 3px; border-radius: 50%; background: rgb(var(--acc-rgb)); vertical-align: middle; }   /* tab ini masih hidup (halaman terakhir tersimpan) */
   #webpill button.on { background: rgba(var(--acc-rgb), 0.28); color: var(--ink); cursor: default; }
@@ -2890,10 +2889,23 @@ document.addEventListener('dragleave', (e) => {
   dragDepth = Math.max(0, dragDepth - 1);
   if (!dragDepth) rootEl.classList.remove('dragging');
 });
+// v99: file yang bukan gambar (exe, dll, apk, jar, zip, folder, dst.) yang diseret ke overlay = /rea cepat (triase lokal, hanya baca, tanpa menjalankan). Gambar tetap jadi lampiran.
+function dropToRea(files) {
+  const api = window.companion;
+  let p = '';
+  try { p = api && typeof api.pathForFile === 'function' ? api.pathForFile(files[0]) : ''; } catch { /* abaikan */ }
+  if (!p) { openChat(); addStamp(logAdd('err', 'Path file dari seretan tidak terbaca (butuh preload.js baru). Ketik /rea cepat <path>.')); return; }
+  reaCmd('cepat "' + p + '"');
+  if (files.length > 1) addStamp(logAdd('iris', 'Hanya file pertama yang dibedah (' + (files.length - 1) + ' lainnya dilewati). Untuk banyak file, taruh dalam satu folder lalu seret folder itu.'));
+}
 document.addEventListener('drop', (e) => {
   e.preventDefault();
   dragDepth = 0; rootEl.classList.remove('dragging');
-  addImageFiles(Array.from((e.dataTransfer && e.dataTransfer.files) || []));
+  const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
+  const imgs = files.filter((f) => f && f.type && f.type.startsWith('image/'));
+  const others = files.filter((f) => f && !(f.type && f.type.startsWith('image/')));
+  if (imgs.length || !others.length) addImageFiles(imgs.length ? imgs : files);
+  if (others.length) dropToRea(others);
 });
 
 /* ---------- Screenshot layar ----------
@@ -4023,8 +4035,8 @@ function parseReaArg(arg) {
   let a = String(arg || '').trim();
   while (/^\/?rea(?:\s+|$)/i.test(a)) a = a.replace(/^\/?rea\s*/i, '');   // "/rea /rea Z:\..." atau "rea Z:\..." tetap dikenali
   let mode = 'standar';   // v91: kata pertama cepat | standar | dalam
-  const mm = a.match(/^(cepat|quick|fast|standar|standard|dalam|deep)(?:\s+|$)/i);
-  if (mm) { const w = mm[1].toLowerCase(); mode = /^(cepat|quick|fast)$/.test(w) ? 'cepat' : /^(dalam|deep)$/.test(w) ? 'dalam' : 'standar'; a = a.slice(mm[0].length).trim(); }
+  const mm = a.match(/^(cepat|quick|fast|standar|standard|dalam|deep|xref|disasm)(?:\s+|$)/i);
+  if (mm) { const w = mm[1].toLowerCase(); mode = /^(cepat|quick|fast)$/.test(w) ? 'cepat' : /^(dalam|deep)$/.test(w) ? 'dalam' : w === 'xref' ? 'xref' : w === 'disasm' ? 'disasm' : 'standar'; a = a.slice(mm[0].length).trim(); }   // v99: xref dan disasm = alat RE Lab lokal (PE x86 / x64), tanpa Hermes
   let path = '', focus = '';
   const q = a.match(/^(["'])(.+?)\1\s*(.*)$/);
   if (q) { path = q[2].trim(); focus = q[3].trim(); }
@@ -4036,9 +4048,28 @@ function parseReaArg(arg) {
   if (!/^[A-Za-z]:[\\/]/.test(path) || path.length > 260 || /[\u0000-\u001f<>|*?]/.test(path)) return null;
   return { path, focus: focus.slice(0, 200), mode };
 }
+// v99: argumen alat RE Lab. xref = nama API atau potongan string atau VA fungsi; disasm = [entry | 0xVA | rva:0x.. | off:0x..] [jumlah baris]. null = tidak valid.
+function reaToolArg(mode, focus) {
+  const s = String(focus || '').replace(/[\u0000-\u001f\u007f<>|]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (mode === 'xref') return s && s.length <= 120 ? s : null;
+  if (!s) return 'entry 40';
+  const m = s.match(/^(entry|start|(?:rva:|off:)?0x[0-9a-f]{1,16}|(?:rva:|off:)?\d{1,10})(?:\s+(\d{1,3}))?$/i);
+  return m ? m[1] + ' ' + (m[2] || '40') : null;
+}
 function reaCmd(arg) {
   const f = parseReaArg(arg);
-  if (!f) { openChat(); addStamp(logAdd('err', 'Format: /rea [cepat|dalam] <path file atau folder> [fokus], mis. /rea cepat Z:\\Folder Saya\\app.exe atau /rea dalam "Z:\\app.exe" cari URL yang dihubungi. File / folder di luar sandbox disalin otomatis.')); return; }
+  if (!f) { openChat(); addStamp(logAdd('err', 'Format: /rea [cepat|dalam|xref|disasm] <path file atau folder> [fokus], mis. /rea cepat Z:\\Folder Saya\\app.exe atau /rea dalam "Z:\\app.exe" cari URL yang dihubungi. File / folder di luar sandbox disalin otomatis.')); return; }
+  if (f.mode === 'xref' || f.mode === 'disasm') {   // v99: alat lokal; server menolak kalau bukan PE x86 / x64
+    const ta = reaToolArg(f.mode, f.focus);
+    if (ta === null) {
+      openChat(); addStamp(logAdd('err', f.mode === 'xref'
+        ? 'Format: /rea xref <path file> <nama API, potongan string, atau alamat fungsi>, mis. /rea xref "Z:\\app.exe" VirtualAllocEx'
+        : 'Format: /rea disasm <path file> [entry | 0xAlamat | rva:0x... | off:0x...] [jumlah baris, maks 400], mis. /rea disasm "Z:\\app.exe" 0x401000 60'));
+      return;
+    }
+    submitText('/agen REA lokal ' + f.mode + ': ' + f.path + ' ||| ' + ta, '🔬 REA (' + f.mode + '): ' + f.path + '\n' + (f.mode === 'xref' ? 'Cari: ' : 'Alamat: ') + ta);
+    return;
+  }
   submitText(reaTask(f.path, f.focus, f.mode), '🔬 REA (' + f.mode + '): ' + f.path + (f.focus && f.mode !== 'cepat' ? '\nFokus: ' + f.focus : ''));
 }
 
@@ -4094,23 +4125,25 @@ const TRANSLATE_PROMPT =
 let translating = false;
 /* v73: terjemah layar berupa GAMBAR. Server (iris_translate_img.py) membaca teks Jepang di screenshot dengan OCR, menerjemahkannya, lalu
    mengembalikan screenshot yang teksnya sudah diganti bahasa Indonesia di posisi yang sama. Hasilnya muncul di chat dan dibuka besar. */
-let tlImgPending = null, tlImgTimer = 0, tlImgCancelled = false;
+let tlImgPending = null, tlImgTimer = 0, tlImgCancelled = false, tlImgPin = null;   // v99: tlImgPin = {x, y, width, height} area layar untuk menempel hasilnya
 const TL_LANG_NAME = { ja: 'Jepang', en: 'Inggris', auto: 'Jepang atau Inggris' };
-function startImageTranslate(u, lang = 'auto') {
+function startImageTranslate(u, lang = 'auto', pin = null) {
   if (tlImgPending) { showError('Terjemah layar sebelumnya masih berjalan.'); return; }
   if (!ws || ws.readyState !== WebSocket.OPEN) { showError('Belum tersambung ke server Iris.'); return; }
   tlImgCancelled = false;
+  tlImgPin = pin;
   stopAll(); openChat();
   logUser('🈯 Terjemahkan layar (hasil berupa gambar' + (lang === 'auto' ? '' : ', ' + (TL_LANG_NAME[lang] || lang)) + ')', [u]);
   tlImgPending = logAdd('iris', 'Membaca teks ' + (TL_LANG_NAME[lang] || 'Jepang') + ' di layar lalu menerjemahkannya… (beberapa detik)');
   tlImgTimer = setTimeout(() => {
     if (!tlImgPending) return;
-    tlImgPending.remove(); tlImgPending = null;
+    tlImgPending.remove(); tlImgPending = null; tlImgPin = null;
     addStamp(logAdd('err', 'Terjemah gambar terlalu lama (lebih dari 3 menit). Cek terminal server.'));
   }, 180000);
   send({ type: 'translate_image', images: [u], lang });
 }
 function onTranslateImage(m) {
+  const pin = tlImgPin; tlImgPin = null;   // v99
   if (m.code === 'cancelled' || tlImgCancelled) { tlImgCancelled = false; return; }   // v79: dibatalkan pengguna: jangan tampilkan hasil/galat
   clearTimeout(tlImgTimer);
   if (tlImgPending) { tlImgPending.remove(); tlImgPending = null; }
@@ -4122,6 +4155,8 @@ function onTranslateImage(m) {
   im.addEventListener('load', logScroll);
   d.appendChild(im);
   addStamp(d);
+  // v99: hasil dari area yang dipilih ditempel di atas area aslinya (klik = tutup); kalau gagal / dimatikan, jendela besar seperti sebelumnya
+  const openBig = () => {
   // v76: jendela besar Electron (zoom + geser) dulu; kalau tidak ada atau gagal, pratinjau di overlay dibuka BESAR (bukan kartu kecil) dan alasannya dikatakan
   const fallback = (why) => {
     try { openImgView(m.image, true); } catch { /* abaikan */ }
@@ -4134,28 +4169,62 @@ function onTranslateImage(m) {
         .catch(() => fallback('Jendela gambar besar gagal dibuka. Hasilnya kutampilkan di overlay.'));
     } else fallback('Jendela gambar besar belum aktif: tambahkan baris \'openImage: (d) => ipcRenderer.invoke(\'open-image\', d),\' di preload.js, lalu restart Iris. Sementara hasilnya kutampilkan di overlay.');
   } catch { fallback(); }
+  };
+  if (pin && window.companion && typeof window.companion.pinImage === 'function') {
+    Promise.resolve(window.companion.pinImage(m.image, pin))
+      .then((ok) => { if (ok) addStamp(logAdd('iris', 'Terjemahannya kutempel di atas area aslinya. Klik gambar itu untuk menutup (atau /terjemah tutup).')); else openBig(); })
+      .catch(() => openBig());
+  } else openBig();
 }
+/* v90: Terjemah layar ala Snipping Tool. Bawaan = pilih area dengan menyeret (jendela snip.html lewat main.js), hanya area itu yang diterjemahkan.
+   Awalan perintah boleh berurutan: bahasa (en / ja / auto), "penuh" = seluruh layar seperti dulu, "area" = paksa pilih area, "teks" = balasan teks (sisanya jadi catatan).
+   Pilihan dibatalkan (Esc / klik kanan) = diam saja. Kalau preload.js lama (tanpa snipRegion), jatuh ke seluruh layar. */
 async function translateScreen(extra = '') {
   if (translating) return;
-  if (!window.companion || typeof window.companion.captureScreen !== 'function') {
+  const api = window.companion;
+  if (!api || typeof api.captureScreen !== 'function') {
     showError('Terjemah layar butuh main.js dan preload.js versi baru.');
     return;
   }
   translating = true;
   try {
-    let u = null;
-    try { u = await window.companion.captureScreen(); } catch { /* gagal */ }
-    if (!u) { showError('Screenshot gagal. Game fullscreen eksklusif bisa tidak terpotret; pakai mode windowed atau borderless.'); return; }
     extra = String(extra || '');
-    let tlLang = (SET.tlLang === 'ja' || SET.tlLang === 'en') ? SET.tlLang : 'auto';   // v77: bawaan dari pilihan di menu (pil Auto / Jepang / Inggris di bawah Terjemah layar); "/terjemah en|ja|auto" menimpanya untuk satu kali jalan
-    const lm = extra.match(/^(en|eng|inggris|english|ja|jp|jepang|auto|otomatis)\b[:\s]*/i);
-    if (lm) {
-      const k = lm[1].toLowerCase();
-      tlLang = /^(en|eng|inggris|english)$/.test(k) ? 'en' : /^(ja|jp|jepang)$/.test(k) ? 'ja' : 'auto';
-      extra = extra.slice(lm[0].length);
+    // v99: /terjemah tutup = lepas terjemahan yang menempel; /terjemah tempel [nyala|mati] = tempel hasil di atas area (bawaan nyala)
+    const x0 = extra.trim().toLowerCase();
+    if (/^(tutup|lepas|hapus)$/.test(x0)) { try { api.pinClose && api.pinClose(); } catch { /* abaikan */ } return; }
+    const tpm = x0.match(/^tempel(?:\s+(nyala|on|hidup|mati|off))?$/);
+    if (tpm) {
+      if (tpm[1]) { SET.tlPin = /^(nyala|on|hidup)$/.test(tpm[1]); saveSet(); }
+      openChat(); addStamp(logAdd('iris', 'Terjemahan menempel di atas area: ' + (SET.tlPin !== false ? 'nyala' : 'mati') + '. (/terjemah tempel nyala|mati)'));
+      return;
     }
-    if (!/^teks\b/i.test(extra)) { startImageTranslate(u, tlLang); return; }   // by: KangJiho. bawaan Ctrl+Alt+T = gambar; "/terjemah teks ..." = balasan teks seperti dulu
-    extra = extra.replace(/^teks\b[:\s]*/i, '');
+    let tlLang = (SET.tlLang === 'ja' || SET.tlLang === 'en') ? SET.tlLang : 'auto';   // v77: bawaan dari pilihan di menu (pil Auto / Jepang / Inggris di bawah Terjemah layar); "/terjemah en|ja|auto" menimpanya untuk satu kali jalan
+    let fullScreen = false, asText = false, repeat = false;
+    for (let i = 0; i < 5; i++) {
+      const m = extra.match(/^(en|eng|inggris|english|ja|jp|jepang|auto|otomatis|penuh|full|area|snip|potong|teks|ulang|ulangi|repeat|terakhir)\b[:\s]*/i);
+      if (!m) break;
+      const k = m[1].toLowerCase();
+      extra = extra.slice(m[0].length);
+      if (/^(en|eng|inggris|english)$/.test(k)) tlLang = 'en';
+      else if (/^(ja|jp|jepang)$/.test(k)) tlLang = 'ja';
+      else if (/^(auto|otomatis)$/.test(k)) tlLang = 'auto';
+      else if (/^(penuh|full)$/.test(k)) fullScreen = true;
+      else if (/^(area|snip|potong)$/.test(k)) fullScreen = false;
+      else if (/^(ulang|ulangi|repeat|terakhir)$/.test(k)) repeat = true;   // v99: pakai lagi area terakhir tanpa menyeret
+      else { asText = true; break; }   // "teks": sisanya adalah catatan pengguna
+    }
+    let u = null, pin = null;
+    if (!fullScreen && typeof api.snipRegion === 'function') {
+      let r = null;
+      try { r = await api.snipRegion(tlLang, repeat); } catch { r = { ok: false, error: 'Jendela pilih area gagal dibuka (cek terminal Electron).' }; }
+      if (!r || !r.ok) { if (r && r.error) showError(r.error); return; }   // dibatalkan = diam
+      u = r.url;
+      if (!asText && SET.tlPin !== false && r.pin && typeof api.pinImage === 'function') pin = r.pin;   // v99
+    } else {
+      try { u = await api.captureScreen(); } catch { /* gagal */ }
+      if (!u) { showError('Screenshot gagal. Game fullscreen eksklusif bisa tidak terpotret; pakai mode windowed atau borderless.'); return; }
+    }
+    if (!asText) { startImageTranslate(u, tlLang, pin); return; }   // by: KangJiho. bawaan Ctrl+Alt+T = gambar; "/terjemah teks ..." = balasan teks seperti dulu
     const body = TRANSLATE_PROMPT + (extra ? '\nCatatan dari pengguna: ' + extra : '');
     submitText(body, '🈯 Terjemahkan layar' + (extra ? ': ' + extra : ''), [u]);
   } finally { translating = false; }
@@ -5144,8 +5213,11 @@ const HELP = [
   '/config ekspor|impor  simpan atau muat pengaturan (tema, baju, kualitas, dll.) sebagai berkas JSON di Downloads',
   '/ekspor           simpan percakapan sebagai HTML ke Downloads',
   '/layar [tanya]    foto layar lalu langsung tanya',
-  '/terjemah [en|ja|auto]  foto layar lalu ganti teks Jepang/Inggris jadi gambar berbahasa Indonesia (Ctrl+Alt+T; tanpa pilihan = sesuai pilihan di menu, di bawah Terjemah layar)',
-  '/terjemah teks [catatan]  foto layar lalu terjemahkan sebagai balasan teks',
+  '/terjemah [en|ja|auto]  pilih area layar dengan menyeret (seperti Snipping Tool), lalu ganti teks Jepang/Inggris di area itu jadi gambar berbahasa Indonesia (Ctrl+Alt+T; Esc atau klik kanan = batal; tanpa pilihan bahasa = sesuai pilihan di menu, di bawah Terjemah layar)',
+  '/terjemah penuh [en|ja|auto]  seluruh layar tanpa memilih area (cara lama)',
+  '/terjemah ulang [en|ja|auto]  pakai lagi area terakhir tanpa menyeret (Ctrl+Alt+Y); area kecil diperbesar otomatis supaya OCR terbaca',
+  '/terjemah tutup  lepas terjemahan yang menempel di layar; /terjemah tempel nyala|mati mengatur apakah hasil ditempel di atas area (bawaan nyala; klik gambar tempelan = tutup)',
+  '/terjemah teks [catatan]  pilih area lalu terjemahkan sebagai balasan teks (tambah penuh untuk seluruh layar)',
   '/fokus            mode fokus (diam dan transparan)',
   '/atas [mati|nyala]  Iris selalu di atas jendela lain (nyala/mati)',
   '/bayangan [mati|nyala]  bayangan karakter di latar',
@@ -5185,6 +5257,7 @@ const HELP = [
   '/ringkas <link video> [fokus]  Hermes mengambil transkrip video lalu merangkumnya (tanpa link = pakai link di clipboard)',
   '/rangkum [halaman|<link>|<path penuh>] [fokus]  rangkum halaman yang terbuka di /chrome (tanpa argumen), halaman web publik, atau file (path berspasi pakai tanda kutip; file hanya di folder yang terjangkau sandbox agen)',
   '/rea [cepat|dalam] <path file atau folder> [fokus]  cepat = triase lokal tanpa Hermes (hash, format, import, string; hitungan detik); standar / dalam = Hermes membedah dengan skill reverse-engineer-anything, dibekali fakta terukur; laporan penuh disimpan di rea-reports',
+  '/rea xref <path file> <nama API | potongan string | alamat fungsi>  (PE x86 / x64) fungsi mana yang memakai API atau string itu; /rea disasm <path file> [entry | 0xAlamat | rva:0x... | off:0x...] [jumlah baris]  disassembly (tanpa pustaka capstone hanya tampilan hex); keduanya lokal, tanpa Hermes. Seret file apa pun (bukan gambar) ke overlay = /rea cepat',
   '',
   'Klik kanan karakter = menu aksi cepat.',
   'Tahan klik di kepala = elus. Colek berkali-kali = ngambek.',
@@ -5384,6 +5457,7 @@ if (window.companion && typeof window.companion.onAction === 'function') {
     lastInteract = performance.now();
     if (name === 'clipboard') askClipboard();
     else if (name === 'translate') translateScreen();
+    else if (name === 'translate-repeat') translateScreen('ulang');   // v99: Ctrl+Alt+Y
     else if (name === 'talk') toggleTalk();
     else if (name === 'mute') toggleMute();
     else if (name === 'menu') { wakeUp(true); openPop(menuEl); }

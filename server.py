@@ -860,9 +860,34 @@ REA_STAGE_SUBDIR = "rea-input"
 # oleh model kecil mencampur bahasa dan menggeser makna (10 Nov 2026). REA_RAW_ONLY=0 mengembalikan ceritaan ulang.
 REA_RAW_ONLY = os.getenv("REA_RAW_ONLY", "1").strip().lower() not in ("0", "false", "off", "no")
 REA_DONE_LINE = "[neutral] 結果はカードに出したよ。 ||| Hasilnya ada di kartu ya. Baca yang itu, bukan ringkasanku."
-_REA_ANY_RE = re.compile(r"^\s*(?:/agen[ \t]+)?(?:Analisis file ini dengan skill reverse-engineer-anything|Triase cepat file ini \(REA lokal\)):", re.I)
+_REA_ANY_RE = re.compile(r"^\s*(?:/agen[ \t]+)?(?:Analisis file ini dengan skill reverse-engineer-anything|Triase cepat file ini \(REA lokal\)|REA lokal (?:xref|disasm)):", re.I)
 # v91: /rea cepat = triase lokal murni Python (rea_triage.py), tanpa Hermes, hitungan detik.
 _REA_QUICK_RE = re.compile(r"^\s*(?:/agen[ \t]+)?Triase cepat file ini \(REA lokal\):[ \t]*(?P<path>[A-Za-z]:[\\/][^\r\n]*?)[ \t]*$", re.I | re.M)
+# v99: /rea xref dan /rea disasm = alat RE Lab lokal (rea_triage.rea_api), tanpa Hermes. Format tugas: "REA lokal xref: <path> ||| <argumen>".
+_REA_TOOL_RE = re.compile(r"^\s*(?:/agen[ \t]+)?REA lokal (?P<act>xref|disasm):[ \t]*(?P<path>[A-Za-z]:[\\/][^\r\n]*?)[ \t]+\|\|\|[ \t]*(?P<arg>[^\r\n]*?)[ \t]*$", re.I | re.M)
+_REA_DISASM_ARG_RE = re.compile(r"^(?P<at>entry|start|(?:rva:|off:)?0x[0-9a-f]{1,16}|(?:rva:|off:)?\d{1,10})(?:\s+(?P<n>\d{1,3}))?$", re.I)
+_REA_OUT_CTRL_RE = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u061c\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]")   # seperti rea_triage._clean, tapi baris baru dipertahankan (keluaran xref / disasm berbaris-baris)
+
+
+def qpp_name(p: str) -> str:
+    """v99: hanya nama berkas (tanpa folder) untuk judul hasil alat REA."""
+    return re.split(r"[\\/]", p)[-1][:120]
+
+
+def _rea_tool_request(act: str, path: str, arg: str, max_chars: int):
+    """v99: permintaan rea_api untuk xref / disasm; None kalau argumen tidak valid (divalidasi lagi di sini, jangan percaya klien)."""
+    arg = re.sub(r"[\x00-\x1f\x7f]", " ", arg or "").strip()
+    if act == "xref":
+        if not arg or len(arg) > 120:
+            return None
+        return {"action": "xref", "path": path, "query": arg, "max_chars": max_chars}
+    m = _REA_DISASM_ARG_RE.match(arg or "entry 40")
+    if not m:
+        return None
+    n = int(m.group("n") or 40)
+    return {"action": "disasm", "path": path, "at": m.group("at").lower(), "count": max(1, min(n, 400)), "max_chars": max_chars}
+
+
 REA_MAX_CHARS = int(env_float("REA_MAX_CHARS", 9000.0))          # v91: batas kartu hasil /rea (tugas lain tetap HERMES_MAX_CHARS)
 REA_KEEP_DAYS = env_float("REA_KEEP_DAYS", 7.0)                  # v91: salinan di rea-input lebih tua dari ini dihapus otomatis (0 = jangan hapus)
 REA_DIR_MAX_FILES = int(env_float("REA_DIR_MAX_FILES", 3000.0))  # v91: folder dikemas jadi zip, maksimal sekian berkas
@@ -1616,7 +1641,7 @@ _NOT_NAME = {"ini", "itu", "apa", "yang", "tadi", "lagi", "nih", "dong", "kok", 
              "tidak", "bisa", "mau", "udah", "sudah", "kita", "aku", "kamu", "online", "offline", "baru", "lama", "seru", "bagus"}
 _GAME_RES = (
     re.compile(r"\bmain(?:in|nya)?\s+([A-Za-z0-9][\w.:'\-]*(?:\s+[A-Za-z0-9][\w.:'\-]*){0,2}?)\s+(?:lagi|nih|ini|dulu|kok|dong)\b", re.I),
-    re.compile(r"\bgame(?:nya)?\s+([A-Za-z0-9][\w.:'\-]*(?:\s+[A-Za-z0-9][\w.:'\-]*){0,2})", re.I),
+    re.compile(r"\bgame(?:nya)?[ \t]+([A-Za-z0-9][\w.'\-]*(?:[ \t]+[A-Za-z0-9][\w.'\-]*){0,2})(?![\w:])", re.I),   # v91: tanpa titik dua, tanpa lintas baris, dan tidak berhenti di tengah kata
     re.compile(r"\b(?:itu|ini)\s+([A-Za-z0-9][\w.:'\-]{1,24})\s*$", re.I),   # "itu nte"
 )
 
@@ -1626,6 +1651,8 @@ def note_user_facts(history, text: str) -> None:
     if history.facts is None:
         history.facts = {}
     t = re.sub(r"^\s*/\w*\s*", "", text or "").strip()[:300]
+    if "\n" in t:   # v91: tempelan dokumen atau teks panjang bukan kalimat \"aku main X\"; jangan tangkap fakta game dari situ
+        return
     for rx in _GAME_RES[:2]:
         m = rx.search(t)
         if m:
@@ -1808,7 +1835,7 @@ MEMORY_MAX_ITEMS = 40
 MEMORY_MAX_LEN = 200
 _SECRET_RE = re.compile(
     r"(?i)(password|passwd|kata\s*sandi|\bsandi\b|\bpin\b|\bcvv\b|\bcvc\b|\btoken\b|api[\s_-]*key|secret|\botp\b|\bnik\b|\bno\.?\s*kk\b"
-    r"|kode\s*rahasia|bearer|sk-[a-z0-9]{8,}|\d[\d \-]{8,}\d)"
+    r"|kode\s*rahasia|bearer|sk-[a-z0-9]{8,}|(?<!\d)(?:\d[ \-]?){12,18}\d(?!\d))"   # v91: angka 13-19 digit (kartu, NIK); tanggal dan nomor pendek tidak lagi ikut ditolak
 )
 MEMORY_CMD_RE = re.compile(r"^/(ingat|memori|lupa|belajar)\b\s*(.*)$", re.S | re.I)
 
@@ -2457,6 +2484,7 @@ async def handle_agent_task(ws: WebSocket, client: httpx.AsyncClient, history: l
     card_max = REA_MAX_CHARS if is_rea else HERMES_MAX_CHARS      # v91: laporan REA butuh ruang lebih
     _rea_triage_var.set("")
     rea_full = ""             # v93: laporan penuh /rea cepat untuk berkas laporan (kartu bisa lebih pendek)
+    rea_tool = False          # v99: tugas /rea xref | disasm (hasil alat lokal, isinya memuat string dari sampel)
     note_user_facts(history, task)
     await safe_send(ws, status_msg(True, "working", "Memproses tugas...", 0.0))
     try:
@@ -2472,8 +2500,32 @@ async def handle_agent_task(ws: WebSocket, client: httpx.AsyncClient, history: l
         hb = asyncio.create_task(heartbeat(ws, t0))
         try:
             denied_before = getattr(approver, "denied_n", 0)
-            qm = _REA_QUICK_RE.search(task) if (is_rea and _rt is not None) else None
-            if qm:
+            tm = _REA_TOOL_RE.search(task) if (is_rea and _rt is not None) else None   # v99
+            if is_rea and tm is None and re.match(r"^\s*(?:/agen[ \t]+)?REA lokal (?:xref|disasm):", task, re.I):
+                raise SandboxPathError("format tugas /rea xref / disasm tidak valid (path berawalan huruf drive dan argumen setelah |||)")   # v99: jangan diteruskan ke Hermes
+            qm = _REA_QUICK_RE.search(task) if (is_rea and _rt is not None and tm is None) else None
+            if tm:
+                # v99: /rea xref | disasm: alat RE Lab lokal, tanpa Hermes. Hanya baca; PE x86 / x64.
+                tact = tm.group("act").lower()
+                tp = tm.group("path").strip().strip("\"'")
+                if tp.startswith("\\\\"):
+                    raise SandboxPathError("path jaringan (UNC) tidak diterima")
+                if not Path(tp).is_file():
+                    raise SandboxPathError("/rea %s butuh satu file yang ada: %s" % (tact, tp[:200]))
+                treq = _rea_tool_request(tact, tp, tm.group("arg"), max(1000, card_max - 600))
+                if treq is None:
+                    raise SandboxPathError("argumen /rea %s tidak valid" % tact)
+                tres = await asyncio.to_thread(_rt.rea_api, treq)
+                ttxt = tres.get("text") if isinstance(tres, dict) and tres.get("ok") else None
+                if not ttxt:
+                    ttxt = "REA lokal %s gagal: %s" % (tact, str((tres.get("error") if isinstance(tres, dict) else "") or "hasil kosong")[:200])
+                ttxt = _REA_OUT_CTRL_RE.sub("?", str(ttxt))
+                raw_result = "REA lokal %s: %s (tanpa Hermes, hanya baca)\n%s" % (tact, _REA_OUT_CTRL_RE.sub("?", qpp_name(tp)), ttxt)
+                rea_full = raw_result
+                result = raw_result[:card_max]
+                rea_tool = True
+                _rea_triage_var.set("")
+            elif qm:
                 # v91: /rea cepat: tanpa Hermes. Baca file langsung (hanya-baca) dan laporkan hitungannya.
                 qp = qm.group("path").strip().strip("\"'")
                 if qp.startswith("\\\\"):
@@ -2525,6 +2577,8 @@ async def handle_agent_task(ws: WebSocket, client: httpx.AsyncClient, history: l
                         break
                     hdr_.append(ln_[:100] if ln_.startswith("File") else ln_)
                 note_body = "\n".join(hdr_)[:1200] + "\n(Rincian lengkap ada di kartu hasil dan berkas laporan; string dari sampel sengaja tidak disimpan di catatan ini.)"
+                if rea_tool:   # v99: keluaran xref / disasm memuat string dan alamat dari sampel: catatan hanya menyebut bahwa alat dijalankan
+                    note_body = "Alat RE Lab lokal dijalankan; hasilnya (alamat, string dari sampel) hanya ada di kartu hasil dan berkas laporan, sengaja tidak disimpan di catatan ini."
             else:
                 note_body = result[:HERMES_MAX_CHARS]
             history.note = f"Permintaan: {task}\nHasil dari sistem: {note_body}"

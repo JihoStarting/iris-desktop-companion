@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('companion', {
   setIgnoreMouse: (ignore) => ipcRenderer.send('set-ignore-mouse', ignore),
@@ -21,6 +21,14 @@ contextBridge.exposeInMainWorld('companion', {
   // v23: captureScreen({quiet, maxSide, quality}) untuk pemotretan otomatis (/pantau); getIdle() = detik sejak input terakhir
   captureScreen: (opts) => ipcRenderer.invoke('capture-screen', opts),
   getIdle: () => ipcRenderer.invoke('idle-time'),
+  // v90: Terjemah layar ala Snipping Tool: jendela pilih area, mengembalikan {ok, url, w, h} atau {ok:false, cancelled} / {ok:false, error}
+  // v99: snipRegion(lang, true) = ulangi area terakhir tanpa memilih lagi
+  snipRegion: (lang, repeat) => ipcRenderer.invoke('snip-region', String(lang || 'auto'), !!repeat),
+  // v99: tempel gambar hasil terjemah di atas area aslinya di layar (jendela kecil tembus-pandang; klik = tutup). rect = {x, y, width, height} dalam piksel layar (DIP). Mengembalikan true / false
+  pinImage: (url, rect) => ipcRenderer.invoke('pin-image', { url, rect }),
+  pinClose: () => ipcRenderer.send('pin-close'),
+  // v99: path file yang diseret ke overlay (File.path sudah dihapus di Electron baru; webUtils.getPathForFile penggantinya). '' kalau tidak terbaca
+  pathForFile: (f) => { try { if (webUtils && typeof webUtils.getPathForFile === 'function') return String(webUtils.getPathForFile(f) || ''); } catch { /* lanjut */ } return String((f && f.path) || ''); },
   onScreenshot: (cb) => { ipcRenderer.on('screenshot', (_e, url) => cb(url)); },
   // v6: isi clipboard (teks / gambar) dan aksi global ('clipboard', 'mute', 'menu') dari hotkey atau tray
   readClipboard: () => ipcRenderer.invoke('read-clipboard'),
