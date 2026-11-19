@@ -22,15 +22,15 @@ using Microsoft.Win32;
 [assembly: AssemblyDescription("Peluncur IRIS desktop companion: Start, Stop, Hermes, Doctor")]
 [assembly: AssemblyCompany("KangJiho")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 KangJiho. All rights reserved")]
-[assembly: AssemblyInformationalVersion("1.3.0")]
-[assembly: AssemblyVersion("1.3.0.0")]
-[assembly: AssemblyFileVersion("1.3.0.0")]
+[assembly: AssemblyInformationalVersion("1.3.1")]
+[assembly: AssemblyVersion("1.3.1.0")]
+[assembly: AssemblyFileVersion("1.3.1.0")]
 
 namespace IrisLauncher
 {
     static class AppInfo
     {
-        public const string Version = "1.3";
+        public const string Version = "1.3.1";
 
         [DllImport("kernel32.dll")]
         static extern bool SetProcessWorkingSetSize(IntPtr proc, IntPtr min, IntPtr max);
