@@ -972,7 +972,7 @@ async function snipRegion(lang, repeat) {
         x: display.bounds.x, y: display.bounds.y, width: display.bounds.width, height: display.bounds.height,
         frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
         skipTaskbar: true, alwaysOnTop: true, hasShadow: false, show: false, backgroundColor: '#000000',
-        webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+        webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, partition: 'iris-aux' },
       });
       sw.setAlwaysOnTop(true, 'screen-saver');
       sw.setMenuBarVisibility(false);
@@ -1058,7 +1058,7 @@ async function pinImage(url, r) {
     x: b.x, y: b.y, width: b.width, height: b.height, useContentSize: true,
     frame: false, transparent: true, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
     skipTaskbar: true, alwaysOnTop: true, focusable: false, hasShadow: false, show: false, backgroundColor: '#00000000',
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, partition: 'iris-aux' },
   });
   pinWin = pw;
   pw.setAlwaysOnTop(true, 'screen-saver');
@@ -1875,8 +1875,19 @@ app.whenReady().then(() => {
 
   // Mikrofon: hanya untuk halaman overlay sendiri (app://), dan hanya direkam saat pengguna menyalakannya (tombol mic atau Ctrl+Alt+G)
   const isOverlay = (wc) => !!wc && wc.getURL().startsWith('app://local/');
-  session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => callback(permission === 'media' && isOverlay(wc)));
-  session.defaultSession.setPermissionCheckHandler((wc, permission) => permission === 'media' && isOverlay(wc));
+  // v101: 'media' mencakup kamera juga; overlay hanya memakai mikrofon (getUserMedia({audio})), jadi video ditolak
+  const audioOnly = (mt) => !Array.isArray(mt) || (mt.length > 0 && mt.every((t) => t === 'audio'));
+  session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => callback(permission === 'media' && isOverlay(wc) && audioOnly(details && details.mediaTypes)));
+  session.defaultSession.setPermissionCheckHandler((wc, permission, _origin, details) => permission === 'media' && isOverlay(wc) && !(details && details.mediaType === 'video'));
+  // v101: jendela bantu (pilih area, tempel terjemah, penampil gambar) pindah ke sesi sendiri: tidak ikut disuntiki X-Iris-Token dan semua izin ditolak
+  const auxSes = session.fromPartition('iris-aux');
+  auxSes.setPermissionRequestHandler((_wc, _p, cb) => cb(false));
+  auxSes.setPermissionCheckHandler(() => false);
+  // v101: bersihkan sisa berkas penampil gambar (iris-view) yang tertinggal kalau aplikasi mati mendadak (lebih tua dari 1 jam)
+  try {
+    const vd = path.join(app.getPath('temp'), 'iris-view');
+    for (const f of fs.readdirSync(vd)) { const fp = path.join(vd, f); try { if (Date.now() - fs.statSync(fp).mtimeMs > 3600e3) fs.unlinkSync(fp); } catch { /* abaikan */ } }
+  } catch { /* folder belum ada */ }
 
   createWindow();
   setupTray();
@@ -2185,6 +2196,22 @@ ipcMain.handle('snip-region', (e, lang, repeat) => {   // v90: Terjemah layar al
   if (!win || win.isDestroyed() || e.sender !== win.webContents) return { ok: false, error: 'ditolak' };
   return snipRegion(typeof lang === 'string' ? lang : 'auto', repeat === true);
 });
+// v101: hanya jendela overlay (yang punya preload) boleh memanggil IPC yang menyentuh clipboard, berkas, atau program
+const fromOverlay = (e) => !!(win && !win.isDestroyed() && e && e.sender === win.webContents);
+const WIN_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;   // nama perangkat Windows tidak boleh jadi nama berkas
+function safeBaseName(name, fallback, extRe) {
+  let b = String(name || fallback).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').replace(extRe, '').replace(/[. ]+$/g, '').slice(0, 80);
+  if (b && WIN_RESERVED.test(b.split('.')[0])) b = '_' + b;
+  return b || fallback;
+}
+function writeUniqueFile(dir, base, ext, text) {   // flag 'wx': tidak pernah menimpa dan tidak ada balapan existsSync -> write
+  for (let i = 0; i < 1000; i++) {
+    const file = path.join(dir, base + (i ? ' (' + i + ')' : '') + ext);
+    try { fs.writeFileSync(file, text, { encoding: 'utf8', flag: 'wx' }); return file; }
+    catch (err) { if (!err || err.code !== 'EEXIST') throw err; }
+  }
+  throw new Error('terlalu banyak berkas bernama sama');
+}
 ipcMain.handle('pin-image', async (e, d) => {   // v99: tempel terjemahan di atas area aslinya
   if (!win || win.isDestroyed() || e.sender !== win.webContents) return false;
   try { return await pinImage(d && d.url, d && d.rect); } catch { return false; }
@@ -2192,7 +2219,7 @@ ipcMain.handle('pin-image', async (e, d) => {   // v99: tempel terjemahan di ata
 ipcMain.on('pin-close', (e) => { if (win && !win.isDestroyed() && e.sender === win.webContents) closePin(); });
 // v23: detik sejak input terakhir (hanya angka, dari powerMonitor); dipakai /pantau supaya tidak memotret saat pengguna sedang pergi
 ipcMain.handle('idle-time', () => { try { return powerMonitor.getSystemIdleTime(); } catch { return 0; } });
-ipcMain.handle('read-clipboard', () => readClipboardPayload());
+ipcMain.handle('read-clipboard', (e) => fromOverlay(e) ? readClipboardPayload() : { text: '', image: null });
 // Salin gambar (data URL) ke clipboard Windows; navigator.clipboard di jendela overlay sering ditolak
 // v28b: clipboard.writeImage tidak selalu ada di Electron yang terpasang (terlihat di PC Kang Jiho: "clipboard.writeImage is not a function"),
 // jadi urutannya: writeImage, lalu clipboard.write({image}), lalu PowerShell (Windows Forms SetImage). Gagal semua = false, dengan sebab di terminal.
@@ -2216,7 +2243,8 @@ function writeImageViaPowerShell(img) {
     p.on('exit', (code) => { if (code !== 0) console.warn('copy-image: PowerShell keluar dengan kode', code); finish(code === 0); });
   });
 }
-ipcMain.handle('copy-image', async (_e, dataUrl) => {
+ipcMain.handle('copy-image', async (e, dataUrl) => {
+  if (!fromOverlay(e)) return false;
   try {
     const m = typeof dataUrl === 'string' && /^data:image\/(png|jpe?g|webp);base64,/i.exec(dataUrl);
     if (!m || dataUrl.length > 30e6) { console.warn('copy-image: format data URL tidak dikenali'); return false; }
@@ -2235,7 +2263,8 @@ ipcMain.handle('copy-image', async (_e, dataUrl) => {
 
 // v24: buka gambar di jendela biasa yang besar: roda mouse = zoom, seret = geser, klik dua kali = ukuran asli / pas layar
 let viewSeq = 0;
-ipcMain.handle('open-image', (_e, dataUrl) => {
+ipcMain.handle('open-image', (e, dataUrl) => {
+  if (!fromOverlay(e)) return false;
   try {
     const m = typeof dataUrl === 'string' && /^data:image\/(png|jpe?g|webp);base64,/i.exec(dataUrl);
     if (!m || dataUrl.length > 30e6) return false;
@@ -2259,7 +2288,7 @@ addEventListener('dblclick',e=>{if(Math.abs(s-1)<0.01){fitIt();}else{x=e.clientX
 addEventListener('keydown',e=>{if(e.key==='Escape')window.close();});
 </script>`, 'utf8');
     const disp = screen.getDisplayMatching(win && !win.isDestroyed() ? win.getBounds() : screen.getPrimaryDisplay().bounds).workArea;
-    const v = new BrowserWindow({ x: disp.x + 40, y: disp.y + 40, width: Math.max(600, disp.width - 80), height: Math.max(400, disp.height - 80), autoHideMenuBar: true, backgroundColor: '#0b0f1a', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    const v = new BrowserWindow({ x: disp.x + 40, y: disp.y + 40, width: Math.max(600, disp.width - 80), height: Math.max(400, disp.height - 80), autoHideMenuBar: true, backgroundColor: '#0b0f1a', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, partition: 'iris-aux' } });
     v.loadFile(htmlFile);
     v.on('closed', () => { try { fs.unlinkSync(imgFile); fs.unlinkSync(htmlFile); } catch { /* abaikan */ } });
     return true;
@@ -2267,41 +2296,39 @@ addEventListener('keydown',e=>{if(e.key==='Escape')window.close();});
 });
 
 // Simpan HTML hasil ekspor percakapan ke folder Downloads (nama dibersihkan, tidak menimpa file yang sudah ada)
-ipcMain.handle('save-html', (_e, payload) => {
+ipcMain.handle('save-html', (e, payload) => {
+  if (!fromOverlay(e)) return { ok: false, error: 'ditolak' };
   try {
     const { name, html } = payload || {};
-    const dir = app.getPath('downloads');
-    const base = String(name || 'Percakapan-Iris').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').replace(/\.html?$/i, '').slice(0, 80) || 'Percakapan-Iris';
-    let file = path.join(dir, base + '.html');
-    for (let i = 1; fs.existsSync(file); i++) file = path.join(dir, base + ' (' + i + ').html');
-    fs.writeFileSync(file, String(html || ''), 'utf8');
+    const text = String(html || '');
+    if (text.length > 50e6) return { ok: false, error: 'berkas terlalu besar' };   // v101: batas ukuran
+    const file = writeUniqueFile(app.getPath('downloads'), safeBaseName(name, 'Percakapan-Iris', /\.html?$/i), '.html', text);
     return { ok: true, path: file };
   } catch (e) {
     return { ok: false, error: String((e && e.message) || e) };
   }
 });
 // v80: simpan konfigurasi Iris (JSON, maks 64 KB) ke folder Downloads; nama dibersihkan dan file lama tidak ditimpa
-ipcMain.handle('save-config', (_e, payload) => {
+ipcMain.handle('save-config', (e, payload) => {
+  if (!fromOverlay(e)) return { ok: false, error: 'ditolak' };
   try {
     const { name, json } = payload || {};
     const text = String(json || '');
     if (text.length > 65536) return { ok: false, error: 'konfigurasi terlalu besar' };
     JSON.parse(text);
-    const dir = app.getPath('downloads');
-    const base = String(name || 'Iris-config').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').replace(/\.json$/i, '').slice(0, 80) || 'Iris-config';
-    let file = path.join(dir, base + '.json');
-    for (let i = 1; fs.existsSync(file); i++) file = path.join(dir, base + ' (' + i + ').json');
-    fs.writeFileSync(file, text, 'utf8');
+    const file = writeUniqueFile(app.getPath('downloads'), safeBaseName(name, 'Iris-config', /\.json$/i), '.json', text);
     return { ok: true, path: file };
   } catch (e) {
     return { ok: false, error: String((e && e.message) || e) };
   }
 });
 // Tampilkan file hasil ekspor di Explorer (hanya file di dalam folder Downloads)
-ipcMain.handle('reveal-file', (_e, p) => {
+ipcMain.handle('reveal-file', (e, p) => {
+  if (!fromOverlay(e)) return false;
   try {
     const file = path.normalize(String(p || ''));
-    if (path.dirname(file) !== path.normalize(app.getPath('downloads')) || !fs.existsSync(file)) return false;
+    const norm = (x) => process.platform === 'win32' ? path.normalize(x).toLowerCase() : path.normalize(x);   // v101: Windows tidak membedakan huruf besar / kecil
+    if (norm(path.dirname(file)) !== norm(app.getPath('downloads')) || !fs.existsSync(file)) return false;
     shell.showItemInFolder(file);
     return true;
   } catch { return false; }
@@ -2367,7 +2394,8 @@ async function openLocalApp(name) {
     });
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
-ipcMain.handle('local-cmd', async (_e, c) => {
+ipcMain.handle('local-cmd', async (e, c) => {
+  if (!fromOverlay(e)) return { ok: false, error: 'ditolak' };
   try {
     if (process.platform !== 'win32') return { ok: false, error: 'hanya untuk Windows' };
     if (!c || typeof c !== 'object') return { ok: false, error: 'perintah kosong' };

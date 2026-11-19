@@ -256,6 +256,26 @@ def _latin(s: str) -> bool:
     return bool(s) and all(ord(c) < 0x250 for c in s)
 
 
+# v101: kata negasi / pilihan ganda tidak boleh meloloskan tebakan ("bukan api", "api atau air" salah untuk jawaban "api")
+_NEGASI = {"bukan", "bkn", "tidak", "tak", "nggak", "ngga", "gak", "ga", "enggak", "engga", "no", "not", "non"}
+_AMBIGU = {"atau", "or"}
+
+
+def _bocor(jawaban: str, teks: str) -> bool:
+    """v101: jawaban muncul di teks? Aksara Latin: per kata utuh (jawaban satu kata >= 4 huruf juga awalan kata, mis. "sapunya");
+    aksara lain (Jepang, tanpa spasi kata): substring. Dulu substring untuk semua, sehingga "api" di "tapi" dianggap bocor."""
+    ka = _kata(jawaban)
+    if not ka:
+        return False
+    if all(_latin(k) for k in ka):
+        kt = _kata(teks)
+        n = len(ka)
+        if n == 1 and len(ka[0]) >= 4:
+            return any(t.startswith(ka[0]) for t in kt)
+        return any(kt[i:i + n] == ka for i in range(len(kt) - n + 1))
+    return normalisasi(jawaban) in normalisasi(teks)
+
+
 def cocok(tebakan: str, teka: Teka) -> bool:
     """Cocok bila (1) sama persis setelah dinormalisasi, atau untuk jawaban beraksara Latin: (2) semua kata jawaban
     ada berurutan di dalam tebakan pendek (mis. "koin logam" untuk "koin"), atau (3) salah ketik satu huruf pada
@@ -272,6 +292,8 @@ def cocok(tebakan: str, teka: Teka) -> bool:
     for a in teka.semua_jawaban:
         ka = _kata(a)
         if not ka or not all(_latin(k) for k in ka) or not all(_latin(k) for k in kt):
+            continue
+        if any((k in _NEGASI or k in _AMBIGU) and k not in ka for k in kt):   # v101: "bukan api", "api atau air"
             continue
         n = len(ka)
         # (2) kata jawaban muncul berurutan di tebakan
@@ -373,9 +395,9 @@ def parse_teka(raw, bahasa: str, id_baru: str) -> tuple[Optional[Teka], str]:
     jaw = normalisasi(teka.jawaban[0])
     if not jaw:
         return None, "jawaban kosong setelah normalisasi"
-    if jaw in normalisasi(teka.pertanyaan):
+    if _bocor(teka.jawaban[0], teka.pertanyaan):
         return None, "jawaban muncul di pertanyaan"
-    if any(jaw in normalisasi(h) for h in teka.petunjuk[:2]):
+    if any(_bocor(teka.jawaban[0], h) for h in teka.petunjuk[:2]):
         return None, "petunjuk membocorkan jawaban"
     return teka, ""
 

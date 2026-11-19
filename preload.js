@@ -62,7 +62,7 @@ contextBridge.exposeInMainWorld('companion', {
   pulse: () => ipcRenderer.send('render-pulse'),
   // /chrome: mini-browser multi-akun. Satu pintu: main.js yang mengurai perintah ('chrome 2', 'akun tambah ...') dan mengembalikan {ok, msg}
   webPanel: (line) => ipcRenderer.invoke('web-panel', String(line || '')),
-  // Fase 4: pil akun. onWebState menerima {open, slot, nama, akun:[{slot,nama}|null x5], reason}; webState() = keadaan sekarang (setelah halaman dimuat ulang);
+  // Fase 4: pil akun. onWebState menerima {open, slot, nama, akun:[{slot,nama}|null x10], reason}; webState() = keadaan sekarang (setelah halaman dimuat ulang);
   // webQuality(nama) memberi tahu main.js tingkat kualitas gambar, 'hemat' menutup panel web
   onWebState: (cb) => { ipcRenderer.on('web-state', (_e, s) => cb(s)); },
   webState: () => ipcRenderer.invoke('web-state'),

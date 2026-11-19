@@ -190,6 +190,9 @@ SPEAKER = int(os.getenv("VOICEVOX_SPEAKER", "2"))  # 四国めたん (normal)
 
 HOST = os.getenv("COMPANION_HOST", "127.0.0.1")
 PORT = int(os.getenv("COMPANION_PORT", "8765"))
+if HOST not in ("127.0.0.1", "localhost", "::1"):   # v101
+    print(f"[WARN] COMPANION_HOST={HOST}: server terbuka ke jaringan, bukan hanya komputer ini. Pastikan firewall membatasinya "
+          "dan COMPANION_TOKEN panjang; kalau tidak perlu, pakai 127.0.0.1.", flush=True)
 
 # v28: token untuk /ws. Cek Origin saja tidak cukup (klien non-browser tanpa header Origin selalu lolos), jadi proses lokal
 # mana pun bisa mengirim /agen. Kalau COMPANION_TOKEN diisi, klien wajib mengirim header X-Iris-Token yang sama.
