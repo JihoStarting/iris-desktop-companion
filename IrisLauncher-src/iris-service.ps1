@@ -6,7 +6,7 @@ Pakai:
   powershell -ExecutionPolicy Bypass -File .\iris-service.ps1 -Nama hermes -Aksi nyala
 Nama : wsl | voicevox | router | hermes | server | overlay
 Aksi : nyala | mati
-Opsi : -Proyek <jalur>  -Distro Ubuntu  -TungguDetik 90  -TanpaPenjaga  -TanpaGPU (VOICEVOX Windows pakai CPU)
+Opsi : -Proyek <jalur>  -Distro Ubuntu  -TungguDetik 90  -TanpaPenjaga  -TanpaGPU (VOICEVOX Windows pakai CPU)  -Simulasi (hanya cetak rencana, tidak mengubah apa pun)
 
 Aturan: hanya layanan yang dipilih yang hidup.
   - voicevox/router/hermes butuh WSL berjalan. Kalau WSL sedang mati, WSL dibangunkan seperlunya,
@@ -22,10 +22,18 @@ param(
   [string]$Distro = 'Ubuntu',
   [int]$TungguDetik = 90,
   [switch]$TanpaPenjaga,
-  [switch]$TanpaGPU
+  [switch]$TanpaGPU,
+  [switch]$Simulasi
 )
 
 if ($Proyek) { $Proyek = $Proyek.TrimEnd('\') }
+
+if ($Simulasi) {
+  Write-Host ('SIMULASI: layanan=' + $Nama + ' aksi=' + $Aksi + ' distro=' + $Distro + ' proyek=' + $Proyek + ' tunggu=' + $TungguDetik + 'dtk')
+  Write-Host ('SIMULASI: penjaga WSL=' + (-not $TanpaPenjaga) + ' GPU=' + (-not $TanpaGPU))
+  Write-Host 'SIMULASI: tidak ada yang dijalankan atau dihentikan.'
+  exit 0
+}
 
 $UnitWsl = @{
   voicevox = @{ Unit = 'voicevox';       Label = 'VOICEVOX'; Url = 'http://127.0.0.1:50021/version' }
