@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Versi" src="https://img.shields.io/badge/versi-v1.0.0-blue">
+  <img alt="Versi" src="https://img.shields.io/badge/versi-v1.3.1-blue">
   <img alt="Status" src="https://img.shields.io/badge/status-aktif%20dikembangkan-brightgreen">
   <img alt="Electron" src="https://img.shields.io/badge/Electron-overlay-47848F">
   <img alt="Python" src="https://img.shields.io/badge/Python-FastAPI-3776AB">
@@ -53,8 +53,8 @@ Proyek ini dibuat sebagai proyek pribadi dan masih terus dikembangkan.
 | Hermes Agent dipasang | 28 September 2026 |
 | Overlay mulai dikembangkan | 28 Oktober 2026 |
 | Dipublikasikan di GitHub | 5 November 2026 |
-| Versi terbaru | v1.0.0 (peluncur `IrisLauncher.exe`) |
-| Terakhir diperbarui | 19 November 2026 (sinkron dengan catatan kerja sampai 19 November), lihat [Riwayat pembaruan](#riwayat-pembaruan) |
+| Versi terbaru | v1.3.1 (peluncur `IrisLauncher.exe`) |
+| Terakhir diperbarui | 19 November 2026 (peluncur v1.3.1: perbaikan biner Electron dan Doctor; v101: perbaikan keamanan dan kerapian dari tinjauan kode 19 November; sinkron dengan catatan kerja sampai 19 November), lihat [Riwayat pembaruan](#riwayat-pembaruan) |
 
 > **Tentang status uji.** Sebagian fitur sudah lulus uji di PC pengembang, sebagian lain baru ditulis dan belum diuji penuh. Fitur yang belum terbukti ditandai *(eksperimental)* di bawah, dan daftar lengkapnya ada di [Status pengujian](#status-pengujian).
 
@@ -287,7 +287,7 @@ Semua pengaturan dibaca dari file `.env` (di folder proyek atau di folder user W
 | `VOICEVOX_URL` | Alamat VOICEVOX | `http://127.0.0.1:50021` |
 | `VOICEVOX_SPEAKER` | ID suara VOICEVOX | `2` |
 | `VOICEVOX_SPEAKER_<EMOSI>` | ID suara khusus untuk satu emosi (opsional) | kosong |
-| `COMPANION_HOST` | Alamat server overlay | `127.0.0.1` |
+| `COMPANION_HOST` | Alamat server overlay. Selain `127.0.0.1` / `localhost`, server mencetak peringatan karena terbuka ke jaringan (v101) | `127.0.0.1` |
 | `COMPANION_PORT` | Port server overlay | `8765` |
 | `COMPANION_USER_NAME` | Nama panggilan pengguna | `Rover` |
 | `COMPANION_TOKEN` | Token autentikasi `/ws`. **Wajib**, minimal 16 karakter; server tidak mau jalan tanpanya (lihat [Keamanan](#keamanan)) | kosong (wajib diisi) |
@@ -334,6 +334,7 @@ Semua pengaturan dibaca dari file `.env` (di folder proyek atau di folder user W
 | `IRIS_PEEK_CUT` | Seberapa banyak karakter terlihat saat mengintip |
 | `IRIS_TL_MULTIPASS=0` | Matikan OCR pass cadangan pada terjemah layar |
 | `IRIS_TL_MAX_BLOCKS` | Batas blok teks per terjemah layar (bawaan 120) |
+| `IRIS_TL_MAX_PIXELS` | Batas piksel gambar yang diterima terjemah layar (bawaan 40 juta; v101). Gambar lebih besar ditolak sebelum dimuat ke memori |
 | `IRIS_TL_FONT_JP` | Font Jepang untuk menggambar hasil (bawaan Meiryo, Yu Gothic, atau Noto CJK) |
 | `IRIS_TL_DEBUG=1` | Simpan `iris_tl_debug.png` dan `iris_tl_debug.json` (kotak hijau diterjemahkan, merah tidak) |
 | `IRIS_TL_VOICE=0` | Iris tidak bicara saat terjemah layar |
@@ -727,7 +728,7 @@ IRIS berjalan lokal dan memberi agen akses ke komputermu, jadi pengamannya berla
 
 - **Isi web.** Halaman diperlakukan sebagai data, bukan perintah (aturan di prompt agen dan pembersih di `iris_web.py`). Perlindungan ini bergantung pada kepatuhan model dan baru lulus 2 uji, jadi jangan menganggapnya pagar teknis.
 - **`/rea`.** Isi file diperlakukan sebagai data tidak tepercaya. Audit kode 10 November 2026 menemukan dan menutup tujuh celah di jalur ini: ReDoS di triase, injeksi prompt lewat string sampel, catatan riwayat yang memuat string sampel, keluaran laporan tanpa sanitasi, junction Windows pada pengemasan folder, peringatan overlay palsu pada file bertanda tangan, dan triase yang terlewat saat sandbox mati. Perlindungan dari injeksi belum diuji dengan sampel injeksi di PC asli.
-- **Pembersihan `iris_web.py`** (12 November 2026) kini mencakup `title`, `url`, `host` halaman dan kolom `name` elemen, dipindai untuk pola injeksi pada jenis `state`, `text`, dan `elements`. Batasnya: aksi `shot` belum melewati pembersihan (hanya ditandai `untrusted`), dan pembersihan hanya ada di klien, jadi agen yang memanggil jembatan langsung (mis. `curl` dengan token) melewatinya. Belum dites di PC.
+- **Pembersihan `iris_web.py`** (12 November 2026; diperluas di v101, 19 November 2026) mencakup semua kolom teks tingkat atas (`title`, `url`, `host`, `account`, dan kolom lain) pada semua jenis respons, termasuk `shot`. Elemen halaman dibangun ulang hanya dari kunci yang diizinkan (`n`, `tag`, `text`, `type`, `href`, `name`, `password`, `x`, `y`); kunci lain dibuang dan `href` ikut dipindai. Daftar elemen dibingkai `elements_begin` / `elements_end` bernonce. Klien membatasi ukuran balasan (30 MB) dan tidak mengikuti pengalihan HTTP. Daftar pola injeksi ditambah (lupakan instruksi, instruksi baru, minta dirahasiakan dari pengguna, blob base64 panjang). Batasnya: pembersihan hanya ada di klien, jadi agen yang memanggil jembatan langsung (mis. `curl` dengan token) melewatinya, dan pemindaian pola hanyalah heuristik. Lolos uji kecil di sandbox, belum dites di PC.
 
 ### Isolasi dan privasi
 
@@ -738,6 +739,7 @@ IRIS berjalan lokal dan memberi agen akses ke komputermu, jadi pengamannya berla
 - Memori dan riwayat menolak menyimpan isi yang mirip rahasia (kata sandi, token, `sk-...`, dan angka 13 sampai 19 digit seperti nomor kartu atau NIK). Sejak v91 angka yang lebih pendek (tanggal seperti `12-03-2001`, nomor HP 12 digit) tidak lagi ditolak, jadi nomor HP bisa tersimpan di memori kalau kamu menyuruhnya.
 - **Daftar putih `app://` (v91, 19 November 2026).** Halaman overlay hanya boleh membaca `/index.html`, `/favicon.ico`, isi `/assets/`, serta `/node_modules/three/` dan `/node_modules/@pixiv/`. `.env`, `server.py`, `iris-history.json`, `iris-memory.json`, dan berkas lain di folder proyek dijawab 403; segmen berawalan titik atau bertanda `:` juga ditolak, dan percobaan `..`, `%2e%2e`, serta `%2F` diuji ditolak. Berkas sah yang ikut tertolak dicetak sekali per path di terminal Electron (`app:// ditolak (di luar daftar putih)`). Baru diuji dengan harness terpisah, belum di PC.
 - **Jendela tempelan terjemahan (v99)** tanpa preload, tanpa jaringan (CSP hanya gambar `data:`), hanya menerima gambar PNG atau JPEG berbasis `data:` dari overlay lewat IPC yang memeriksa pengirimnya, dan tetap di dalam satu layar.
+- **Pengerasan v101 (19 November 2026).** (1) IPC yang menyentuh clipboard, berkas, atau program (`read-clipboard`, `copy-image`, `open-image`, `save-html`, `save-config`, `reveal-file`, `local-cmd`) kini menolak pemanggil selain jendela overlay. (2) Izin `media` hanya untuk mikrofon: permintaan video (kamera) ditolak. (3) Jendela pilih area, tempelan terjemahan, dan penampil gambar memakai sesi terpisah `iris-aux` yang menolak semua izin dan tidak ikut disuntiki `X-Iris-Token`. (4) Nama berkas ekspor tidak boleh nama perangkat Windows (`CON`, `NUL`, `COM1`, dst.) atau berakhir titik / spasi, ekspor dibatasi 50 MB, dan penulisan memakai flag `wx` sehingga tidak pernah menimpa berkas yang ada. (5) `reveal-file` membandingkan folder tanpa membedakan huruf besar / kecil di Windows. (6) Sisa berkas penampil gambar di folder `iris-view` yang lebih tua dari satu jam dibersihkan saat start. (7) Terjemah layar menolak gambar di atas `IRIS_TL_MAX_PIXELS` sebelum memuatnya. (8) `server.py` mencetak peringatan bila `COMPANION_HOST` bukan loopback. Belum dites di PC.
 - Berkas sensitif tidak pernah masuk repositori: `.env`, riwayat percakapan, memori, log, arsip, dan folder `vv-engine/` dikecualikan lewat `.gitignore`.
 
 ### Yang perlu kamu jaga sendiri
@@ -773,6 +775,7 @@ Legenda: **Lulus** = dicoba dan berfungsi di PC pengembang · **Sebagian** = ada
 | `/rea xref` dan `/rea disasm` (v99) serta seret-lepas file ke overlay | Belum diuji | Lolos `py_compile` dan `node --check`. Di lingkungan penulis kode: `rea_api` xref dan disasm pada PE asli (`w64.exe`, jalur hex dan jalur `capstone`), `handle_agent_task` dijalankan dengan stub (hasil jadi kartu, catatan riwayat tanpa isi sampel, path UNC, file tidak ada, dan argumen salah ditolak tanpa sampai ke Hermes), serta pengurai perintah di `index.html` dengan stub. Belum diuji di overlay, belum di Windows dengan path nyata, dan jendela yang tembus-klik belum terbukti menerima seretan |
 | Terjemah layar pilih area (v90), area kecil diperbesar, terjemahan menempel, dan ulangi area terakhir (v99) | Belum diuji | Lolos `node --check`. Rumus perbesaran, filter gambar tempelan, dan alur `/terjemah ulang`, `tutup`, `tempel`, serta jalur gagal-tempel ke penampil besar diuji dengan stub; jendela pilih area, jendela tempelan, `Ctrl+Alt+Y`, ketepatan posisi di layar berskala DPI lain atau banyak monitor, dan hasil OCR pada area yang diperbesar belum diuji di Electron asli |
 | Perbaikan 13 November (v91): daftar putih `app://`, `_SECRET_RE`, regex fakta game, CSS chip | Belum diuji | Lolos `node --check`, `ast.parse`, dan harness terpisah untuk daftar putih dan kedua regex. Belum dijalankan di PC; bila ada berkas sah yang tertolak, terminal Electron mencetak barisnya. Fakta game yang sudah salah di `iris-history.json` tidak dibersihkan otomatis: hapus kunci `facts` di berkas itu |
+| Pengerasan dan perbaikan v101 (19 November 2026): pemeriksaan pengirim IPC, mikrofon saja, sesi `iris-aux`, nama berkas aman, `iris_web.py` (`shot`, allowlist elemen, batas balasan), batas piksel terjemah layar, tebakan negatif dan deteksi bocor jawaban di `/tekateki`, peringatan `COMPANION_HOST` | Belum diuji | Lolos `node --check` dan `ast.parse`. Di sandbox lulus: `harden()` (kolom `shot`, allowlist elemen, nonce, href `javascript:`), `cocok()` (`bukan api`, `ga mungkin api`, `api atau air`, `tidak api`, `not api` ditolak; `api`, `koin logam`, `coin` tetap benar), `parse_teka()` ("Kecil tapi bisa membakar hutan" untuk `api` kini lolos, "sapunya" untuk `sapu` ditolak), dan `decode_data_url()` (gambar 49 juta piksel ditolak). Belum dites di PC: mikrofon tetap berfungsi, ekspor percakapan dan konfigurasi, jendela pilih area, tempelan, dan penampil gambar di sesi `iris-aux`, serta tombol salin / buka gambar |
 | Folder kerja tambahan (Downloads) di sandbox | Sebagian | 10 November 2026: mount aktif (`RW: true`) dan baca terbukti lewat Telegram; hapus satu file umpan terlihat berhasil di Explorer, tetapi kartu persetujuan, `Test-Path`, uji Tolak, dan path berspasi belum dilaporkan |
 | Perlindungan injeksi prompt | Sebagian | Lulus 2 uji (`curl` dan file lokal); belum dengan halaman web sungguhan |
 | Persetujuan tindakan agen dan sandbox Docker | Sebagian | Izinkan sekali dan Tolak terbukti di Hermes sungguhan, satu uji per kasus (termasuk `rm` file tunggal, 8 November 2026). Tes otomatis memakai Hermes palsu (28 dan 26 tes lulus) |
@@ -905,6 +908,8 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 | Karakter menghilang sesekali | Pemulihan WebGL otomatis dan watchdog sudah dipasang. Coba `/kualitas hemat`, lalu lihat terminal Electron (`Renderer mati`, `WebGL context hilang`) |
 | Iris lag atau RAM penuh | `/kualitas hemat`, tutup tab browser yang tidak dipakai, dan cek batas memori WSL di `.wslconfig`. `/chrome ram` menampilkan pemakaian panel |
 | Terjemah layar banyak teks tak ikut, atau muncul teks aneh | Pastikan paket bahasa OCR sumber terpasang, pilih bahasa manual di menu (bukan Auto), lalu jalankan dengan `IRIS_TL_DEBUG=1` dan lihat `iris_tl_debug.png`. Setelah mengganti `server.py` atau `iris_translate_img.py`, restart server (bukan hanya overlay) |
+| Terjemah layar menjawab "Gambar tidak bisa dibaca" dengan keterangan piksel melebihi batas | Gambar lebih besar dari `IRIS_TL_MAX_PIXELS` (bawaan 40 juta piksel, kira-kira tiga layar 4K). Pilih area yang lebih kecil, atau naikkan nilainya di `.env` bila RAM cukup |
+| Ekspor percakapan atau konfigurasi tersimpan dengan awalan `_` pada nama | Nama yang kamu beri sama dengan nama perangkat Windows (`CON`, `NUL`, `COM1`, dst.), jadi Iris menambahkan `_` di depannya (v101) |
 | Model gambar timeout | Kurangi jumlah gambar yang dikirim atau naikkan `NINEROUTER_VISION_READ_TIMEOUT` |
 | Tombol Salin gambar gagal | Restart Iris. Handler mencoba tiga cara berurutan, termasuk lewat PowerShell |
 | Pintasan bisu tidak bekerja | Kombinasinya mungkin dipakai aplikasi lain. Terminal mencetak pintasan yang terdaftar; paksa sendiri lewat `IRIS_MUTE_KEY` |
@@ -937,6 +942,8 @@ Untuk diagnosis lebih lanjut, jalankan overlay dengan `npm start`, buka DevTools
 
 | Tanggal | Perubahan |
 |---|---|
+| **19 November 2026 (peluncur v1.3.1)** | `iris-update.ps1`: setelah `npm update`, biner Electron (`node_modules\electron\dist\electron.exe`) yang hilang dideteksi dan diunduh ulang lewat `install.js` (fungsi `Repair-Electron`); `npm update` kadang mengganti paket tanpa mengunduh biner dan tetap mengembalikan kode 0. Cek update untuk Overlay kini menampilkan "update" bila biner hilang. `iris-doctor.ps1`: saran perbaikan biner Electron diperjelas; server Iris yang belum jalan dan drive yang bukan drive sistem, proyek, WSL, atau node kini dilaporkan sebagai INFO, bukan WARN (drive yang dipakai Iris tetap WARN atau GAGAL bila menipis). Hanya skrip `.ps1` yang berubah dan skrip tertanam di exe, jadi bangun ulang `IrisLauncher.exe` dengan `build.bat` (versi yang tampil di exe tetap 1.3). Doctor sudah dicoba di PC (0 WARN); `Repair-Electron` belum diuji dengan electron.exe yang sengaja dihapus. |
+| **19 November 2026 (v101)** | Tinjauan kode `main.js`, `preload.js`, `iris_web.py`, `iris_games.py`, `iris_translate_img.py`, dan `server.py` menghasilkan pengerasan: pemeriksaan pengirim IPC, izin mikrofon saja, sesi terpisah untuk jendela bantu, nama berkas aman dan penulisan `wx`, pembersihan `iris_web.py` untuk `shot` dan elemen, batas piksel terjemah layar, `/tekateki` menolak tebakan negatif dan pilihan ganda serta tidak lagi salah menolak teka-teki karena substring, peringatan `COMPANION_HOST`, dan komentar `preload.js` (10 slot akun) dikoreksi. Belum dites di PC |
 | **19 November 2026 (lanjutan)** | Terjemah layar: pilih area dengan menyeret (v90) dan, sebagai v99, area kecil diperbesar otomatis, hasil ditempel di atas area asli, dan ulangi area terakhir (`Ctrl+Alt+Y`, `/terjemah ulang`); `/rea xref` dan `/rea disasm` tersambung ke `server.py` lewat `rea_api`; seret-lepas file ke overlay = `/rea cepat`. Perbaikan v91 dari tinjauan 13 November: daftar putih `app://` di `main.js`, `_SECRET_RE` hanya menolak 13 sampai 19 digit, regex fakta game tidak lagi menangkap `Tujuan: pahami`, dan CSS chip `#webpill` benar-benar berlaku. Berkas berubah: `main.js`, `preload.js`, `index.html`, `server.py` (`rea_triage.py` tetap v98). Belum dites di PC. Catatan penomoran: "v91" di kode dipakai dua kali (`/rea` triase lokal dan perbaikan keamanan ini), dan nomor v99 diambil sebagai nomor berikutnya setelah v98 |
 | **19 November 2026** | `rea_triage.py` v98 "RE Lab" untuk PE x86 / x64: peta panggilan API per fungsi, xref string, peringkat fungsi menarik, anti-analisis tingkat instruksi, API hashing, dan stack string (aksi `re`, `xref`, `disasm`); status v95 sampai v97 dicatat dari kode yang diunggah. Belum dites di PC |
 | **12 November 2026** | Game teka-teki `/tekateki`; `rea_triage.py` v95 sampai v97 (berkas baru `rea_extract.py` dan `rea_binary.py`); audit kode dengan tiga perbaikan: Mode fokus memberi tahu `main.js` lewat `setQuiet` di `preload.js`, pembersihan `iris_web.py` kini mencakup `title`, `url`, `host`, dan `name`, serta kalimat Jepang yang sebenarnya bukan Jepang diperbaiki atau tampil tanpa suara (`jp_speakable()`). Belum dites di PC |

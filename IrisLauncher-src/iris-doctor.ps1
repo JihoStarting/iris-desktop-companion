@@ -233,7 +233,7 @@ if (-not $nodeCmd) {
 }
 $electronExe = Join-Path $Proyek 'node_modules\electron\dist\electron.exe'
 if (Test-Path -LiteralPath $electronExe) { Say 'OK' 'Biner Electron ada' }
-else { Say 'GAGAL' 'node_modules\electron\dist\electron.exe tidak ada' 'Jalankan npm install di folder proyek (unduhan Electron ratusan MB).' }
+else { Say 'GAGAL' 'node_modules\electron\dist\electron.exe tidak ada' 'Di folder proyek jalankan: node node_modules\electron\install.js (atau npm install; unduhan ratusan MB). Penyebab umum: npm update mengganti paket tanpa mengunduh biner. Tombol Update di launcher kini memperbaikinya otomatis.' }
 $el = Get-Process -Name electron -ErrorAction SilentlyContinue
 if ($el) {
   $mb = [math]::Round((($el | Measure-Object -Property WorkingSet64 -Sum).Sum) / 1MB)
@@ -297,7 +297,7 @@ if ($cfgEnv.ContainsKey('COMPANION_PORT')) {
 $srvUp = $false
 $ls = Get-Listener $srvPort
 if (-not $ls) {
-  Say 'WARN' ('Server Iris belum jalan (port ' + $srvPort + ' kosong)') 'Normal kalau memang belum dinyalakan.'
+  Say 'INFO' ('Server Iris belum jalan (port ' + $srvPort + ' kosong)') 'Normal kalau memang belum dinyalakan. Nyalakan lewat Iris Start.bat atau tombol Start semua.'
 } else {
   $srvUp = $true
   $cl = ''
@@ -523,13 +523,20 @@ if ($srvUp) {
 
 # ---------------------------------------------------------------- 9. disk dan RAM
 Head '9. Disk dan RAM'
+# Drive yang benar-benar dipakai Iris: sistem, folder proyek, disk virtual WSL, dan node.
+$relevan = @($env:SystemDrive.Substring(0, 1).ToUpper(), $Proyek.Substring(0, 1).ToUpper())
+if ($script:wslVhdxDrive -ne '') { $relevan += $script:wslVhdxDrive }
+$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+if ($nodeCmd) { $relevan += ([string]$nodeCmd.Source).Substring(0, 1).ToUpper() }
 foreach ($d in (Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -ne $null -and $_.Free -ne $null })) {
   $total = [double]($d.Used + $d.Free)
   if ($total -le 0) { continue }
   $freeGB = [double]$d.Free / 1GB
   $pct = 100.0 * [double]$d.Free / $total
   $txt = ('Drive ' + $d.Name + ': bebas ' + (Get-FreeText $d.Free) + (' ({0:N1}%)' -f $pct))
-  if ($freeGB -lt 5) { Say 'GAGAL' $txt 'Hampir penuh.' }
+  $dipakai = ($relevan -contains $d.Name.ToUpper())
+  if (-not $dipakai -and $freeGB -lt $MinFreeGB) { Say 'INFO' $txt 'Drive ini bukan drive sistem, proyek, WSL, atau node, jadi tidak memengaruhi Iris.' }
+  elseif ($freeGB -lt 5) { Say 'GAGAL' $txt 'Hampir penuh.' }
   elseif ($freeGB -lt $MinFreeGB) {
     $hint = 'Bersihkan dulu sebelum memasang atau memperbarui apa pun.'
     if ($script:wslVhdxDrive -ne '' -and $d.Name -eq $script:wslVhdxDrive) { $hint = $hint + ' Disk virtual WSL (' + $script:wslVhdxText + ') ada di drive ini dan bisa membesar.' }
