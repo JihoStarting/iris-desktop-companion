@@ -3212,9 +3212,14 @@ async def health_probe() -> dict:
                 result["voicevox"] = f"ERROR: {e!r}"
 
         async def p_ninerouter():
+            # 20 Nov 2026: periksa hidup-tidaknya lewat "/" (sama seperti Iris Launcher dan iris-doctor), bukan /v1/models.
+            # Hasil ukur: /v1/models di 9Router sering 5 sampai 8 detik atau timeout, sehingga pil status berkedip "tidak merespons"
+            # padahal 9Router hidup. Kunci API yang salah tetap terlihat lewat iris-doctor dan galat chat.
+            base = NINEROUTER_URL.rstrip("/")
+            if base.endswith("/v1"):
+                base = base[:-3]
             try:
-                headers = {"Authorization": f"Bearer {NINEROUTER_KEY}"} if NINEROUTER_KEY else {}
-                r = await client.get(f"{NINEROUTER_URL}/models", headers=headers)
+                r = await client.get(base + "/")
                 result["ninerouter"] = f"HTTP {r.status_code}, model: {MODEL}, model gambar: {VISION_MODEL}"
             except Exception as e:
                 result["ninerouter"] = f"ERROR: {e!r}"
@@ -3239,7 +3244,7 @@ def health_states(result: dict) -> dict:
         if not m:
             return "ok"
         c = int(m.group(1))
-        return "ok" if 200 <= c < 300 else ("warn" if 400 <= c < 500 else "down")
+        return "ok" if 200 <= c < 400 else ("warn" if 400 <= c < 500 else "down")   # 3xx = hidup (9Router menjawab 307 di /)
     return {k: st(result.get(k)) for k in ("voicevox", "ninerouter", "hermes")}
 
 
