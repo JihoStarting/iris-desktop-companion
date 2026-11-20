@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <title>AI Companion</title>
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; media-src data: blob:; img-src 'self' data: blob:; connect-src 'self' blob: data: ws://localhost:8765">
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; media-src data: blob:; img-src 'self' data: blob:; connect-src 'self' blob: data: ws://localhost:8765; object-src 'none'; base-uri 'none'; form-action 'none'">
 <script type="importmap">
 {
   "imports": {
@@ -775,6 +775,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 
 const WS_URL = 'ws://localhost:8765/ws';
+// Token sambungan: kalau preload.js menyediakan window.companion.wsToken, dikirim ke server (server harus memeriksanya). Tanpa token = perilaku lama.
+function wsUrl() { try { const t = window.companion && window.companion.wsToken; return (typeof t === 'string' && /^[\w.\-]{16,128}$/.test(t)) ? WS_URL + '?token=' + encodeURIComponent(t) : WS_URL; } catch { return WS_URL; } }
 const MODEL_URL = '/assets/iris.vrm';
 
 const bubble = document.getElementById('bubble');
@@ -1372,7 +1374,19 @@ const SET_DEFAULT = Object.assign({}, SET);   // v80: acuan jenis dan nama kunci
 let clipSelf = '';   // v80: teks yang baru disalin oleh Iris sendiri (tombol salin), tidak ditawarkan lagi
 let peekTalkUntil = 0;   // v35: sampai kapan ucapan otomatis (fun fact, istirahat, jam) boleh keluar dari tepi layar tanpa memunculkan Iris
 let watchBusy = false, watchSpeak = false;   // v23: komentar layar otomatis sedang diproses server / sedang diucapkan (tidak memunculkan Iris dari tepi layar)
-try { Object.assign(SET, JSON.parse(localStorage.getItem('iris.set') || '{}')); } catch { /* abaikan */ }
+try {   // disaring: hanya nama kunci aman dan nilai primitif (boolean / angka hingga / teks pendek); kunci yang ada di SET_DEFAULT harus cocok jenisnya
+  const saved = JSON.parse(localStorage.getItem('iris.set') || '{}');
+  if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+    for (const k of Object.keys(saved)) {
+      if (!/^[A-Za-z][A-Za-z0-9_]{0,31}$/.test(k) || k === 'constructor' || k === 'prototype') continue;
+      const v = saved[k], t = typeof v;
+      const okType = t === 'boolean' || (t === 'number' && Number.isFinite(v)) || (t === 'string' && v.length <= 60);
+      if (!okType) continue;
+      if (Object.prototype.hasOwnProperty.call(SET_DEFAULT, k) && typeof SET_DEFAULT[k] !== t) continue;
+      SET[k] = v;
+    }
+  }
+} catch { /* abaikan */ }
 try { document.documentElement.dataset.theme = themeResolved(); } catch { /* abaikan */ }
 try { document.getElementById('root').classList.toggle('half', SET.fullBody === false); } catch { /* abaikan */ }   // v38: tema dipasang sebelum panel tampil
 
@@ -2084,14 +2098,16 @@ function fixSegmentOrder(m) {
 }
 let wsRetry = 0;   // jumlah gagal sambung berturut-turut (untuk jeda bertahap)
 function connect() {
-  ws = new WebSocket(WS_URL);
+  ws = new WebSocket(wsUrl());
   ws.onopen = () => { wsRetry = 0; dot.classList.add('on'); connRender(); greetOnce(); };
   // jeda sambung ulang bertahap (2, 4, 8, lalu maksimal 15 detik) supaya server yang sedang sibuk/mati tidak digempur terus
   ws.onclose = () => { for (const id of [...approvalCards.keys()]) closeApprovalCard(id, 'Koneksi terputus, tugas dihentikan', ''); dot.classList.remove('on'); connState = null; connRender(); stopThinking(); statusEl.classList.remove('show'); const jeda = Math.min(2000 * 2 ** wsRetry, 15000); wsRetry++; setTimeout(connect, jeda); };
   ws.onerror = () => {};
   ws.onmessage = (e) => {
     let m;
+    if (typeof e.data !== 'string') return;
     try { m = JSON.parse(e.data); } catch { return; }
+    if (!m || typeof m !== 'object' || Array.isArray(m)) return;
     if (m.type === 'segment') { fixSegmentOrder(m); lastSegAt = performance.now(); if (m.audio && m.jp) vcSet(m.jp, { audio: m.audio, moras: m.moras }); queue.push(m); pump(); if (m.text && !m.local) logIris(m.text, m.jp, m.emotion); }
     else if (m.type === 'voice_cache') vcSet(m.jp, { audio: m.audio, moras: m.moras });
     else if (m.type === 'funfact') onFunFact(m);
@@ -2120,7 +2136,7 @@ function connRender() {
   const up = dot.classList.contains('on');
   dot.classList.toggle('warn', up && connBad());
   if (!up || !connState) { el.classList.remove('show', 'bad'); pushTrayHealth(); dot.title = up ? 'status koneksi: memeriksa...' : 'server tidak terhubung (klik untuk cek)'; return; }
-  el.innerHTML = CONN_KEYS.map(([k, s]) => '<b class="' + connState[k] + '">' + s + '</b>').join('');
+  el.replaceChildren(...CONN_KEYS.map(([k, s]) => { const b = document.createElement('b'); b.className = connState[k]; b.textContent = s; return b; }));
   el.title = CONN_KEYS.map(([k, , n]) => n + ': ' + CONN_LAB[connState[k]]).join('\n');
   el.classList.toggle('bad', connBad());
   el.classList.toggle('show', connBad() || SET.connPill === true);
@@ -2149,7 +2165,8 @@ function askConn() {
 }
 function onHealth(m) {
   const prev = connState;
-  connState = { voicevox: m.voicevox, ninerouter: m.ninerouter, hermes: m.hermes, detail: m.detail || {} };
+  const hs = (v) => (v === 'ok' || v === 'warn' || v === 'down') ? v : 'warn';   // hanya tiga nilai ini yang boleh masuk ke class / innerHTML
+  connState = { voicevox: hs(m.voicevox), ninerouter: hs(m.ninerouter), hermes: hs(m.hermes), detail: (m.detail && typeof m.detail === 'object') ? m.detail : {} };
   if (prev) for (const [k, , n] of CONN_KEYS) {
     if (prev[k] === 'ok' && connState[k] !== 'ok') addStamp(logAdd('err', n + (connState[k] === 'down' ? ' tidak merespons.' : ' bermasalah.') + ' Ketik /status untuk detail.'));
     else if (prev[k] !== 'ok' && connState[k] === 'ok') addStamp(logAdd('task', n + ' aktif lagi.'));
@@ -5502,7 +5519,7 @@ function buildExportHtml(now) {
   const nUser = msgs.filter((m) => m.classList.contains('user')).length;
   const nIris = msgs.filter((m) => m.classList.contains('iris')).length;
   const when = now.toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'short' });
-  return '<!DOCTYPE html>\n<html lang="id">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>Percakapan dengan Iris</title>\n<style>' + EXPORT_CSS + '</style>\n</head>\n<body>\n<div class="wrap">\n<header><h1><b>✦</b> Percakapan dengan Iris</h1><div class="meta"><span>' + escHtml(when) + '</span><span>' + nUser + ' pesan kamu</span><span>' + nIris + ' balasan Iris</span></div></header>\n<main class="chat">\n' + items + '\n</main>\n<footer>Diekspor dari AI Companion overlay</footer>\n</div>\n</body>\n</html>\n';
+  return '<!DOCTYPE html>\n<html lang="id">\n<head>\n<meta charset="utf-8">\n<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>Percakapan dengan Iris</title>\n<style>' + EXPORT_CSS + '</style>\n</head>\n<body>\n<div class="wrap">\n<header><h1><b>✦</b> Percakapan dengan Iris</h1><div class="meta"><span>' + escHtml(when) + '</span><span>' + nUser + ' pesan kamu</span><span>' + nIris + ' balasan Iris</span></div></header>\n<main class="chat">\n' + items + '\n</main>\n<footer>Diekspor dari AI Companion overlay</footer>\n</div>\n</body>\n</html>\n';
 }
 function logExportCard(p) {
   irisBlock = null;
