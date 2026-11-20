@@ -363,7 +363,7 @@ if ($wslRunning) {
       if ($watch.ContainsKey($e.Port)) {
         if ($e.Wildcard) {
           if ($netMode -eq 'mirrored') {
-            Say 'WARN' ($watch[$e.Port] + ' (port ' + $e.Port + ') mendengar di semua antarmuka, dan WSL memakai mode mirrored') 'Dengan mirrored, ini bisa terjangkau dari jaringan lokal. Ikat ke 127.0.0.1 atau pakai firewall.'
+            Say 'WARN' ($watch[$e.Port] + ' (port ' + $e.Port + ') mendengar di semua antarmuka, dan WSL memakai mode mirrored') ('Dengan mirrored, ini bisa terjangkau dari jaringan lokal. Ikat ke 127.0.0.1 atau pakai firewall.' + $(if ($e.Port -eq 20128) { ' Untuk 9Router: wsl -d ' + $Distro + ' -- systemctl --user edit 9router, isi [Service] lalu Environment=HOSTNAME=127.0.0.1, simpan, lalu systemctl --user restart 9router.' } else { '' }))
           } else {
             Say 'INFO' ($watch[$e.Port] + ' (port ' + $e.Port + ') mendengar di semua antarmuka di dalam WSL') 'Mode NAT umumnya tidak terbuka ke jaringan lain, tetapi mengikatnya ke 127.0.0.1 lebih aman.'
           }
@@ -421,6 +421,8 @@ if ($wslRunning) {
       Say 'OK' ('Unit ' + $u + ': aktif dan otomatis naik (enabled)')
     } elseif ($st.Exists -and $st.Active -eq 'active') {
       Say 'WARN' ('Unit ' + $u + ': aktif tetapi tidak otomatis naik (' + $st.Enabled + ')') ('Aktifkan: wsl -d ' + $Distro + ' -- systemctl --user enable ' + $u)
+    } elseif ($u -eq 'voicevox' -and $st.Exists -and $st.Active -ne 'active' -and $st.Enabled -eq 'disabled' -and (Test-Path -LiteralPath (Join-Path $Proyek 'vv-engine\run.exe'))) {
+      Say 'INFO' ('Unit voicevox: ' + $st.Active + ' (' + $st.Enabled + '), sengaja mati: VOICEVOX dijalankan di Windows, bukan di WSL')
     } elseif ($st.Exists) {
       Say 'WARN' ('Unit ' + $u + ': ' + $st.Active + ' (' + $st.Enabled + ')') ('Cek: wsl -d ' + $Distro + ' -- systemctl --user status ' + $u + ' --no-pager')
     } elseif ($u -eq '9router') {

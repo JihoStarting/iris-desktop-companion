@@ -22,15 +22,15 @@ using Microsoft.Win32;
 [assembly: AssemblyDescription("Peluncur IRIS desktop companion: Start, Stop, Hermes, Doctor")]
 [assembly: AssemblyCompany("KangJiho")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 KangJiho. All rights reserved")]
-[assembly: AssemblyInformationalVersion("1.3.1")]
-[assembly: AssemblyVersion("1.3.1.0")]
-[assembly: AssemblyFileVersion("1.3.1.0")]
+[assembly: AssemblyInformationalVersion("1.3.0")]
+[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyFileVersion("1.3.0.0")]
 
 namespace IrisLauncher
 {
     static class AppInfo
     {
-        public const string Version = "1.3.1";
+        public const string Version = "1.3";
 
         [DllImport("kernel32.dll")]
         static extern bool SetProcessWorkingSetSize(IntPtr proc, IntPtr min, IntPtr max);
@@ -675,7 +675,8 @@ namespace IrisLauncher
             cbRotasi = C("Rapikan log besar (> 5 MB) dan hapus arsip log > 14 hari", s.RotasiLog, 20, y); y += 28;
             cbHotkey = C("Pintasan global Ctrl+Alt+I: tampilkan / sembunyikan launcher", s.Hotkey, 20, y); y += 28;
             cbCekUpd = C("Cek update komponen otomatis saat launcher dibuka (butuh internet)", s.CekUpdate, 20, y); y += 32;
-            Controls.Add(L("Repo GitHub rilis Iris Launcher untuk update sendiri (contoh: namamu/IrisLauncher; kosongkan bila tidak dipakai)", 20, y)); y += 24;
+            Label lrepo = L("Repo GitHub rilis Iris Launcher untuk update sendiri (contoh: namamu/IrisLauncher; kosongkan bila tidak dipakai)", 20, y);
+            lrepo.MaximumSize = new Size(560, 0); Controls.Add(lrepo); y += 44;
             tbRepo = T(s.LauncherRepo, 20, y, 440); Controls.Add(tbRepo); y += 44;
 
             Button ok = new RBtn(); ok.Text = "Simpan"; ok.SetBounds(360, y, 110, 34);
@@ -688,10 +689,24 @@ namespace IrisLauncher
 
             // Isi lebih panjang dari layar kecil: aktifkan gulir.
             int contentH = y + 34 + 24;
-            int maxH = Screen.PrimaryScreen.WorkingArea.Height - 90;
+            float sc = 1F;
+            try { using (Graphics gr = CreateGraphics()) sc = gr.DpiX / 96F; } catch { }
+            if (sc < 1F) sc = 1F;
+            int maxH = (int)(Screen.PrimaryScreen.WorkingArea.Height / sc) - 100;   // tinggi layar dalam satuan 96 dpi
             AutoScroll = true;
             AutoScrollMinSize = new Size(0, contentH);
             ClientSize = new Size(600, Math.Min(contentH, Math.Max(420, maxH)));
+        }
+
+        // Pengaman terakhir: jangan pernah lebih tinggi dari area kerja layar (mis. layar kecil atau skala DPI besar).
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            Rectangle wa = Screen.FromControl(this).WorkingArea;
+            if (Height > wa.Height - 16) Height = wa.Height - 16;
+            int top = wa.Top + Math.Max(0, (wa.Height - Height) / 2);
+            int left = Math.Max(wa.Left, Math.Min(Left, wa.Right - Width));
+            Location = new Point(left, top);
         }
 
         Label L(string t, int x, int y)
@@ -1608,11 +1623,20 @@ namespace IrisLauncher
 
         void HideToTray() { DoHide(true); }
 
+        [DllImport("user32.dll")]
+        static extern bool SetForegroundWindow(IntPtr hWnd);
+        [DllImport("user32.dll")]
+        static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
         void RestoreFromTray()
         {
-            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
             if (!Visible) Show();
+            if (WindowState == FormWindowState.Minimized) ShowWindow(Handle, 9);   // SW_RESTORE
+            bool top = TopMost;
+            TopMost = true;      // trik agar lolos dari foreground lock Windows
+            TopMost = top;
             Activate(); BringToFront();
+            SetForegroundWindow(Handle);
             Refresh2();
         }
 
