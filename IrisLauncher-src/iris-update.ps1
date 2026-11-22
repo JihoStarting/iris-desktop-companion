@@ -1,14 +1,15 @@
 <#
-iris-update.ps1 v1.1 - cek dan pasang update komponen Iris. ASCII saja (aman di Windows PowerShell 5.1). by: KangJiho
+iris-update.ps1 (peluncur v1.3.x) - cek dan pasang update komponen Iris. ASCII saja (aman di Windows PowerShell 5.1). by: KangJiho
 
 Pakai:
   powershell -ExecutionPolicy Bypass -File .\iris-update.ps1 -Aksi cek    -Nama semua -Proyek <jalur>
   powershell -ExecutionPolicy Bypass -File .\iris-update.ps1 -Aksi update -Nama router,hermes -Proyek <jalur>
   powershell -ExecutionPolicy Bypass -File .\iris-update.ps1 -Aksi pulihkan -Nama voicevox -Proyek <jalur>
+  powershell -ExecutionPolicy Bypass -File .\iris-update.ps1 -Aksi pulihkan -Nama server   -Proyek <jalur>   (paket Python ke snapshot sebelum update terakhir)
 Nama : semua | wsl | voicevox | router | hermes | server | overlay | apt | launcher   (boleh beberapa, pisah koma)
 Opsi : -Distro Ubuntu  -TungguDetik 90  -TanpaGPU  -Diam (cek tanpa obrolan, hanya baris @@UPD)
        -Seri (cek berurutan; tanpa ini cek banyak komponen berjalan paralel)
-       -Launcher <jalur exe> -LauncherVersion 1.3 -LauncherRepo pemilik/repo  (untuk update launcher sendiri)
+       -Launcher <jalur exe> -LauncherVersion 1.3.4 -LauncherRepo pemilik/repo  (untuk update launcher sendiri)
 
 Keluaran mode cek (dibaca Iris Launcher), satu baris per komponen:
   @@UPD|kunci|terpasang|terbaru|status|catatan
@@ -17,14 +18,14 @@ Keluaran mode cek (dibaca Iris Launcher), satu baris per komponen:
 Cara tiap komponen di-update:
   wsl      : wsl --update (WSL dimatikan dulu, lalu dinyalakan lagi bersama layanan yang tadi hidup)
   voicevox : unduh voicevox_engine-windows-<varian>-<versi>.7z.* dari GitHub, periksa SHA-256 (bila GitHub menyediakan),
-             ekstrak, tukar folder vv-engine (folder lama disimpan sebagai vv-engine.bak-<waktu>, hanya 1 cadangan
+             (WAJIB: tanpa checksum update dibatalkan), ekstrak, tukar folder vv-engine (folder lama disimpan sebagai vv-engine.bak-<waktu>, hanya 1 cadangan
              terakhir; -Aksi pulihkan mengembalikannya)
   router   : npm install -g 9router@latest di dalam WSL (npm yang sama dengan yang memasang 9Router)
   hermes   : hermes update (bawaan Hermes) di dalam WSL
   server   : pip install --upgrade -r requirements.txt di .venv (paket yang di-pin dengan == dilewati)
   overlay  : npm update di folder proyek (hanya naik dalam rentang versi package.json)
   apt      : apt-get update + upgrade di WSL sebagai root (wsl -u root, tanpa password)
-  launcher : unduh IrisLauncher*.exe dari rilis terbaru GitHub, periksa SHA-256, tukar exe (yang lama jadi .old);
+  launcher : unduh IrisLauncher*.exe dari rilis terbaru GitHub, periksa SHA-256 (WAJIB) dan ProductName, tukar exe (yang lama jadi .old);
              launcher menawarkan mulai ulang sesudahnya
 Setiap update dicatat di %LOCALAPPDATA%\IrisLauncher\update-history.log
 Layanan yang sedang hidup dimatikan sebelum update dan dinyalakan lagi sesudahnya.
@@ -180,11 +181,19 @@ function Get-Tag($Lines, [string]$Tag) {
   return ''
 }
 
-# Periksa SHA-256 terhadap digest dari GitHub ("sha256:<hex>"). Tanpa digest: hanya ukuran yang sudah dicek.
-function Test-Digest([string]$Path, $Digest, [string]$Label) {
-  if (-not $Digest) { Write-Host ('  (GitHub tidak menyediakan checksum untuk ' + $Label + '; hanya ukuran yang dicek)'); return }
+# Periksa SHA-256 terhadap digest dari GitHub ("sha256:<hex>").
+# Dengan -Wajib (dipakai untuk berkas yang akan DIJALANKAN: exe launcher dan mesin VOICEVOX) digest yang hilang atau
+# tidak dikenal membatalkan update. Tanpa -Wajib: hanya ukuran yang sudah dicek.
+function Test-Digest([string]$Path, $Digest, [string]$Label, [switch]$Wajib) {
+  if (-not $Digest) {
+    if ($Wajib) { throw ('GitHub tidak menyediakan checksum SHA-256 untuk ' + $Label + '; update dibatalkan karena berkas ini akan dijalankan dan keasliannya tidak bisa dipastikan.') }
+    Write-Host ('  (GitHub tidak menyediakan checksum untuk ' + $Label + '; hanya ukuran yang dicek)'); return
+  }
   $m = [regex]::Match([string]$Digest, '^sha256:([0-9a-fA-F]{64})$')
-  if (-not $m.Success) { Write-Host ('  (format checksum ' + $Label + ' tidak dikenal; dilewati)'); return }
+  if (-not $m.Success) {
+    if ($Wajib) { throw ('Format checksum ' + $Label + ' tidak dikenal; update dibatalkan.') }
+    Write-Host ('  (format checksum ' + $Label + ' tidak dikenal; dilewati)'); return
+  }
   Write-Host ('  memeriksa SHA-256 ' + $Label + ' ...')
   $got = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLower()
   if ($got -ne $m.Groups[1].Value.ToLower()) { throw ('SHA-256 ' + $Label + ' tidak cocok (didapat ' + $got + ')') }
@@ -637,7 +646,7 @@ function Update-Voice {
     $dest = Join-Path $wd $a.name
     Write-Host ('Mengunduh ' + $a.name + ' (' + [int]($a.size / 1MB) + ' MB)...')
     Download-File $a.browser_download_url $dest ([long]$a.size)
-    try { Test-Digest $dest $a.digest $a.name } catch { Remove-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue; throw }
+    try { Test-Digest $dest $a.digest $a.name -Wajib } catch { Remove-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue; throw }
     $files += $dest
   }
 
@@ -722,11 +731,10 @@ function Update-Router {
   Write-Host 'Menjalankan npm install -g 9router@latest di WSL...'
   $r = Invoke-Wsl ($BashPre + "`n" + $BashFind9 + "`n" + $BashRouterUpd) -Live
   if ($r.Code -ne 0 -and (($r.Lines -join "`n") -match 'EACCES|permission denied')) {
-    $npmX = Get-Tag $r.Lines 'NPM'
-    if ($npmX -notmatch '^[A-Za-z0-9_./~-]+$') { $npmX = 'npm' }
-    Write-Host 'Izin ditolak sebagai user biasa; mencoba ulang sebagai root (wsl -u root)...'
-    $rs = ('NPMX="{0}"' + "`n" + 'export PATH="$(dirname "$NPMX"):$PATH"' + "`n" + 'timeout 900 "$NPMX" install -g 9router@latest --allow-scripts=9router 2>&1' + "`n" + 'exit $?') -f $npmX
-    $r = Invoke-Wsl $rs -Live -User 'root'
+    # Sengaja TIDAK mengulang sebagai root: skrip pasang paket npm akan ikut berjalan sebagai root.
+    Write-Host 'GAGAL: izin ditolak saat menulis ke folder npm global di WSL.'
+    Write-Host '  Launcher tidak mengulang sebagai root secara otomatis. Sebaiknya folder npm global dijadikan milik user biasa.'
+    Write-Host ('  Kalau tetap mau memakai root, jalankan sendiri (sesuaikan jalur npm bila memakai nvm): wsl -d ' + $Distro + ' -u root -- npm install -g 9router@latest')
   }
   $ok = ($r.Code -eq 0)
   if ($was) { Write-Host 'Menyalakan 9Router lagi...'; [void](Svc 'router' 'nyala') }
@@ -747,16 +755,52 @@ function Update-Hermes {
   return $ok
 }
 
+# Snapshot "pip freeze" sebelum update server.py (satu generasi), di samping update-history.log.
+function Get-PipSnap { return (Join-Path (Split-Path $PSScriptRoot -Parent) 'pip-pre-update.txt') }
+
+function Rollback-Server {
+  $py = Join-Path $Proyek '.venv\Scripts\python.exe'
+  $snap = Get-PipSnap
+  if (-not (Test-Path -LiteralPath $py)) { Write-Host 'GAGAL: .venv\Scripts\python.exe tidak ada.'; return $false }
+  if (-not (Test-Path -LiteralPath $snap)) { Write-Host 'GAGAL: belum ada snapshot paket Python (dibuat otomatis tiap kali server.py di-update).'; return $false }
+  $was = ((Get-HttpCode $UrlServer) -gt 0)
+  if ($was) { Write-Host 'Mematikan server.py sebentar...'; [void](Svc 'server' 'mati') }
+  Write-Host 'Mengembalikan paket Python dari snapshot ...'
+  & $py -m pip install -r $snap --disable-pip-version-check 2>&1 | ForEach-Object { Write-Host ('   ' + (Strip-Ansi ([string]$_))) }
+  $ok = ($LASTEXITCODE -eq 0)
+  if ($was) { Write-Host 'Menyalakan server.py lagi...'; [void](Svc 'server' 'nyala') }
+  if ($ok) { Write-Host 'Paket Python dipulihkan ke versi sebelum update terakhir.' } else { Write-Host 'GAGAL: pip mengembalikan galat (lihat baris di atas).' }
+  return $ok
+}
+
 function Update-Server {
   $py = Join-Path $Proyek '.venv\Scripts\python.exe'
   $rq = Join-Path $Proyek 'requirements.txt'
   if (-not (Test-Path -LiteralPath $py)) { Write-Host 'GAGAL: .venv\Scripts\python.exe tidak ada.'; return $false }
   if (-not (Test-Path -LiteralPath $rq)) { Write-Host 'GAGAL: requirements.txt tidak ada.'; return $false }
+  # Snapshot versi paket sekarang (pip freeze) supaya update yang gagal atau merusak bisa dikembalikan.
+  $snap = Get-PipSnap
+  $snapOk = $false
+  try {
+    $fr = @(& $py -m pip freeze --disable-pip-version-check 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $fr.Count -gt 0) {
+      Set-Content -LiteralPath $snap -Value $fr -Encoding UTF8
+      $snapOk = $true
+      Write-Host ('Snapshot paket Python disimpan (' + $fr.Count + ' paket) untuk pemulihan.')
+    }
+  } catch { }
+  if (-not $snapOk) { Write-Host 'PERINGATAN: snapshot paket Python gagal dibuat; pemulihan otomatis tidak tersedia untuk update ini.' }
   $was = ((Get-HttpCode $UrlServer) -gt 0)
   if ($was) { Write-Host 'Mematikan server.py sebentar...'; [void](Svc 'server' 'mati') }
   Write-Host 'Menjalankan pip install --upgrade -r requirements.txt ...'
   & $py -m pip install --upgrade -r $rq --disable-pip-version-check 2>&1 | ForEach-Object { Write-Host ('   ' + (Strip-Ansi ([string]$_))) }
   $ok = ($LASTEXITCODE -eq 0)
+  if (-not $ok -and $snapOk) {
+    Write-Host 'pip gagal; mengembalikan paket ke versi sebelum update...'
+    & $py -m pip install -r $snap --disable-pip-version-check 2>&1 | ForEach-Object { Write-Host ('   ' + (Strip-Ansi ([string]$_))) }
+    if ($LASTEXITCODE -eq 0) { Write-Host 'Paket Python dikembalikan ke keadaan sebelum update.' }
+    else { Write-Host 'GAGAL mengembalikan paket otomatis. Coba menu Alat > Pulihkan paket Python.' }
+  }
   if ($was) { Write-Host 'Menyalakan server.py lagi...'; [void](Svc 'server' 'nyala') }
   if ($ok) { Write-Host 'Paket Python ter-update.' } else { Write-Host 'GAGAL: pip mengembalikan galat (lihat baris di atas).' }
   return $ok
@@ -840,7 +884,7 @@ function Update-Launcher {
   Write-Host ('Mengunduh ' + $asset.name + ' (' + [int]($asset.size / 1KB) + ' KB) untuk versi ' + $tag + '...')
   if (Test-Path -LiteralPath $new) { Remove-Item -LiteralPath $new -Force }
   Download-File $asset.browser_download_url $new ([long]$asset.size)
-  try { Test-Digest $new $asset.digest $asset.name } catch { Remove-Item -LiteralPath $new -Force -ErrorAction SilentlyContinue; throw }
+  try { Test-Digest $new $asset.digest $asset.name -Wajib } catch { Remove-Item -LiteralPath $new -Force -ErrorAction SilentlyContinue; throw }
   $hdr = New-Object byte[] 2
   $fs = [System.IO.File]::OpenRead($new)
   try { [void]$fs.Read($hdr, 0, 2) } finally { $fs.Close() }
@@ -848,6 +892,18 @@ function Update-Launcher {
     Remove-Item -LiteralPath $new -Force -ErrorAction SilentlyContinue
     Write-Host 'GAGAL: berkas unduhan bukan program Windows yang valid.'
     return $false
+  }
+  # Pastikan ini memang Iris Launcher (ProductName dari AssemblyProduct) dan bandingkan versinya dengan tag rilis.
+  $pn = ''
+  $fv = ''
+  try { $vi = (Get-Item -LiteralPath $new).VersionInfo; $pn = [string]$vi.ProductName; $fv = [string]$vi.FileVersion } catch { }
+  if ($pn -ne 'Iris Launcher') {
+    Remove-Item -LiteralPath $new -Force -ErrorAction SilentlyContinue
+    Write-Host ('GAGAL: berkas unduhan bukan Iris Launcher (ProductName: "' + $pn + '").')
+    return $false
+  }
+  if ((Judge $fv $tag) -eq 'update') {
+    Write-Host ('PERINGATAN: versi di dalam exe (' + $fv + ') lebih rendah dari tag rilis (' + $tag + '). Tombol Update akan terus menawarkan update; samakan AssemblyVersion dengan tag saat membuat rilis.')
   }
   if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue }
   try {
@@ -985,6 +1041,15 @@ function Check-Parallel {
 }
 
 if ($Aksi -eq 'pulihkan') {
+  if ($pilih.Count -eq 1 -and $pilih[0] -eq 'server') {
+    $oks = $false
+    try { $oks = Rollback-Server } catch { Write-Host ('GAGAL: ' + $_.Exception.Message) }
+    $hs2 = 'GAGAL'
+    if ($oks -eq $true) { $hs2 = 'OK (pemulihan)' }
+    Hist 'server' '' '' $hs2
+    if ($oks -eq $true) { exit 0 }
+    exit 1
+  }
   $v0 = Get-VvVersion
   $okp = $false
   try { $okp = Rollback-Voice } catch { Write-Host ('GAGAL: ' + $_.Exception.Message) }

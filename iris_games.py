@@ -432,6 +432,7 @@ def _stat_awal() -> dict:
     return {
         "benar": 0, "menyerah": 0, "lewati": 0, "poin": 0,
         "streak": 0, "streak_terbaik": 0, "riwayat": [],
+        "dimainkan": [],   # v102: SEMUA id yang pernah muncul (riwayat hanya jendela anti-ulang 30 id)
     }
 
 
@@ -549,16 +550,22 @@ class GameTekaTeki:
 
             if self.aktif:
                 awalan = awalan or "Oke, ganti teka-teki! "
-            riwayat = self.stat["riwayat"]
-            baru = [t for t in pool if t.id not in riwayat]
-            if not baru:  # semua sudah pernah muncul: kosongkan riwayat pool ini
+            dimainkan = set(self.stat["dimainkan"])
+            baru = [t for t in pool if t.id not in dimainkan]
+            if not baru:  # semua sudah pernah muncul: kosongkan catatan pool ini
                 ids = {t.id for t in pool}
-                self.stat["riwayat"] = [i for i in riwayat if i not in ids]
+                self.stat["dimainkan"] = [i for i in self.stat["dimainkan"] if i not in ids]
                 baru = pool
+            # v102: utamakan yang tidak ada di jendela anti-ulang; bila habis, pakai semua yang tersedia
+            jauh = [t for t in baru if t.id not in self.stat["riwayat"]]
 
-            teka = self.rng.choice(baru)
+            teka = self.rng.choice(jauh or baru)
             self.stat["riwayat"].append(teka.id)
             self.stat["riwayat"] = self.stat["riwayat"][-RIWAYAT_MAKS:]
+            if teka.id not in self.stat["dimainkan"]:
+                self.stat["dimainkan"].append(teka.id)
+            ada = {t.id for t in self.bank}   # buang id yang sudah hilang dari bank (teka-teki buatan yang terpangkas)
+            self.stat["dimainkan"] = [i for i in self.stat["dimainkan"] if i in ada]
             self.aktif = Ronde(teka=teka, mode=mode, aktivitas=self.sekarang())
             self._simpan()
         self._picu_isi_ulang(mode)
@@ -573,7 +580,7 @@ class GameTekaTeki:
         if not self.pembuat:
             return
         with self._kunci:
-            riwayat = set(self.stat["riwayat"])
+            riwayat = set(self.stat["dimainkan"])   # v102: bukan jendela 30 id, supaya stok sungguhan yang dihitung
             for b in self._bahasa_boleh():
                 if mode not in ("campur", b) or b in self._sedang_isi:
                     continue
@@ -772,12 +779,15 @@ class GameTekaTeki:
         if not isinstance(data, dict):
             return stat
         for k, v in stat.items():
-            if k == "riwayat":
+            if k in ("riwayat", "dimainkan"):
                 lama = data.get(k)
                 if isinstance(lama, list):
-                    stat[k] = [x for x in lama if isinstance(x, str)][-RIWAYAT_MAKS:]
+                    bersih = [x for x in lama if isinstance(x, str)]
+                    stat[k] = bersih[-RIWAYAT_MAKS:] if k == "riwayat" else list(dict.fromkeys(bersih))[-5000:]
             elif isinstance(data.get(k), int) and not isinstance(data.get(k), bool):
                 stat[k] = max(0, data[k])
+        if not isinstance(data.get("dimainkan"), list):   # berkas simpanan lama: mulai dari jendela riwayat
+            stat["dimainkan"] = list(dict.fromkeys(stat["riwayat"]))
         return stat
 
     def _simpan(self) -> None:

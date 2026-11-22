@@ -1,5 +1,5 @@
 // by: KangJiho
-// Iris Launcher v1.3 - satu exe: Start / Stop / Hermes / Doctor / Update + pengaturan + tray, notifikasi, preset, penampil log.
+// Iris Launcher - satu exe: Start / Stop / Hermes / Doctor / Update + pengaturan + tray, notifikasi, preset, penampil log.
 // Skrip PowerShell (iris-start/stop/hermes/doctor) tertanam di dalam exe dan diekstrak
 // ke %LOCALAPPDATA%\IrisLauncher\scripts saat dijalankan. Pengaturan: %APPDATA%\IrisLauncher\settings.ini
 using System;
@@ -22,15 +22,38 @@ using Microsoft.Win32;
 [assembly: AssemblyDescription("Peluncur IRIS desktop companion: Start, Stop, Hermes, Doctor")]
 [assembly: AssemblyCompany("KangJiho")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 KangJiho. All rights reserved")]
-[assembly: AssemblyInformationalVersion("1.3.0")]
-[assembly: AssemblyVersion("1.3.0.0")]
-[assembly: AssemblyFileVersion("1.3.0.0")]
+// SUMBER TUNGGAL VERSI: ubah tiga baris ini saja (AppInfo.Version dibaca dari AssemblyVersion saat berjalan).
+// Harus sama dengan tag rilis GitHub (mis. tag v1.3.4), kalau tidak tombol Update terus menawarkan update.
+[assembly: AssemblyInformationalVersion("1.3.4")]
+[assembly: AssemblyVersion("1.3.4.0")]
+[assembly: AssemblyFileVersion("1.3.4.0")]
 
 namespace IrisLauncher
 {
     static class AppInfo
     {
-        public const string Version = "1.3";
+        // Dibaca dari AssemblyVersion (Major.Minor.Build), jadi hanya ada satu tempat untuk mengubah versi.
+        public static readonly string Version = ReadVersion();
+
+        static string ReadVersion()
+        {
+            try
+            {
+                System.Version v = Assembly.GetExecutingAssembly().GetName().Version;
+                return v.Major + "." + v.Minor + "." + Math.Max(0, v.Build);
+            }
+            catch { return "0.0.0"; }
+        }
+
+        // Bungkus nilai dengan tanda kutip untuk baris perintah Windows. Backslash di ujung nilai (mis. "Z:\")
+        // digandakan, kalau tidak backslash itu meng-escape kutip penutup dan argumen sesudahnya rusak.
+        public static string Quote(string v)
+        {
+            if (v == null) v = "";
+            int n = 0;
+            for (int i = v.Length - 1; i >= 0 && v[i] == '\\'; i--) n++;
+            return "\"" + v + new string('\\', n) + "\"";
+        }
 
         [DllImport("kernel32.dll")]
         static extern bool SetProcessWorkingSetSize(IntPtr proc, IntPtr min, IntPtr max);
@@ -587,7 +610,7 @@ namespace IrisLauncher
         // Argumen iris-stop.ps1 (sama dengan tombol Stop): StopSemua=false -> hanya overlay + server.py
         public string StopArgs()
         {
-            string a = "-Proyek \"" + Proyek + "\" -Distro " + Distro;
+            string a = "-Proyek " + AppInfo.Quote(Proyek) + " -Distro " + Distro;
             if (!StopSemua) a += " -TanpaWSL";
             return a;
         }
@@ -868,7 +891,11 @@ namespace IrisLauncher
         static readonly string[] Names = new string[] {
             "iris-start.log", "iris-server.out.log", "iris-server.err.log",
             "iris-voicevox.out.log", "iris-voicevox.err.log",
-            "iris-overlay.out.log", "iris-overlay.err.log" };
+            "iris-overlay.out.log", "iris-overlay.err.log",
+            // log proses sebelumnya (dipindah oleh skrip Start sebelum proses baru menimpanya); berguna setelah crash
+            "iris-server.err.log.old", "iris-server.out.log.old",
+            "iris-voicevox.err.log.old", "iris-voicevox.out.log.old",
+            "iris-overlay.err.log.old", "iris-overlay.out.log.old" };
 
         protected override void OnHandleCreated(EventArgs e)
         {
@@ -895,7 +922,7 @@ namespace IrisLauncher
             bool any = false;
             foreach (string n in Names)
                 if (File.Exists(Path.Combine(dir, n))) { cb.Items.Add(n); any = true; }
-            if (!any) foreach (string n in Names) cb.Items.Add(n);
+            if (!any) foreach (string n in Names) if (!n.EndsWith(".old", StringComparison.Ordinal)) cb.Items.Add(n);
             cb.SelectedIndex = 0;
             cb.SelectedIndexChanged += delegate { lastText = null; LoadLog(); };
 
@@ -1508,7 +1535,7 @@ namespace IrisLauncher
         {
             try
             {
-                if (Directory.Exists(cfg.Proyek)) Process.Start("explorer.exe", "\"" + cfg.Proyek + "\"");
+                if (Directory.Exists(cfg.Proyek)) Process.Start("explorer.exe", AppInfo.Quote(cfg.Proyek));
                 else Log("Folder proyek belum diatur.");
             }
             catch (Exception ex) { Log("[GAGAL] " + ex.Message); }
@@ -1816,11 +1843,15 @@ namespace IrisLauncher
             m.Items.Add(Item("Log layanan...", delegate { OpenLogViewer(); }));
             m.Items.Add(Item("Salin laporan Doctor", delegate { CopyDoctor(); }));
             m.Items.Add(Item("Rapikan log lama sekarang", delegate { RotateLogs(true); }));
+            ToolStripMenuItem pipRb = Item("Pulihkan paket Python (sebelum update terakhir)", delegate { RunPipRollback(); });
+            m.Items.Add(new ToolStripSeparator());
+            m.Items.Add(pipRb);
             m.Opening += delegate
             {
                 envHome.Enabled = File.Exists(HomeEnv());
                 envProj.Enabled = File.Exists(ProjEnv());
                 wslc.Enabled = File.Exists(WslConfig());
+                pipRb.Enabled = File.Exists(PipSnap());
             };
             return m;
         }
@@ -1963,7 +1994,15 @@ namespace IrisLauncher
                 r.AllowAutoRedirect = false; r.Proxy = null;
                 using (WebResponse w = r.GetResponse()) { return true; }
             }
-            catch (WebException ex) { return ex.Response != null; }
+            catch (WebException ex)
+            {
+                // Respons galat (404, 401, dst.) tetap berarti layanan hidup, tetapi harus ditutup supaya koneksinya
+                // kembali ke kolam. Bila dibiarkan, batas koneksi per alamat habis dan probe berikutnya timeout
+                // (chip salah menampilkan "Mati").
+                if (ex.Response == null) return false;
+                try { ex.Response.Close(); } catch { }
+                return true;
+            }
             catch { return false; }
         }
 
@@ -2087,8 +2126,8 @@ namespace IrisLauncher
             return Settings.IsProject(cfg.Proyek);
         }
 
-        string P(string name) { return "\"" + Path.Combine(Res.ScriptDir(), name) + "\""; }
-        string Q(string v) { return "\"" + v + "\""; }
+        string P(string name) { return AppInfo.Quote(Path.Combine(Res.ScriptDir(), name)); }
+        string Q(string v) { return AppInfo.Quote(v); }
 
         void Run(string title, string script, string args) { Run(title, script, args, null); }
 
@@ -2461,6 +2500,22 @@ namespace IrisLauncher
                 delegate (int c) { BeginInvoke((Action)delegate { CheckUpdates(false); }); });
         }
 
+        // Snapshot "pip freeze" yang dibuat iris-update.ps1 sebelum update server.py (satu generasi).
+        static string PipSnap()
+        {
+            return Path.Combine(Path.GetDirectoryName(Res.ScriptDir()), "pip-pre-update.txt");
+        }
+
+        void RunPipRollback()
+        {
+            if (busy || !Ready()) return;
+            string msg = "Paket Python di .venv akan dikembalikan ke daftar versi yang disimpan sebelum update server.py yang terakhir.\r\n\r\n"
+                + "server.py dimatikan sebentar. Lanjutkan?";
+            if (MessageBox.Show(this, msg, "Pulihkan paket Python", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            Run("Pulihkan paket Python", "iris-update.ps1", UpdArgs("pulihkan", "server"),
+                delegate (int c) { BeginInvoke((Action)delegate { CheckUpdates(false); }); });
+        }
+
         // Cek berkala saat launcher dibiarkan hidup (mis. di tray): paling sering sekali per 4 jam.
         void StartUpdTimer()
         {
@@ -2556,6 +2611,7 @@ namespace IrisLauncher
                     return;
                 }
                 if (stopAll) { HeadlessStop(); return; }
+                ServicePointManager.DefaultConnectionLimit = 16;   // probe status berjalan paralel tiap beberapa detik
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Application.Run(new MainForm(startTray));

@@ -6,6 +6,10 @@ Alur:
   klien (WebSocket) -> teks user -> 9Router (stream) -> per baris
   -> VOICEVOX (speaker 2) -> kirim {teks, audio wav base64, moras, emosi} ke klien
 
+Perubahan v103.1 (22 Nov 2026):
+  - approval_policy.py digabung ke server.py (bagian "approval_policy" tepat setelah AGENT_APPROVAL_AUTO; fungsi kini _ap_classify). Perilaku sama; berkas
+    approval_policy.py tidak dipakai lagi dan boleh dihapus. Beda kecil: izin otomatis tidak lagi bisa mati karena berkas itu hilang, hanya karena AGENT_APPROVAL_AUTO.
+
 Perubahan v103 (audit keamanan lanjutan, 22 Nov 2026):
   - Jawaban izin ke Hermes: bentuk body TANPA request_id tidak lagi dikirim untuk "once" kalau request_id diketahui. Dulu, kalau dua
     bentuk pertama gagal (400), "once" dikirim tanpa pengikat dan bisa menyetujui permintaan izin LAIN yang muncul belakangan.
@@ -351,15 +355,315 @@ APPROVAL_MAX_PENDING = max(1, int(env_float("AGENT_APPROVAL_MAX_PENDING", 3.0)))
 CONFIRM_TASK_MAX = int(env_float("AGENT_CONFIRM_TASK_MAX", 2000.0))   # v103: tugas /agen yang lebih panjang tidak bisa dikonfirmasi dengan aman
 APPROVAL_CMD_MAX = int(env_float("AGENT_APPROVAL_CMD_MAX", 2000.0))   # v102: perintah lebih panjang dari ini DITOLAK (dulu dipotong di kartu)
 # v99.1: izin otomatis KHUSUS perintah baca-saja (opt-in). AGENT_APPROVAL_AUTO=readonly mengaktifkan; bawaan MATI.
-# Pemeriksaan ada di approval_policy.py (satu folder dengan server.py). Perintah yang tidak terbukti baca-saja tetap tampil sebagai kartu.
+# Pemeriksaan (_ap_classify) ada tepat di bawah; sejak v103.1 isinya digabung dari approval_policy.py. Perintah yang tidak terbukti baca-saja tetap tampil sebagai kartu.
 APPROVAL_AUTO = os.getenv("AGENT_APPROVAL_AUTO", "0").strip().lower() in ("1", "readonly", "true", "on", "yes")
-try:
-    import approval_policy as _approval_policy
-except Exception as _e:
-    _approval_policy = None
-    if APPROVAL_AUTO:
-        print("[WARN] AGENT_APPROVAL_AUTO aktif tetapi approval_policy.py tidak dimuat (%r); semua izin tetap lewat kartu" % (_e,), flush=True)
-        APPROVAL_AUTO = False
+# ---- v103.1 (22 Nov 2026): isi approval_policy.py digabung ke sini ----
+# Izin otomatis KHUSUS perintah Hermes yang terbukti hanya MEMBACA (opt-in; AGENT_APPROVAL_AUTO=readonly). Prinsip: fail-closed.
+# _ap_classify(cmd) -> (True, alasan) hanya jika SELURUH perintah lolos pemeriksaan statis; selain itu (False, alasan) dan kartu Izinkan / Tolak tetap tampil.
+#  1. Bentuk shell sederhana: kata + operator | || && (dan 2>&1). Ditolak: ; & ` $ ( ) { } < > ~ \ baris baru di luar kutip.
+#  2. Tiap segmen: cd <folder> (di bawah AGENT_APPROVAL_AUTO_ROOT, bawaan /workspace), alat baca saja (objdump, strings, file, sha256sum, head, grep, cat, ls, ...),
+#     atau python3 -c "<kode>" / python3 << 'EOF' ... EOF (kodenya diperiksa lewat AST di _ap_py_ok).
+#  3. Python: impor hanya dari daftar putih, open() hanya mode baca dengan path literal, tanpa exec/eval/compile/getattr/__dunder__, os/subprocess/socket/shutil, .write/.open/.system dst.
+#  4. Path harus relatif (tanpa ..) atau di bawah /workspace atau /tmp. Menulis HANYA ke /tmp/..., hanya lewat dd (if/of/bs/skip/count/status), cp (2 path, tanpa opsi), mkdir.
+# Mengurangi risiko, bukan menghapusnya: pemeriksaan statis tidak bisa menjamin 100%. Karena itu bawaannya MATI.
+import ast
+import ast
+import os
+import re
+
+_ap_ROOT = (os.getenv("AGENT_APPROVAL_AUTO_ROOT", "/workspace").strip() or "/workspace").rstrip("/") or "/workspace"
+# folder sementara di sandbox: boleh DIBACA, dan satu-satunya tempat yang boleh DITULIS (hanya lewat dd / cp / mkdir dengan bentuk ketat).
+_ap_SCRATCH = (os.getenv("AGENT_APPROVAL_AUTO_SCRATCH", "/tmp").strip() or "/tmp").rstrip("/") or "/tmp"
+_ap_READ_ROOTS = (_ap_ROOT, _ap_SCRATCH)
+_ap_MAX_CMD = 12000
+
+# alat yang hanya membaca. Nilai: (flag terlarang, maks argumen posisional atau None)
+_ap_SIMPLE = {
+    "objdump": (set(), None), "readelf": (set(), None), "nm": (set(), None), "strings": (set(), None),
+    "file": ({"-C", "--compile"}, None), "sha256sum": (set(), None), "sha1sum": (set(), None), "md5sum": (set(), None),
+    "hexdump": (set(), None), "od": (set(), None), "xxd": ({"-r", "-revert"}, 1),
+    "head": (set(), None), "tail": (set(), None), "wc": (set(), None), "ls": (set(), None), "stat": (set(), None),
+    "grep": (set(), None), "cut": (set(), None), "tr": (set(), None), "cat": (set(), None),
+    "echo": (set(), None), "pwd": (set(), None),
+}
+
+_ap_PY_IMPORTS = {"struct", "re", "hashlib", "binascii", "collections", "math", "itertools", "string", "base64",
+               "zlib", "lzma", "bz2", "datetime", "json", "textwrap", "functools", "operator", "codecs", "sys", "pefile"}
+
+_ap_BAD_CALLS = {"exec", "eval", "compile", "__import__", "globals", "locals", "vars", "getattr", "setattr", "delattr",
+              "LZMAFile", "BZ2File", "input", "breakpoint", "help", "memoryview", "classmethod", "staticmethod", "property", "super", "type"}
+
+_ap_BAD_ATTRS = {
+    "open", "write", "writelines", "writebytes", "system", "popen", "spawn", "spawnl", "spawnv", "exec", "execv", "execl",
+    "remove", "unlink", "rename", "renames", "replace", "mkdir", "makedirs", "rmdir", "removedirs", "rmtree", "chmod", "chown",
+    "symlink", "link", "truncate", "extract", "extractall", "dump", "dumps_to", "save", "to_file",
+    "os", "subprocess", "socket", "shutil", "ctypes", "importlib", "builtins", "modules", "logging", "FileHandler",
+    "tempfile", "urllib", "http", "requests", "multiprocessing", "threading", "signal", "pty", "pickle", "marshal", "mmap",
+    "f_globals", "f_locals", "f_builtins", "gi_frame", "gi_code", "cr_frame", "tb_frame", "func_globals", "settrace",
+    "setprofile", "stdin", "LZMAFile", "BZ2File",
+}
+
+_ap_TOKEN_BAD_UNQUOTED = set("$`(){};\\<")
+
+
+def _ap_path_ok(p: str) -> bool:
+    if not p or "\x00" in p or "\n" in p or "\r" in p:
+        return False
+    if re.match(r"^[A-Za-z]:[\\/]", p) or p.startswith("~") or p.startswith("\\\\"):
+        return False
+    if ".." in p.split("/"):
+        return False
+    if p.startswith("/"):
+        return any(p == r or p.startswith(r + "/") for r in _ap_READ_ROOTS)
+    return True
+
+
+def _ap_write_ok(p: str) -> bool:
+    """Tujuan tulis (dd of=, cp, mkdir): hanya di dalam folder scratch, bukan folder scratch itu sendiri."""
+    return _ap_path_ok(p) and p.startswith(_ap_SCRATCH + "/") and len(p) > len(_ap_SCRATCH) + 1
+
+
+def _ap_str_const_ok(s: str) -> bool:
+    """String literal di dalam kode Python: kalau tampak seperti path absolut / naik folder, harus lolos _path_ok."""
+    if s.startswith("/") or s.startswith("../") or "/../" in s or s.endswith("/.."):
+        return _ap_path_ok(s) if "\n" not in s and len(s) < 400 else False
+    return True
+
+
+def _ap_py_ok(code: str):
+    if len(code) > _ap_MAX_CMD:
+        return False, "kode terlalu panjang"
+    try:
+        tree = ast.parse(code)
+    except Exception:
+        return False, "kode python tidak terbaca"
+    open_funcs: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            if isinstance(node, ast.ImportFrom):
+                if node.level or not node.module:
+                    return False, "impor relatif"
+                mods = [node.module]
+            else:
+                mods = [a.name for a in node.names]
+            for m in mods:
+                if m.split(".")[0] not in _ap_PY_IMPORTS:
+                    return False, "impor tidak diizinkan: " + m
+        elif isinstance(node, (ast.Global, ast.Nonlocal, ast.AsyncFunctionDef, ast.Await, ast.Yield, ast.YieldFrom)):
+            return False, "konstruksi tidak diizinkan"
+        elif isinstance(node, ast.Attribute):
+            if node.attr.startswith("__") or node.attr in _ap_BAD_ATTRS:
+                return False, "atribut tidak diizinkan: " + node.attr
+        elif isinstance(node, ast.Name):
+            if node.id.startswith("__") or node.id in _ap_BAD_CALLS:
+                return False, "nama tidak diizinkan: " + node.id
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if not _ap_str_const_ok(node.value):
+                return False, "path literal di luar sandbox"
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "open":
+            a = node.args
+            if not a or not (isinstance(a[0], ast.Constant) and isinstance(a[0].value, str) and _ap_path_ok(a[0].value)):
+                return False, "open() harus memakai path literal di dalam sandbox"
+            mode = None
+            if len(a) >= 2:
+                mode = a[1].value if isinstance(a[1], ast.Constant) else None
+            if len(a) > 2:
+                return False, "open() argumen terlalu banyak"
+            for kw in node.keywords:
+                if kw.arg == "mode":
+                    mode = kw.value.value if isinstance(kw.value, ast.Constant) else None
+                elif kw.arg in ("encoding", "errors") and isinstance(kw.value, ast.Constant):
+                    pass
+                else:
+                    return False, "open() opsi tidak diizinkan"
+            if mode is None:
+                mode = "r"   # bawaan Python = baca teks
+            if mode not in ("r", "rb", "rt"):
+                return False, "open() hanya boleh mode baca"
+            open_funcs.add(id(node.func))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id == "open" and id(node) not in open_funcs:
+            return False, "open dipakai bukan sebagai panggilan langsung"
+    return True, "python baca-saja"
+
+
+def _ap_tokenize(s: str):
+    """Pecah perintah shell sederhana. Mengembalikan daftar ('w', kata) / ('op', |  ||  &&) / ('r', '2>&1'), atau None bila tidak aman."""
+    toks: list = []
+    cur: list[str] = []
+    has = False
+    i, n = 0, len(s)
+
+    def flush():
+        nonlocal cur, has
+        if has:
+            toks.append(("w", "".join(cur)))
+        cur, has = [], False
+
+    while i < n:
+        c = s[i]
+        if c in " \t":
+            flush(); i += 1; continue
+        if c in "\r\n":
+            return None
+        if c == "'":
+            j = s.find("'", i + 1)
+            if j < 0:
+                return None
+            cur.append(s[i + 1:j]); has = True; i = j + 1; continue
+        if c == '"':
+            j, buf = i + 1, []
+            while j < n and s[j] != '"':
+                d = s[j]
+                if d in "$`":
+                    return None
+                if d == "\\":
+                    if j + 1 >= n:
+                        return None
+                    e = s[j + 1]
+                    if e in '$`"\\':
+                        buf.append(e); j += 2; continue
+                    if e == "\n":
+                        j += 2; continue
+                buf.append(d); j += 1
+            if j >= n:
+                return None
+            cur.append("".join(buf)); has = True; i = j + 1; continue
+        if c == ">":
+            if "".join(cur) == "2" and s.startswith(">&1", i):
+                cur, has = [], False
+                toks.append(("r", "2>&1")); i += 3; continue
+            if "".join(cur) == "2" and s.startswith(">/dev/null", i) and s[i + 10:i + 11] in ("", " ", "\t", "&", "|"):
+                cur, has = [], False
+                toks.append(("r", "2>/dev/null")); i += 10; continue
+            return None
+        if c == "$" and s.startswith("$((", i):
+            # ekspansi aritmetika murni angka (mis. $((0xc7000))): hanya digit hex, x, spasi, + - * / %. Hasilnya cuma angka, jadi diganti "0" saat validasi.
+            j = s.find("))", i + 3)
+            if j < 0 or not re.fullmatch(r"[0-9a-fA-FxX+\-*/% ]+", s[i + 3:j]):
+                return None
+            cur.append("0"); has = True; i = j + 2; continue
+        if c in "|&":
+            if s.startswith("||", i) or s.startswith("&&", i):
+                flush(); toks.append(("op", s[i:i + 2])); i += 2; continue
+            if c == "|":
+                flush(); toks.append(("op", "|")); i += 1; continue
+            return None
+        if c in _ap_TOKEN_BAD_UNQUOTED or (c == "~" and not has) or (c == "#" and not has):
+            return None
+        cur.append(c); has = True; i += 1
+    flush()
+    return toks
+
+
+def _ap_segment_ok(words: list):
+    name = words[0]
+    args = words[1:]
+    if "/" in name:
+        return False, "perintah dengan path"
+    if name == "cd":
+        if len(args) == 1 and _ap_path_ok(args[0]):
+            return True, "cd"
+        return False, "cd di luar sandbox"
+    if name in ("python3", "python"):
+        if len(args) == 2 and args[0] == "-c":
+            return _ap_py_ok(args[1])
+        if args in (["-V"], ["--version"]):
+            return True, "versi python"
+        return False, "python selain -c"
+    if name == "dd":
+        seen: set = set()
+        for a in args:
+            if "=" not in a:
+                return False, "dd: argumen tidak dikenal"
+            k, v = a.split("=", 1)
+            if k in seen or k not in ("if", "of", "bs", "skip", "count", "status"):
+                return False, "dd: opsi tidak diizinkan: " + k
+            seen.add(k)
+            if k == "if" and not (v and _ap_path_ok(v)):
+                return False, "dd: if= di luar sandbox"
+            if k == "of" and not _ap_write_ok(v):
+                return False, "dd: of= harus di " + _ap_SCRATCH + "/"
+            if k in ("bs", "skip", "count") and not re.fullmatch(r"[0-9]{1,12}", v):
+                return False, "dd: " + k + " harus angka"
+            if k == "status" and v not in ("none", "noxfer", "progress"):
+                return False, "dd: status tidak valid"
+        return ("if" in seen, "dd salin ke " + _ap_SCRATCH) if "if" in seen else (False, "dd tanpa if=")
+    if name == "cp":
+        if len(args) == 2 and not any(a.startswith("-") for a in args) and _ap_path_ok(args[0]) and _ap_write_ok(args[1]):
+            return True, "cp ke " + _ap_SCRATCH
+        return False, "cp tidak memenuhi syarat"
+    if name == "mkdir":
+        paths = [a for a in args if a != "-p"]
+        if paths and len(paths) == len(args) - args.count("-p") and all(_ap_write_ok(a) for a in paths) and args.count("-p") <= 1:
+            return True, "mkdir di " + _ap_SCRATCH
+        return False, "mkdir tidak memenuhi syarat"
+    rule = _ap_SIMPLE.get(name)
+    if rule is None:
+        return False, "perintah tidak ada di daftar putih: " + name
+    banned, max_pos = rule
+    pos = 0
+    for a in args:
+        if a.startswith("-") and len(a) > 1:
+            if a in banned:
+                return False, "opsi terlarang: " + a
+            if "/" in a:
+                val = a.split("=", 1)[1] if "=" in a else ""
+                if not val or not _ap_path_ok(val):
+                    return False, "path dalam opsi"
+        else:
+            pos += 1
+            if ("/" in a or "\\" in a or a.startswith(".")) and not _ap_path_ok(a):
+                return False, "path di luar sandbox: " + a[:60]
+    if max_pos is not None and pos > max_pos:
+        return False, "terlalu banyak argumen posisional"
+    return True, name
+
+
+_ap_HERE = re.compile(
+    r"\A(?:cd\s+(?P<dir>[A-Za-z0-9_./-]+)\s*&&\s*)?python3?(?:\s+-u)?(?:\s+-)?\s*<<-?\s*(?P<q>['\"])(?P<tag>[A-Za-z_][A-Za-z0-9_]*)(?P=q)"
+    r"(?:\s*2>&1)?[ \t]*\n(?P<body>.*)\n(?P=tag)[ \t]*\Z", re.S)
+
+
+def _ap_classify(cmd: str):
+    """(True, alasan) hanya bila perintah terbukti baca-saja. Selain itu (False, alasan)."""
+    if not isinstance(cmd, str):
+        return False, "bukan teks"
+    cmd = cmd.replace("\r\n", "\n").strip()
+    if not cmd or len(cmd) > _ap_MAX_CMD or "\x00" in cmd:
+        return False, "kosong / terlalu panjang"
+    m = _ap_HERE.match(cmd)
+    if m:
+        tag, body = m.group("tag"), m.group("body")
+        for line in body.split("\n"):
+            if line.strip() == tag:
+                return False, "heredoc berakhir lebih awal"
+        d = m.group("dir")
+        if d is not None and not _ap_path_ok(d):
+            return False, "cd di luar sandbox"
+        ok, why = _ap_py_ok(body)
+        return (True, "heredoc " + why) if ok else (False, why)
+    toks = _ap_tokenize(cmd)
+    if not toks:
+        return False, "bentuk shell tidak sederhana"
+    segs: list[list[str]] = [[]]
+    for kind, val in toks:
+        if kind == "w":
+            segs[-1].append(val)
+        elif kind == "op":
+            if not segs[-1]:
+                return False, "operator di awal / ganda"
+            segs.append([])
+    if not segs[-1]:
+        return False, "operator di akhir"
+    reasons = []
+    for sg in segs:
+        ok, why = _ap_segment_ok(sg)
+        if not ok:
+            return False, why
+        reasons.append(why)
+    return True, ", ".join(reasons)
+# ---- akhir approval_policy ----
 print(f"[INFO] AGENT_APPROVAL_AUTO={'readonly' if APPROVAL_AUTO else '0'}", flush=True)
 DEFAULT_DANGER_WORDS = [
     # Indonesia (awalan me-/meng-/di-/ter- dikenali otomatis; bentuk tak beraturan ditulis sendiri)
@@ -1617,9 +1921,9 @@ async def _handle_approval(client: httpx.AsyncClient, approver, headers: dict, r
         print(f"[{stamp()}] approval.request ditolak otomatis (AGENT_APPROVAL mati atau tidak ada penjawab)", flush=True)
     else:
         auto_ok = False
-        if APPROVAL_AUTO and _approval_policy is not None and not req.get("smart_denied") and req.get("can_once", True):
+        if APPROVAL_AUTO and not req.get("smart_denied") and req.get("can_once", True):
             try:
-                auto_ok, auto_why = _approval_policy.classify(req["command"])
+                auto_ok, auto_why = _ap_classify(req["command"])
             except Exception as e:
                 auto_ok, auto_why = False, repr(e)
             if auto_ok:

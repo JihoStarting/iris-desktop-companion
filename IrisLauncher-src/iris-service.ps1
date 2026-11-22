@@ -84,6 +84,16 @@ function Wait-Mati([string]$Url, [int]$BatasDetik) {
   return $false
 }
 
+# Start-Process -RedirectStandard* menimpa berkas lama. Pindahkan dulu log proses sebelumnya (mis. traceback
+# sebelum crash, penting untuk Auto-pulih) ke *.log.old; hanya bila berisi, supaya .old tidak ditimpa berkas kosong.
+function Arsip-Log([string]$Path) {
+  try {
+    if ((Test-Path -LiteralPath $Path) -and ((Get-Item -LiteralPath $Path).Length -gt 0)) {
+      Move-Item -LiteralPath $Path -Destination ($Path + '.old') -Force -ErrorAction Stop
+    }
+  } catch { }
+}
+
 function Get-Penjaga {
   return @(Get-CimInstance Win32_Process -Filter "Name='wsl.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -like '*sleep infinity*' })
@@ -182,6 +192,7 @@ if ($Nama -eq 'voicevox' -and $Proyek -and (Test-Path -LiteralPath (Join-Path $P
       $vvArgs = @('--host', '127.0.0.1', '--port', '50021')
       if ($Gpu) { $vvArgs += '--use_gpu' }
       $vvArgs += @('--cpu_num_threads', '4')
+      Arsip-Log (Join-Path $Proyek 'iris-voicevox.out.log'); Arsip-Log (Join-Path $Proyek 'iris-voicevox.err.log')
       Start-Process -FilePath $VvExe -ArgumentList $vvArgs -WorkingDirectory $VvDir -WindowStyle Hidden `
         -RedirectStandardOutput (Join-Path $Proyek 'iris-voicevox.out.log') `
         -RedirectStandardError (Join-Path $Proyek 'iris-voicevox.err.log') | Out-Null
@@ -250,6 +261,7 @@ if ($Nama -eq 'server') {
     if (-not $Proyek) { Write-Host 'Folder proyek belum diatur.'; exit 1 }
     $py = Join-Path $Proyek '.venv\Scripts\python.exe'
     if (-not (Test-Path $py)) { Write-Host "Tidak ada $py (venv Windows belum dibuat?)"; exit 1 }
+    Arsip-Log (Join-Path $Proyek 'iris-server.out.log'); Arsip-Log (Join-Path $Proyek 'iris-server.err.log')
     Start-Process -FilePath $py -ArgumentList @('-u', 'server.py') -WorkingDirectory $Proyek -WindowStyle Hidden `
       -RedirectStandardOutput (Join-Path $Proyek 'iris-server.out.log') `
       -RedirectStandardError (Join-Path $Proyek 'iris-server.err.log') | Out-Null
@@ -286,6 +298,7 @@ if ($Nama -eq 'overlay') {
     $electron = Join-Path $Proyek 'node_modules\electron\dist\electron.exe'
     if (-not (Test-Path $electron)) { Write-Host "Tidak ada $electron (jalankan npm.cmd install di folder proyek)"; exit 1 }
     # Tanpa -WindowStyle Hidden: Electron bukan program konsol, dan Hidden bisa ikut menyembunyikan jendela overlay-nya
+    Arsip-Log (Join-Path $Proyek 'iris-overlay.out.log'); Arsip-Log (Join-Path $Proyek 'iris-overlay.err.log')
     Start-Process -FilePath $electron -ArgumentList @('.') -WorkingDirectory $Proyek `
       -RedirectStandardOutput (Join-Path $Proyek 'iris-overlay.out.log') `
       -RedirectStandardError (Join-Path $Proyek 'iris-overlay.err.log') | Out-Null

@@ -1,5 +1,5 @@
 <#
-iris-start.ps1 v1.0 - peluncur Iris. ASCII saja (aman di Windows PowerShell 5.1).
+iris-start.ps1 (peluncur v1.3.x) - peluncur Iris. ASCII saja (aman di Windows PowerShell 5.1).
 Urutan: WSL + penjaga (sleep infinity) -> VOICEVOX, 9Router, Hermes (systemd user) -> server.py -> overlay.
 Idempoten, tanpa token di log, tidak me-restart Hermes.
 Pakai: powershell -ExecutionPolicy Bypass -File .\iris-start.ps1
@@ -63,6 +63,16 @@ function Wait-Http([string]$Url, [int]$BatasDetik) {
   return $false
 }
 
+# Start-Process -RedirectStandard* menimpa berkas lama. Pindahkan dulu log proses sebelumnya (mis. traceback
+# sebelum crash, penting untuk Auto-pulih) ke *.log.old; hanya bila berisi, supaya .old tidak ditimpa berkas kosong.
+function Arsip-Log([string]$Path) {
+  try {
+    if ((Test-Path -LiteralPath $Path) -and ((Get-Item -LiteralPath $Path).Length -gt 0)) {
+      Move-Item -LiteralPath $Path -Destination ($Path + '.old') -Force -ErrorAction Stop
+    }
+  } catch { }
+}
+
 # --- VOICEVOX di Windows (vv-engine\run.exe) ---
 $VvDir = Join-Path $Proyek 'vv-engine'
 $VvExe = Join-Path $VvDir 'run.exe'
@@ -78,6 +88,7 @@ function Start-VvWin([bool]$Gpu) {
   $vvArgs = @('--host', '127.0.0.1', '--port', '50021')
   if ($Gpu) { $vvArgs += '--use_gpu' }
   $vvArgs += @('--cpu_num_threads', '4')
+  Arsip-Log (Join-Path $Proyek 'iris-voicevox.out.log'); Arsip-Log (Join-Path $Proyek 'iris-voicevox.err.log')
   Start-Process -FilePath $VvExe -ArgumentList $vvArgs -WorkingDirectory $VvDir -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $Proyek 'iris-voicevox.out.log') `
     -RedirectStandardError (Join-Path $Proyek 'iris-voicevox.err.log') | Out-Null
@@ -159,6 +170,7 @@ if ((Get-HttpCode 'http://127.0.0.1:8765/ping') -gt 0) {
     Log "Tidak ada $py (venv Windows belum dibuat?)" 'GAGAL'
     exit 1
   }
+  Arsip-Log (Join-Path $Proyek 'iris-server.out.log'); Arsip-Log (Join-Path $Proyek 'iris-server.err.log')
   Start-Process -FilePath $py -ArgumentList @('-u', 'server.py') -WorkingDirectory $Proyek -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $Proyek 'iris-server.out.log') `
     -RedirectStandardError (Join-Path $Proyek 'iris-server.err.log') | Out-Null
@@ -187,6 +199,7 @@ if ($TanpaOverlay) {
       exit 1
     }
     # Tanpa -WindowStyle Hidden: Electron bukan program konsol, dan Hidden bisa ikut menyembunyikan jendela overlay-nya
+    Arsip-Log (Join-Path $Proyek 'iris-overlay.out.log'); Arsip-Log (Join-Path $Proyek 'iris-overlay.err.log')
     Start-Process -FilePath $electron -ArgumentList @('.') -WorkingDirectory $Proyek `
       -RedirectStandardOutput (Join-Path $Proyek 'iris-overlay.out.log') `
       -RedirectStandardError (Join-Path $Proyek 'iris-overlay.err.log') | Out-Null

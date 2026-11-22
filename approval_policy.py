@@ -40,7 +40,8 @@ _SIMPLE = {
 }
 
 _PY_IMPORTS = {"struct", "re", "hashlib", "binascii", "collections", "math", "itertools", "string", "base64",
-               "zlib", "lzma", "bz2", "datetime", "json", "textwrap", "functools", "operator", "codecs", "sys", "pefile"}
+               "zlib", "lzma", "bz2", "datetime", "json", "textwrap", "functools", "codecs", "sys", "pefile"}
+# v102.1: "operator" dikeluarkan (attrgetter / methodcaller / itemgetter mengakses atribut lewat STRING, melewati larangan dunder).
 
 _BAD_CALLS = {"exec", "eval", "compile", "__import__", "globals", "locals", "vars", "getattr", "setattr", "delattr",
               "LZMAFile", "BZ2File", "input", "breakpoint", "help", "memoryview", "classmethod", "staticmethod", "property", "super", "type"}
@@ -77,6 +78,8 @@ def _write_ok(p: str) -> bool:
 
 def _str_const_ok(s: str) -> bool:
     """String literal di dalam kode Python: kalau tampak seperti path absolut / naik folder, harus lolos _path_ok."""
+    if "__" in s:   # v102.1: string bisa dipakai sebagai nama atribut (str.format "{0.__class__}", dsb.)
+        return False
     if s.startswith("/") or s.startswith("../") or "/../" in s or s.endswith("/.."):
         return _path_ok(s) if "\n" not in s and len(s) < 400 else False
     return True
@@ -104,7 +107,7 @@ def _py_ok(code: str):
         elif isinstance(node, (ast.Global, ast.Nonlocal, ast.AsyncFunctionDef, ast.Await, ast.Yield, ast.YieldFrom)):
             return False, "konstruksi tidak diizinkan"
         elif isinstance(node, ast.Attribute):
-            if node.attr.startswith("__") or node.attr in _BAD_ATTRS:
+            if node.attr.startswith("_") or node.attr in _BAD_ATTRS:   # v102.1: satu garis bawah juga (mis. sys._getframe)
                 return False, "atribut tidak diizinkan: " + node.attr
         elif isinstance(node, ast.Name):
             if node.id.startswith("__") or node.id in _BAD_CALLS:
