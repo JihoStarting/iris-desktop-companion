@@ -853,8 +853,6 @@ Ide yang sudah disetujui atau dicatat, **belum ada kodenya**.
 ├── rea_triage.py            # triase statis file untuk /rea, v99.1; sudah termasuk Asset Explorer (isi model 3D, tekstur, audio, arsip, SQLite)
 ├── approval_policy.py       # izin otomatis khusus perintah baca-saja (opsional, bawaan mati, v99.1)
 ├── example_plugin.py        # contoh plugin parser untuk Asset Explorer (format DEMO)
-├── rea_extract.py           # (belum disertakan di repositori)
-├── rea_binary.py            # (belum disertakan di repositori)
 ├── iris_games.py            # game teka-teki /tekateki (opsional)
 ├── data/                    # tekateki.json (bank bawaan); tekateki_dinamis.json dan tekateki_state.json dibuat saat dipakai
 ├── rea-reports/             # laporan /rea (dibuat saat dipakai; jangan di-commit)
@@ -953,6 +951,7 @@ Untuk diagnosis lebih lanjut, jalankan overlay dengan `npm start`, buka DevTools
 
 | Tanggal | Perubahan |
 |---|---|
+| **22 November 2026 (pohon berkas)** | Baris `rea_extract.py` dan `rea_binary.py` dihapus dari pohon berkas karena belum disertakan di repositori. Keduanya tetap tercantum di tabel berkas sebagai modul opsional; tanpa keduanya, `--list`, `--extract`, `--hex`, dan `--compare` pada `rea_triage.py` hanya menampilkan pesan "tidak ditemukan", sedangkan fitur lain (termasuk `--assets*`) tidak terpengaruh |
 | **22 November 2026 (penggabungan)** | `rea_assets.py` digabung ke `rea_triage.py` (perilaku tidak berubah, VERSION tetap 99.1). CLI mandiri `python rea_assets.py` diganti opsi `--assets`, `--assets-extract`, `--assets-carve`, `--formats`, dan `--plugins` di `rea_triage.py`. `rea_extract.py` dan `rea_binary.py` belum digabung dan belum disertakan di repositori. Belum dites di PC |
 | **22 November 2026 (v102.1)** | `iris_games.py`: pemicu isi ulang dan pemilihan teka-teki kini memakai daftar `dimainkan` (semua id yang pernah muncul), bukan jendela `riwayat` 30 id, sehingga pembuatan otomatis tidak lagi macet pada bank lebih dari 32 teka-teki; berkas simpanan lama dimigrasi. Tes baru `tests/test_iris_games_isi_ulang.py` (5 tes; versi lama gagal semuanya). `approval_policy.py`: celah dunder-lewat-string (`operator.attrgetter`, `sys._getframe`, `str.format` berisi `__`) ditutup. Lulus uji di sandbox, belum dites di PC |
 | **20 November 2026** | Sinkron dengan kode yang diunggah. `rea_triage.py` v99.1 (gabungan v98.6 dan v99.0, semua tambahan aditif) dan berkas baru `rea_assets.py` (kemudian digabung ke `rea_triage.py` pada 22 November; v99.0, Asset Explorer: isi model 3D, animasi, tekstur, audio, arsip, SQLite, dan carving); `approval_policy.py` (v99.1, izin otomatis baca-saja, opt-in, bawaan mati) dan `example_plugin.py` (contoh plugin parser). `server.py` v99.2 dan v99.3 (ringkasan analisis Hermes ikut ke catatan Iris; blok fakta triase tidak dipindai sebagai path sandbox) dan v102 (audit keamanan: penjaga `Host`, token wajib di jalur `uvicorn`, kartu izin tanpa pemotongan, symlink, penyaringan rahasia di riwayat, dan lainnya; lihat [Keamanan](#keamanan)). Belum dites di PC |
