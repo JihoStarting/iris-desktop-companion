@@ -254,8 +254,8 @@ Cek kesehatan layanan di `http://127.0.0.1:8765/health`. Untuk sekadar memastika
 | `iris_web.py` | CLI untuk membaca panel mini-browser (dipakai agen) |
 | `iris_translate_img.py` | OCR dan penggambar ulang terjemahan layar (winocr atau Tesseract) |
 | `rea_triage.py` | Triase statis file untuk `/rea` (hash, jenis, header, impor, string, IOC, indikasi kemampuan, skor heuristik, draf YARA); hanya pustaka standar Python. Versi saat ini v98 (v97 menambah Mach-O, metadata .NET, CTPH, dan perburuan XOR/ADD/ROL; v98 menambah RE Lab untuk PE x86/x64) |
-| `rea_extract.py` | Penjelajah container untuk `/rea`: ZIP, TAR/gz, GZIP, ISO 9660, ISO PSP (impor malas, opsional; belum diperiksa) |
-| `rea_binary.py` | Binary Workbench: hex view, data inspector, pencarian, perbandingan, dan patch berundo (impor malas, opsional; belum diperiksa) |
+| `rea_extract.py` | Penjelajah container untuk `/rea`: ZIP, TAR/gz, GZIP, ISO 9660, ISO PSP (impor malas, opsional; belum disertakan di repositori) |
+| `rea_binary.py` | Binary Workbench: hex view, data inspector, pencarian, perbandingan, dan patch berundo (impor malas, opsional; belum disertakan di repositori) |
 | `iris_games.py` | Game teka-teki `/tekateki` (opsional) |
 
 ---
@@ -779,7 +779,7 @@ Legenda: **Lulus** = dicoba dan berfungsi di PC pengembang · **Sebagian** = ada
 | `/rea` v82 dan v83 (bedah satu file lewat Hermes, hasil kartu mentah) | Sebagian | Alur ujung ke ujung berjalan di overlay (10 November 2026): laporan keluar sekitar 4,5 menit untuk file 496 KB, penyebab lambat belum diketahui. Laporan agen memuat klaim yang saling bertentangan, jadi anggap petunjuk. Kartu mentah (v83) belum diuji di server asli |
 | `/rea` v91 sampai v93 (triase lokal, mode `cepat` / standar / `dalam`, folder, laporan penuh, carve, draf YARA) | Belum diuji | Lolos `py_compile`, `node --check`, dan tes fungsi di lingkungan penulis kode. Belum diuji di overlay dengan Hermes asli; tampilan kartu 9000 karakter, kecepatan `/rea cepat` pada file besar, dan pengiriman `/rea cepat <folder>` dari `index.html` belum diverifikasi |
 | `/rea` v94 (ReDoS dan injeksi prompt ditutup; impor ELF, PDF, OLE2, RTF, LNK, skrip, delay-import, overlay, checksum PE, konstanta kripto, ATT&CK) | Belum diuji | Lolos uji sandbox: ReDoS lama vs baru diukur (file 3 MB: macet lebih dari 120 detik jadi 0,8 detik), sampel sintetis, PE asli, ELF `/bin/ls`, `--json` valid, folder dengan symlink loop. `server.py` baru diimpor dengan stub. Belum diuji di PC dengan Hermes; parsing delay-import belum bertemu sampel nyata; skor tetap petunjuk, bukan vonis |
-| `/rea` v95 sampai v97 (`rea_extract.py`, `rea_binary.py`, penguatan triase) | Belum diuji | Sintaks dan uji asap lulus di lingkungan penulis kode; `rea_extract.py` dan `rea_binary.py` belum diperiksa. Penomoran v95 sampai v97 di kode berbeda dari spesifikasi REA |
+| `/rea` v95 sampai v97 (`rea_extract.py`, `rea_binary.py`, penguatan triase) | Belum diuji | Sintaks dan uji asap lulus di lingkungan penulis kode; `rea_extract.py` dan `rea_binary.py` belum disertakan di repositori. Penomoran v95 sampai v97 di kode berbeda dari spesifikasi REA |
 | `/rea` v98 "RE Lab" (peta panggilan API per fungsi, xref string, anti-analisis, API hashing, stack string; hanya PE x86 / x64) | Belum diuji | Lolos `py_compile` dan uji sandbox di lingkungan penulis kode: 4 PE asli (251 sampai 302 fungsi, skor tetap rendah) dan PE sintetis (rantai injeksi, syscall langsung, API hashing, dan stack string terdeteksi). Belum diuji di overlay dengan Hermes asli, belum pada malware nyata, dan tanpa korpus regresi. Jalur `capstone` untuk `--disasm` baru dijalankan sekali pada PE asli (`w64.exe`) di lingkungan penulis kode pada 19 November 2026. Sambungan ke `/rea` ada sejak v99 (baris di bawah); dampak baris RE Lab pada batas `REA_MAX_CHARS` belum diukur |
 | `/rea xref` dan `/rea disasm` (v99) serta seret-lepas file ke overlay | Belum diuji | Lolos `py_compile` dan `node --check`. Di lingkungan penulis kode: `rea_api` xref dan disasm pada PE asli (`w64.exe`, jalur hex dan jalur `capstone`), `handle_agent_task` dijalankan dengan stub (hasil jadi kartu, catatan riwayat tanpa isi sampel, path UNC, file tidak ada, dan argumen salah ditolak tanpa sampai ke Hermes), serta pengurai perintah di `index.html` dengan stub. Belum diuji di overlay, belum di Windows dengan path nyata, dan jendela yang tembus-klik belum terbukti menerima seretan |
 | Terjemah layar pilih area (v90), area kecil diperbesar, terjemahan menempel, dan ulangi area terakhir (v99) | Belum diuji | Lolos `node --check`. Rumus perbesaran, filter gambar tempelan, dan alur `/terjemah ulang`, `tutup`, `tempel`, serta jalur gagal-tempel ke penampil besar diuji dengan stub; jendela pilih area, jendela tempelan, `Ctrl+Alt+Y`, ketepatan posisi di layar berskala DPI lain atau banyak monitor, dan hasil OCR pada area yang diperbesar belum diuji di Electron asli |
@@ -854,8 +854,8 @@ Ide yang sudah disetujui atau dicatat, **belum ada kodenya**.
 ├── rea_assets.py            # Asset Explorer: isi model 3D, tekstur, audio, arsip, SQLite untuk /rea (opsional, v99.0)
 ├── approval_policy.py       # izin otomatis khusus perintah baca-saja (opsional, bawaan mati, v99.1)
 ├── example_plugin.py        # contoh plugin parser untuk Asset Explorer (format DEMO)
-├── rea_extract.py           # penjelajah container untuk /rea (opsional)
-├── rea_binary.py            # hex view, compare, patch berundo untuk /rea (opsional)
+├── rea_extract.py           # (belum disertakan di repositori)
+├── rea_binary.py            # (belum disertakan di repositori)
 ├── iris_games.py            # game teka-teki /tekateki (opsional)
 ├── data/                    # tekateki.json (bank bawaan); tekateki_dinamis.json dan tekateki_state.json dibuat saat dipakai
 ├── rea-reports/             # laporan /rea (dibuat saat dipakai; jangan di-commit)
