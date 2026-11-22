@@ -368,7 +368,6 @@ APPROVAL_AUTO = os.getenv("AGENT_APPROVAL_AUTO", "0").strip().lower() in ("1", "
 # Mengurangi risiko, bukan menghapusnya: pemeriksaan statis tidak bisa menjamin 100%. Karena itu bawaannya MATI.
 import ast
 import os
-import re
 
 _ap_ROOT = (os.getenv("AGENT_APPROVAL_AUTO_ROOT", "/workspace").strip() or "/workspace").rstrip("/") or "/workspace"
 # folder sementara di sandbox: boleh DIBACA, dan satu-satunya tempat yang boleh DITULIS (hanya lewat dd / cp / mkdir dengan bentuk ketat).
@@ -467,12 +466,12 @@ def _ap_py_ok(code: str):
                 return False, "open() harus memakai path literal di dalam sandbox"
             mode = None
             if len(a) >= 2:
-                mode = a[1].value if isinstance(a[1], ast.Constant) else None
+                mode = a[1].value if isinstance(a[1], ast.Constant) else "?"   # v103.2: mode bukan literal = tidak terbukti baca-saja (dulu dianggap "r": fail-open)
             if len(a) > 2:
                 return False, "open() argumen terlalu banyak"
             for kw in node.keywords:
                 if kw.arg == "mode":
-                    mode = kw.value.value if isinstance(kw.value, ast.Constant) else None
+                    mode = kw.value.value if isinstance(kw.value, ast.Constant) else "?"   # v103.2: sama seperti di atas
                 elif kw.arg in ("encoding", "errors") and isinstance(kw.value, ast.Constant):
                     pass
                 else:
@@ -3355,13 +3354,17 @@ async def ws_endpoint(ws: WebSocket):
         await safe_send(ws, health_message(await health_probe()))
 
     async def health_loop() -> None:   # v39: langsung saat tersambung, lalu berkala
+        gagal = False   # catat hanya saat mulai gagal, supaya kegagalan berulang tidak membanjiri log
         while True:
             try:
                 await push_health()
+                gagal = False
             except asyncio.CancelledError:
                 raise
-            except Exception:
-                pass
+            except Exception as e:
+                if not gagal:
+                    gagal = True
+                    print(f"[health] push_health gagal: {type(e).__name__}: {str(e)[:120]}", flush=True)
             await asyncio.sleep(HEALTH_PUSH_SEC)
 
     health_task = asyncio.create_task(health_loop())

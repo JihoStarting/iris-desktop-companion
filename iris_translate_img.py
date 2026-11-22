@@ -733,7 +733,6 @@ def _free_width(img: Image.Image, box, bg, max_extra: int) -> int:
 def _text_color(img: Image.Image, box, bg) -> tuple[int, int, int]:
     """Perkiraan warna tulisan asli: rata-rata piksel di kotak yang jauh dari warna latar; cadangan hitam/putih."""
     x0, y0, x1, y1 = box
-    px = img.load()
     far = [p for p in _pixels(img.crop((x0, y0, x1, y1))) if (p[0] - bg[0]) ** 2 + (p[1] - bg[1]) ** 2 + (p[2] - bg[2]) ** 2 > 12100]   # v93: tanpa loop piksel
     if len(far) >= 6:
         n = len(far)

@@ -70,7 +70,7 @@ function Wait-Http([string]$Url, [int]$BatasDetik) {
   $t0 = Get-Date
   while (((Get-Date) - $t0).TotalSeconds -lt $BatasDetik) {
     if ((Get-HttpCode $Url) -gt 0) { return $true }
-    Start-Sleep -Seconds 2
+    Start-Sleep -Milliseconds 500
   }
   return $false
 }

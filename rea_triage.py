@@ -4185,9 +4185,9 @@ def _gen_macho_map(d: bytes):
         return None
     is64 = 0xCF in (m[0], m[3])
     cpu, _sub, _ft, ncmds, szcmds, _fl = struct.unpack_from(e + "IIIIII", d, base + 4)
-    off, end = base + (32 if is64 else 28), min(len(d), base + (32 if is64 else 28) + 0)
+    off = base + (32 if is64 else 28)
     end = min(len(d), off + szcmds)
-    segs, text_va, entry_off, first_text = [], None, None, None
+    segs, text_va, entry_off = [], None, None
     for _ in range(min(ncmds, 600)):
         if off + 8 > end:
             break
@@ -4507,7 +4507,6 @@ def _axml_summary(d: bytes) -> dict | None:
     info: dict = {"package": "", "version": "", "min_sdk": "", "target_sdk": "", "debuggable": None, "cleartext": None, "backup": None,
                   "components": {k: [] for k in _AXML_COMP}, "exported": [], "actions": [], "perms": [], "app_class": ""}
     stack: list[str] = []
-    cur_comp = None
     n_el = 0
     while pos + 8 <= total and n_el < 20000:
         ct, hs, csz = struct.unpack_from("<HHI", d, pos)
@@ -4557,14 +4556,12 @@ def _axml_summary(d: bytes) -> dict | None:
                 nm = attrs.get("name", "?")
                 if len(info["components"][tag]) < 60:
                     info["components"][tag].append(nm)
-                cur_comp = nm
                 if attrs.get("exported") == "true" and len(info["exported"]) < 40:
                     info["exported"].append("%s %s" % (tag, nm))
             elif tag == "action" and attrs.get("name") and attrs["name"] not in info["actions"] and len(info["actions"]) < 60:
                 info["actions"].append(attrs["name"])
         elif ct == 0x0103 and stack:
-            if stack.pop() in _AXML_COMP:
-                cur_comp = None
+            stack.pop()
         pos += csz
     info["perms"] = sorted(set(info["perms"]))[:80]
     return info if (info["package"] or info["perms"] or any(info["components"].values())) else None
@@ -5195,31 +5192,18 @@ def container_extract(path, outdir, pattern=None, scan: bool = False) -> dict:
 # TIDAK pernah lewat permintaan API agen.
 #
 # ======================================================================================================
-import array
-import base64
-import collections
 import csv
 import fnmatch
-import gzip
-import hashlib
 import importlib.util
 import io
-import json
-import math
 import mmap
-import os
 import re
 import sqlite3
-import stat
-import struct
-import sys
 import tarfile
 import urllib.parse
 import xml.etree.ElementTree as ET
-import zipfile
 import zlib
 from contextlib import contextmanager
-from pathlib import Path
 
 _as_VERSION = "99.0"
 MAX_OUT_FILE = 512 * 1024 * 1024      # satu berkas keluaran
@@ -5246,11 +5230,15 @@ def _as_human(n: float) -> str:
     return "%.1f GB" % n
 
 
+# v103.2: sama dengan _CTRL_RE bagian utama: kontrol, C1, dan pengecoh arah teks (RLO dll.) dari berkas tak tepercaya
+_as_ctrl_re = re.compile(r"[\x00-\x1f\x7f-\x9f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff]")
+
+
 def _as_clean(s, n=200) -> str:
     """Bersihkan teks dari berkas tak tepercaya (tanpa baris baru / karakter kontrol) sebelum masuk laporan."""
     if isinstance(s, (bytes, bytearray)):
         s = bytes(s).decode("utf-8", "replace")
-    return re.sub(r"[\x00-\x1f\x7f\u2028\u2029]", " ", str(s))[:n]
+    return _as_ctrl_re.sub(" ", str(s))[:n]
 
 
 # ---------------------------------------------------------------------------
@@ -5293,7 +5281,7 @@ def _safe_rel(name) -> str:
         part = part.strip()
         if part in ("", ".", ".."):
             continue
-        part = re.sub(r'[<>:"|?*\x00-\x1f]', "_", part).rstrip(". ") or "_"
+        part = _as_ctrl_re.sub("_", re.sub(r'[<>:"|?*\x00-\x1f]', "_", part)).rstrip(". ") or "_"
         if part.split(".")[0].upper() in _RESERVED:
             part = "_" + part
         parts.append(part[:120])
@@ -6136,7 +6124,7 @@ def _fbx_extract(d, p, out, opts):
                     continue
                 vv, pi = vn[1][0], pv[1][0]
                 pos = [(vv[i], vv[i + 1], vv[i + 2]) for i in range(0, len(vv) - 2, 3)]
-                polys, cur, ccount = [], [], 0
+                polys, cur = [], []
                 for k, ix in enumerate(pi):
                     cur.append((ix if ix >= 0 else ~ix, k))
                     if ix < 0:
@@ -6866,7 +6854,6 @@ def _ogg_inspect(d, p):
     n = len(d)
     ln = d[26]
     first = bytes(d[27 + ln:27 + ln + 64])
-    ser = _u32(d, 14)
     rate = ch = 0
     kind = "?"
     pre = 0
@@ -7148,9 +7135,13 @@ def _upak(d, p):
         out = bytearray()
         for s, en in e["blocks"]:
             lo, hi = (base + s, base + en) if ver >= 5 else (s, en)
-            out += zlib.decompress(bytes(d[lo:hi]))
-            if len(out) > MAX_OUT_FILE:
+            dobj = zlib.decompressobj()   # v103.2: dibatasi; zlib.decompress() tanpa batas bisa mengembang jadi GB dalam satu blok
+            chunk = dobj.decompress(bytes(d[lo:hi]), MAX_OUT_FILE + 1 - len(out))
+            if dobj.unconsumed_tail or len(out) + len(chunk) > MAX_OUT_FILE:
                 raise ValueError("terlalu besar")
+            if not dobj.eof:
+                raise ValueError("blok zlib tidak lengkap")
+            out += chunk
         return bytes(out[:e["usize"]])
     return _Arc(ents, read, ["PERHATIAN: parser Unreal PAK ini baru diuji dengan berkas sintetis; bila hasil aneh, kirim contoh .pak kecil untuk diverifikasi.",
                                "mount point: %s | versi PAK: %d" % (_as_clean(mount, 60), ver)], kind="Unreal PAK")
@@ -7487,7 +7478,6 @@ def _carve_text(res: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def _fallback_inspect(d, p):
-    n = len(d)
     samp = bytes(d[:1024 * 1024])
     ent = _as_entropy(samp)
     printable = sum(1 for b in samp[:65536] if 32 <= b < 127 or b in (9, 10, 13)) / max(1, len(samp[:65536]))
@@ -7743,7 +7733,6 @@ def compare_text(path_a, path_b) -> str:
 
 
 if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [--compact] [--json] [--ioc] [--raw] [--yara] [--carve DIR]
-    import sys
     argv = sys.argv[1:]
     cdir = None
     if "--api" in argv:      # --api '{"action": "triage", "path": "x.exe"}'  (JSON satu baris untuk agen)

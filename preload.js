@@ -74,8 +74,6 @@ contextBridge.exposeInMainWorld('companion', {
   // v80: tawaran aksi saat teks disalin (bawaan mati). setClipWatch(true) = main.js memeriksa teks clipboard tiap ~1,5 dtk; onClipOffer menerima teksnya
   setClipWatch: (on) => ipcRenderer.send('clip-watch', !!on),
   onClipOffer: (cb) => { ipcRenderer.on('clip-offer', (_e, t) => cb(t)); },
-  // v80: simpan konfigurasi (JSON) ke Downloads; revealFile tetap dipakai untuk menampilkannya
-  saveConfig: (name, json) => ipcRenderer.invoke('save-config', { name, json }),
   // v81: teks halaman yang sedang terbuka di panel /chrome (untuk /rangkum halaman); hanya atas perintah pengguna. {ok, url, host, title, text, truncated} atau {ok:false, error}
   webPageText: () => ipcRenderer.invoke('web-page-text'),
 });

@@ -341,16 +341,20 @@ function webGrip(on) {
   try { applyIgnore(); } catch { /* abaikan */ }   // v52c: tangkap klik dari sekarang
   webGripSafe = setTimeout(() => webGrip(false), 120000);   // jaring pengaman: mouseup hilang = berhenti sendiri
 }
-ipcMain.on('web-grip', (_e, on) => webGrip(!!on));
+ipcMain.on('web-grip', (e, on) => { if (!fromOverlay(e)) return; webGrip(!!on); });   // v103: pengirim diperiksa
 // v63: renderer memberi tahu mode fokus nyala / mati (dipakai clampToWork supaya garis fokus bisa dipindah sampai ke atas layar)
 let quietMode = false;
-// v64: cadangan tanpa preload: baca kelas 'quiet' langsung dari halaman overlay tiap 300 ms (preload.js lama tidak punya setQuiet)
+// v64: cadangan tanpa preload: baca kelas 'quiet' langsung dari halaman overlay (preload.js lama tidak punya setQuiet).
+// Cadangan ini HANYA jalan bila preload tidak menyediakan setQuiet (dicek sekali tiap halaman selesai dimuat, lihat createWindow).
+// Dengan preload sekarang, renderer yang memberi tahu lewat ipc 'set-quiet', jadi tidak perlu lagi menyodok renderer 3x per detik.
+let quietNeedsPoll = true;
 setInterval(() => {
   try {
-    if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
+    if (!quietNeedsPoll) return;
+    if (!win || win.isDestroyed() || win.webContents.isDestroyed() || !win.isVisible()) return;
     win.webContents.executeJavaScript("document.getElementById('root').classList.contains('quiet')").then((q) => { quietMode = !!q; }).catch(() => {});
   } catch { /* abaikan */ }
-}, 300);
+}, 1000);
 ipcMain.on('set-quiet', (e, on) => {
   if (!win || win.isDestroyed() || e.sender !== win.webContents) return;
   quietMode = !!on;
@@ -562,7 +566,7 @@ for(var i=0;i<q.length&&out.length<120;i++){var e=q[i];
 var r=e.getBoundingClientRect(); if(!r.width||!r.height)continue;
 var st=getComputedStyle(e); if(st.visibility==='hidden'||st.display==='none')continue;
 var tag=e.tagName.toLowerCase(), type=(e.getAttribute('type')||'').toLowerCase();
-var t=String(e.innerText||e.getAttribute('aria-label')||e.getAttribute('title')||e.getAttribute('placeholder')||e.getAttribute('name')||'').replace(/\\s+/g,' ').trim().slice(0,80);
+var ed=(e.isContentEditable||tag==='input'||tag==='textarea'||tag==='select');var t=String((ed?'':e.innerText)||e.getAttribute('aria-label')||e.getAttribute('title')||e.getAttribute('placeholder')||e.getAttribute('name')||'').replace(/\\s+/g,' ').trim().slice(0,80);
 var o={n:out.length+1,tag:tag,text:t};
 if(type)o.type=type;
 if(tag==='a'){var h=String(e.href||'');if(/^https?:/i.test(h)){try{var u=new URL(h);o.href=u.origin+u.pathname}catch(x){}}}
@@ -607,11 +611,12 @@ function startWebBridge() {
       if (host !== '127.0.0.1:' + BRIDGE_PORT && host !== 'localhost:' + BRIDGE_PORT) return send(403, { error: 'host ditolak' });
       if (req.headers.origin) return send(403, { error: 'permintaan dari halaman web ditolak' });
       if (req.method !== 'GET') return send(405, { error: 'hanya GET (baca saja)' });
-      if (!require('crypto').timingSafeEqual(sha256(req.headers['x-iris-token'] || ''), tokenHash)) return send(401, { error: 'token salah atau tidak ada' });
+      // v102: batas laju dihitung SEBELUM cek token, supaya tebakan token juga dibatasi (30 permintaan per 10 detik, berhasil atau tidak)
       const now = Date.now();
       while (bridgeHits.length && now - bridgeHits[0] > 10000) bridgeHits.shift();
       if (bridgeHits.length >= 30) return send(429, { error: 'terlalu sering' });
       bridgeHits.push(now);
+      if (!require('crypto').timingSafeEqual(sha256(req.headers['x-iris-token'] || ''), tokenHash)) return send(401, { error: 'token salah atau tidak ada' });
       akun = webAcct ? webAcct.nama : '';
       if (route === '/web/state') return send(200, webReadState());
       if (route === '/web/text') return send(200, await webReadText(u.searchParams.get('max')));
@@ -1456,7 +1461,8 @@ async function sitSnap(force) {
   return false;
 }
 // /duduk cek: laporan teks (hanya angka posisi, tanpa judul jendela) untuk mencari tahu kenapa Iris tidak mau duduk
-ipcMain.handle('sit-debug', async () => {
+ipcMain.handle('sit-debug', async (e) => {
+  if (!fromOverlay(e)) return 'ditolak';
   const out = ['Duduk: saklar ' + (sit.enabled ? 'NYALA' : 'MATI') + ', sedang duduk: ' + (sit.on ? 'ya' : 'tidak') + ', platform: ' + process.platform];
   if (!sit.enabled) { out.push('Nyalakan dulu dengan /duduk nyala.'); return out.join('\n'); }
   if (!win || win.isDestroyed()) return out.join('\n');
@@ -1520,7 +1526,7 @@ let crashLog = [], unresponsiveNow = false;
    selama 45 dtk = render macet atau konteks WebGL mati: muat ulang (dibatasi 3x per 5 menit, sama dengan v37d).
    (2) Jendela sepenuhnya di luar semua layar (mis. setelah monitor dicabut atau lag saat diseret) = kembalikan ke pojok kanan bawah. */
 let pulseAt = Date.now();
-ipcMain.on('render-pulse', () => { pulseAt = Date.now(); });
+ipcMain.on('render-pulse', (e) => { if (fromOverlay(e)) pulseAt = Date.now(); });
 function startWatchdog() {
   setInterval(() => {
     if (!win || win.isDestroyed()) return;
@@ -1600,7 +1606,11 @@ function createWindow() {
   });
   win.on('responsive', () => { unresponsiveNow = false; });
   win.on('show', () => { pulseAt = Date.now(); });
-  win.webContents.on('did-start-loading', () => { pulseAt = Date.now(); });
+  win.webContents.on('did-start-loading', () => { pulseAt = Date.now(); if (!quietNeedsPoll) quietMode = false; });   // halaman dimuat ulang: mode fokus renderer kembali mati
+  win.webContents.on('did-finish-load', () => {
+    // preload punya setQuiet -> polling cadangan 'quiet' dimatikan
+    win.webContents.executeJavaScript("typeof (window.companion && window.companion.setQuiet)").then((t) => { quietNeedsPoll = (t !== 'function'); }).catch(() => {});
+  });
   win.loadURL('app://local/index.html');
 }
 
@@ -1928,7 +1938,8 @@ app.on('second-instance', () => {
   if (!win.isVisible()) win.show();
 });
 
-ipcMain.on('set-ignore-mouse', (_e, ignore) => {
+ipcMain.on('set-ignore-mouse', (e, ignore) => {
+  if (!fromOverlay(e)) return;
   lastIgnoreReq = !!ignore;
   if (!win) return;
   applyIgnore();   // = perilaku lama, kecuali kursor sedang di atas panel /chrome
@@ -1976,7 +1987,7 @@ function quitAll() {
   }).catch(() => { quitAsking = false; app.quit(); });
 }
 
-ipcMain.on('quit', quitAll);
+ipcMain.on('quit', (e) => { if (fromOverlay(e)) quitAll(); });
 
 /* ---------- v19: seret karakter langsung + saklar selalu-di-atas ----------
    Posisi jendela mengikuti kursor GLOBAL (bukan koordinat dari renderer), jadi tidak ada selisih walau jendela ikut bergerak.
@@ -2163,13 +2174,15 @@ function maybeFlipWeb() {
   }
   return false;
 }
-ipcMain.on('drag-window', (_e, on) => {
+ipcMain.on('drag-window', (e, on) => {
+  if (!fromOverlay(e)) return;
   if (on) { startDrag(); return; }
   const was = !!dragIv; stopDrag();
   if (was && maybeFlipWeb()) return;   // v50
   if (was) sitSnap().then((ok) => { if (!ok) edgeSnap(); }).catch(() => edgeSnap());   // v22: dilepas di tepi atas jendela = duduk; kalau tidak, cek tepi layar
 });
-ipcMain.on('set-sit', (_e, on, now) => {
+ipcMain.on('set-sit', (e, on, now) => {
+  if (!fromOverlay(e)) return;
   sit.enabled = !!on;
   if (!on) { sitRelease('fall'); return; }
   if (!now) return;   // saat startup tidak langsung naik; hanya saat pengguna menyalakan /duduk
@@ -2177,21 +2190,21 @@ ipcMain.on('set-sit', (_e, on, now) => {
     if (!ok && !sit.on && win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('sit-state', { on: false, none: true });
   }).catch(() => {});
 });
-ipcMain.on('set-top', (_e, on) => {
-  if (!win || win.isDestroyed()) return;
+ipcMain.on('set-top', (e, on) => {
+  if (!fromOverlay(e)) return;
   if (on) win.setAlwaysOnTop(true, 'screen-saver'); else win.setAlwaysOnTop(false);
 });
 // v47: renderer menanyakan apakah jendela menempel di tepi kiri layar; kalau ya, menu dan popover dipindah ke KANAN karakter (bukan ketahan di kiri)
 const DOCK_LEFT_PX = 60;
-ipcMain.handle('win-side', () => {
-  if (!win || win.isDestroyed()) return { left: false };
+ipcMain.handle('win-side', (e) => {
+  if (!fromOverlay(e)) return { left: false };
   const b = win.getBounds(), wa = screen.getDisplayMatching(b).workArea;
   return { left: b.x - wa.x < DOCK_LEFT_PX, off: peek.out ? 0 : Math.max(0, Math.round(wa.x - b.x)) };   // v49: saat mengintip di tepi, jendela jauh di luar layar; jangan dipakai untuk menggeser bar
 });
-ipcMain.on('chat-open', (_e, open) => setChatOpen(open));
-ipcMain.handle('chat-big', (_e, on) => setChatBig(!!on));   // v32
-ipcMain.on('peek', (_e, on) => { if (on) peekHide(); else peekShow(); });
-ipcMain.handle('capture-screen', (_e, opts) => captureScreenDataURL(opts && typeof opts === 'object' ? { quiet: !!opts.quiet, maxSide: opts.maxSide, quality: opts.quality } : {}));
+ipcMain.on('chat-open', (e, open) => { if (fromOverlay(e)) setChatOpen(open); });
+ipcMain.handle('chat-big', (e, on) => fromOverlay(e) ? setChatBig(!!on) : 0);   // v32
+ipcMain.on('peek', (e, on) => { if (!fromOverlay(e)) return; if (on) peekHide(); else peekShow(); });
+ipcMain.handle('capture-screen', (e, opts) => !fromOverlay(e) ? null : captureScreenDataURL(opts && typeof opts === 'object' ? { quiet: !!opts.quiet, maxSide: opts.maxSide, quality: opts.quality } : {}));
 ipcMain.handle('snip-region', (e, lang, repeat) => {   // v90: Terjemah layar ala Snipping Tool; v99: repeat = ulangi area terakhir
   if (!win || win.isDestroyed() || e.sender !== win.webContents) return { ok: false, error: 'ditolak' };
   return snipRegion(typeof lang === 'string' ? lang : 'auto', repeat === true);
@@ -2218,7 +2231,7 @@ ipcMain.handle('pin-image', async (e, d) => {   // v99: tempel terjemahan di ata
 });
 ipcMain.on('pin-close', (e) => { if (win && !win.isDestroyed() && e.sender === win.webContents) closePin(); });
 // v23: detik sejak input terakhir (hanya angka, dari powerMonitor); dipakai /pantau supaya tidak memotret saat pengguna sedang pergi
-ipcMain.handle('idle-time', () => { try { return powerMonitor.getSystemIdleTime(); } catch { return 0; } });
+ipcMain.handle('idle-time', (e) => { if (!fromOverlay(e)) return 0; try { return powerMonitor.getSystemIdleTime(); } catch { return 0; } });
 ipcMain.handle('read-clipboard', (e) => fromOverlay(e) ? readClipboardPayload() : { text: '', image: null });
 // Salin gambar (data URL) ke clipboard Windows; navigator.clipboard di jendela overlay sering ditolak
 // v28b: clipboard.writeImage tidak selalu ada di Electron yang terpasang (terlihat di PC Kang Jiho: "clipboard.writeImage is not a function"),
@@ -2290,7 +2303,7 @@ addEventListener('keydown',e=>{if(e.key==='Escape')window.close();});
     const disp = screen.getDisplayMatching(win && !win.isDestroyed() ? win.getBounds() : screen.getPrimaryDisplay().bounds).workArea;
     const v = new BrowserWindow({ x: disp.x + 40, y: disp.y + 40, width: Math.max(600, disp.width - 80), height: Math.max(400, disp.height - 80), autoHideMenuBar: true, backgroundColor: '#0b0f1a', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, partition: 'iris-aux' } });
     v.loadFile(htmlFile);
-    v.on('closed', () => { try { fs.unlinkSync(imgFile); fs.unlinkSync(htmlFile); } catch { /* abaikan */ } });
+    v.on('closed', () => { for (const f of [imgFile, htmlFile]) { try { fs.unlinkSync(f); } catch { /* abaikan */ } } });
     return true;
   } catch (e) { console.warn('open-image gagal:', e.message || e); return false; }
 });
@@ -2303,20 +2316,6 @@ ipcMain.handle('save-html', (e, payload) => {
     const text = String(html || '');
     if (text.length > 50e6) return { ok: false, error: 'berkas terlalu besar' };   // v101: batas ukuran
     const file = writeUniqueFile(app.getPath('downloads'), safeBaseName(name, 'Percakapan-Iris', /\.html?$/i), '.html', text);
-    return { ok: true, path: file };
-  } catch (e) {
-    return { ok: false, error: String((e && e.message) || e) };
-  }
-});
-// v80: simpan konfigurasi Iris (JSON, maks 64 KB) ke folder Downloads; nama dibersihkan dan file lama tidak ditimpa
-ipcMain.handle('save-config', (e, payload) => {
-  if (!fromOverlay(e)) return { ok: false, error: 'ditolak' };
-  try {
-    const { name, json } = payload || {};
-    const text = String(json || '');
-    if (text.length > 65536) return { ok: false, error: 'konfigurasi terlalu besar' };
-    JSON.parse(text);
-    const file = writeUniqueFile(app.getPath('downloads'), safeBaseName(name, 'Iris-config', /\.json$/i), '.json', text);
     return { ok: true, path: file };
   } catch (e) {
     return { ok: false, error: String((e && e.message) || e) };

@@ -9,6 +9,7 @@ Pakai:
 Nama : semua | wsl | voicevox | router | hermes | server | overlay | apt | launcher   (boleh beberapa, pisah koma)
 Opsi : -Distro Ubuntu  -TungguDetik 90  -TanpaGPU  -Diam (cek tanpa obrolan, hanya baris @@UPD)
        -Seri (cek berurutan; tanpa ini cek banyak komponen berjalan paralel)
+       -WslState run|mati (isyarat internal dari mode paralel: status WSL sudah dicek sekali, anak proses tidak mengulang)
        -Launcher <jalur exe> -LauncherVersion 1.3.4 -LauncherRepo pemilik/repo  (untuk update launcher sendiri)
 
 Keluaran mode cek (dibaca Iris Launcher), satu baris per komponen:
@@ -40,6 +41,7 @@ param(
   [switch]$TanpaGPU,
   [switch]$Diam,
   [switch]$Seri,
+  [string]$WslState = '',
   [string]$Launcher = '',
   [string]$LauncherVersion = '',
   [string]$LauncherRepo = ''
@@ -117,6 +119,23 @@ function Get-Web([string]$Url, [int]$TimeoutMs = 20000, [string]$Accept = 'appli
   }
 }
 
+# Mulai unduh teks di latar belakang (Task); hasilnya diambil nanti dengan Wait-WebAsync. Dipakai supaya jaringan jalan bersamaan dengan WSL.
+function Start-WebAsync([string]$Url) {
+  try {
+    $wc = New-Object System.Net.WebClient
+    $wc.Headers['User-Agent'] = 'IrisLauncher-Updater'
+    $wc.Headers['Accept'] = '*/*'
+    $wc.Encoding = [System.Text.Encoding]::UTF8
+    return $wc.DownloadStringTaskAsync($Url)
+  } catch { return $null }
+}
+
+function Wait-WebAsync($Task, [int]$TimeoutMs = 20000) {
+  if (-not $Task) { return '' }
+  try { if ($Task.Wait($TimeoutMs)) { return [string]$Task.Result } } catch { }
+  return ''
+}
+
 function Get-GhRelease([string]$Repo) {
   $json = Get-Web ('https://api.github.com/repos/' + $Repo + '/releases/latest')
   return ($json | ConvertFrom-Json)
@@ -141,6 +160,8 @@ function Judge([string]$Ins, [string]$Lat) {
 }
 
 function Test-WslJalan {
+  if ($WslState -eq 'run') { return $true }
+  if ($WslState -eq 'mati') { return $false }
   $raw = ''
   try { $raw = ((& wsl.exe -l -v 2>&1) | Out-String) -replace "`0", '' } catch { $raw = '' }
   return [regex]::IsMatch($raw, '(?m)^\s*\*?\s*' + [regex]::Escape($Distro) + '\s+Running')
@@ -273,7 +294,10 @@ exit 0
 
 $BashAptCheck = @'
 export DEBIAN_FRONTEND=noninteractive
-timeout 150 apt-get update -qq >/dev/null 2>&1
+# Lewati apt-get update (bagian paling lambat) bila daftar paket diperbarui <4 jam lalu.
+if ! find /var/lib/apt/periodic/update-success-stamp -mmin -240 2>/dev/null | grep -q .; then
+  timeout 60 apt-get update -qq >/dev/null 2>&1
+fi
 LST="$(apt-get -s upgrade 2>/dev/null | grep '^Inst ')"
 N=0
 S=0
@@ -296,7 +320,7 @@ exit ${PIPESTATUS[0]}
 $BashHermesCheck = @'
 if ! command -v hermes >/dev/null 2>&1; then echo "NOHERMES=1"; exit 0; fi
 echo "INS=$(hermes --version 2>&1 | head -n3 | tr '\n' ' ')"
-OUT="$(timeout 120 hermes update --check 2>&1 < /dev/null)"
+OUT="$(timeout 60 hermes update --check 2>&1 < /dev/null)"
 RC=$?
 echo "RC=$RC"
 echo "OUT=$(echo "$OUT" | tail -n3 | tr '\n' ' ')"
@@ -356,10 +380,11 @@ function Check-Wsl {
 
 function Check-Router {
   if (-not (Test-WslJalan)) { Emit 'router' '' '' 'skip' 'WSL mati: nyalakan WSL dulu'; return }
-  $lat = ''
-  try { $j = (Get-Web 'https://registry.npmjs.org/9router/latest' 20000 '*/*') | ConvertFrom-Json; $lat = [string]$j.version } catch { }
+  $tk = Start-WebAsync 'https://registry.npmjs.org/9router/latest'
   $r = Invoke-Wsl ($BashPre + "`n" + $BashFind9 + "`n" + $BashRouterVer)
   $ins = Get-Tag $r.Lines 'INS'
+  $lat = ''
+  try { $j = (Wait-WebAsync $tk 20000) | ConvertFrom-Json; $lat = [string]$j.version } catch { }
   if (-not $lat) { Emit 'router' $ins '' 'galat' 'Tidak bisa cek versi terbaru (internet?)'; return }
   if (-not $ins) { Emit 'router' '' $lat 'tidakada' '9router tidak ditemukan di WSL'; return }
   Emit 'router' $ins $lat (Judge $ins $lat) ''
@@ -406,6 +431,18 @@ function Check-Launcher {
 
 function Get-VvVariant {
   $d = Join-Path $Proyek 'vv-engine'
+  $mk = Join-Path $d 'iris-variant.txt'
+  if (Test-Path -LiteralPath $mk) {
+    try { $t = (Get-Content -LiteralPath $mk -Raw).Trim(); if ($t -match '^(directml|nvidia|cpu)$') { return $t } } catch { }
+  }
+  $v = Find-VvVariant $d
+  try { Set-Content -LiteralPath $mk -Value $v -Encoding ASCII } catch { }
+  return $v
+}
+
+function Find-VvVariant([string]$d) {
+  if (Test-Path -LiteralPath (Join-Path $d 'DirectML.dll')) { return 'directml' }
+  if (Test-Path -LiteralPath (Join-Path $d 'onnxruntime_providers_cuda.dll')) { return 'nvidia' }
   $dml = Get-ChildItem -LiteralPath $d -Filter 'DirectML.dll' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($dml) { return 'directml' }
   $cuda = Get-ChildItem -LiteralPath $d -Filter 'onnxruntime_providers_cuda.dll' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -467,7 +504,7 @@ function Check-Server {
   if (-not (Test-Path -LiteralPath $rq)) { Emit 'server' '' '' 'skip' 'requirements.txt tidak ada'; return }
   $req = Req-Names $rq
   $raw = ''
-  try { $raw = ((& $py -m pip list --outdated --format=json --disable-pip-version-check 2>$null) | Out-String).Trim() } catch { }
+  try { $raw = ((& $py -m pip list --outdated --format=json --disable-pip-version-check --retries 1 --timeout 10 2>$null) | Out-String).Trim() } catch { }
   if ($LASTEXITCODE -ne 0 -and -not $raw) { Emit 'server' '' '' 'galat' 'pip list --outdated gagal (internet?)'; return }
   $list = @()
   try { if ($raw) { $list = @($raw | ConvertFrom-Json) } } catch { Emit 'server' '' '' 'galat' 'Keluaran pip tidak terbaca'; return }
@@ -511,7 +548,7 @@ function Check-Overlay {
   $kode = 0
   Push-Location -LiteralPath $Proyek
   try {
-    $raw = ((& $npm outdated --json 2>$null) | Out-String).Trim()
+    $raw = ((& $npm outdated --json --fetch-retries=1 --fetch-timeout=15000 2>$null) | Out-String).Trim()
     $kode = $LASTEXITCODE
   } catch { } finally { Pop-Location }
   if ($kode -ne 0 -and -not $raw) { Emit 'overlay' '' '' 'galat' 'npm outdated gagal (internet?)'; return }
@@ -1001,10 +1038,15 @@ if ($pilih.Count -eq 0) { Write-Host 'Tidak ada komponen yang dipilih.'; exit 1 
 # Cek banyak komponen sekaligus: tiap komponen dijalankan di proses PowerShell sendiri (paralel), hasil dicetak berurutan.
 function Check-Parallel {
   $procs = @{}
+  $wslHint = ''
+  if (($pilih -contains 'router') -or ($pilih -contains 'hermes') -or ($pilih -contains 'apt')) {
+    if (Test-WslJalan) { $wslHint = 'run' } else { $wslHint = 'mati' }
+  }
   foreach ($k in $pilih) {
     $a = ('-NoProfile -ExecutionPolicy Bypass -File "{0}" -Aksi cek -Nama {1} -Distro {2} -TungguDetik {3} -Diam -Seri' -f $PSCommandPath, $k, $Distro, $TungguDetik)
     if ($Proyek) { $a += (' -Proyek "' + $Proyek + '"') }
     if ($TanpaGPU) { $a += ' -TanpaGPU' }
+    if ($wslHint -and (@('router', 'hermes', 'apt') -contains $k)) { $a += (' -WslState ' + $wslHint) }
     if ($Launcher) { $a += (' -Launcher "' + $Launcher + '" -LauncherVersion "' + $LauncherVersion + '"') }
     if ($LauncherRepo) { $a += (' -LauncherRepo "' + $LauncherRepo + '"') }
     try {

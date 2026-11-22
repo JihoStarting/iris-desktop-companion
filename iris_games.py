@@ -26,6 +26,7 @@ overlay.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 import re
@@ -37,6 +38,8 @@ import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable, Optional
+
+_log = logging.getLogger("iris.games")
 
 POIN_DASAR = 3            # poin bila benar tanpa petunjuk
 MAKS_PETUNJUK = 3         # petunjuk maksimal per teka-teki
@@ -589,7 +592,8 @@ class GameTekaTeki:
                     self._sedang_isi.add(b)
                     try:
                         self.latar(lambda b=b: self.isi_ulang(b))
-                    except Exception:
+                    except Exception as e:
+                        _log.warning("gagal menjadwalkan isi ulang teka-teki (%s): %s", b, e)
                         self._sedang_isi.discard(b)
 
     def isi_ulang(self, bahasa: str) -> Optional[Teka]:
@@ -603,7 +607,8 @@ class GameTekaTeki:
                     hindari = [t.pertanyaan for t in self.bank if t.bahasa == bahasa][-HINDARI_MAKS:]
                 try:
                     raw = self.pembuat(bahasa, hindari)
-                except Exception:
+                except Exception as e:
+                    _log.warning("LLM gagal membuat teka-teki (%s): %s: %s", bahasa, type(e).__name__, str(e)[:120])
                     continue
                 teka, _alasan = parse_teka(raw, bahasa, f"gen-{bahasa}-{uuid.uuid4().hex[:8]}")
                 if teka is None or self._duplikat(teka):
@@ -612,7 +617,8 @@ class GameTekaTeki:
                     try:
                         if not (self.pemeriksa and self.pemeriksa(teka)):
                             continue
-                    except Exception:
+                    except Exception as e:
+                        _log.warning("pemeriksa teka-teki gagal (%s): %s: %s", bahasa, type(e).__name__, str(e)[:120])
                         continue
                 with self._kunci:
                     if self._duplikat(teka):
@@ -815,20 +821,62 @@ _PROMPT_CEK = (
 _RE_CEK = re.compile(r"^\W*(?:(OK)\W*|(SALAH)\b.*)$", re.I)
 
 
-def _chat(url: str, key: str, model: str, system: str, user: str, timeout: float) -> str:
+_RETRY_STATUS = {429, 500, 502, 503, 504}
+_klien = None
+_kunci_klien = threading.Lock()
+
+
+def _http_klien():
+    """Satu httpx.Client dipakai bersama (koneksi dipakai ulang). Dibuat malas dan aman antar-thread."""
+    global _klien
     import httpx  # impor malas: modul ini tetap bisa dipakai tanpa httpx
+    with _kunci_klien:
+        if _klien is None:
+            _klien = httpx.Client()
+        return _klien
+
+
+def _jeda_retry(r) -> float:
+    """Jeda sebelum mengulang: ikuti Retry-After (detik) bila ada, dibatasi 1..5 detik."""
+    try:
+        return max(1.0, min(5.0, float(r.headers.get("retry-after", ""))))
+    except (TypeError, ValueError):
+        return 1.5
+
+
+def _chat(url: str, key: str, model: str, system: str, user: str, timeout: float) -> str:
+    import httpx
 
     headers = {"Content-Type": "application/json"}
     if key:
         headers["Authorization"] = f"Bearer {key}"
-    r = httpx.post(
-        f"{url.rstrip('/')}/chat/completions", headers=headers, timeout=timeout,
-        json={"model": model, "stream": False,
-              "messages": [{"role": "system", "content": system},
-                           {"role": "user", "content": user}]},
-    )
+    klien = _http_klien()
+    endpoint = f"{url.rstrip('/')}/chat/completions"
+    body = {"model": model, "stream": False,
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": user}]}
+    r = None
+    for percobaan in range(2):   # satu kali ulang untuk 429/5xx dan galat koneksi; timeout tidak diulang (sudah lama)
+        try:
+            r = klien.post(endpoint, headers=headers, timeout=timeout, json=body)
+        except httpx.TimeoutException:
+            raise
+        except httpx.TransportError as e:
+            if percobaan == 0:
+                _log.debug("LLM tidak terjangkau, mengulang sekali: %s", e)
+                time.sleep(1.5)
+                continue
+            raise
+        if r.status_code in _RETRY_STATUS and percobaan == 0:
+            _log.debug("LLM membalas %s, mengulang sekali", r.status_code)
+            time.sleep(_jeda_retry(r))
+            continue
+        break
     r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"] or ""
+    try:
+        return r.json()["choices"][0]["message"]["content"] or ""
+    except (ValueError, KeyError, IndexError, TypeError) as e:
+        raise RuntimeError(f"balasan LLM tidak sesuai format ({type(e).__name__})") from e
 
 
 def buat_pembuat(url: str, key: str, model: str, timeout: float = 60.0) -> Callable[[str, list], str]:

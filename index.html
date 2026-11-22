@@ -735,7 +735,6 @@
     <label class="dup row sw" title="Tekan dan geser karakternya untuk memindahkan Iris. Mati = karakter tidak bisa diangkat (elus dan colek tetap jalan)">Angkat dari karakter <input type="checkbox" id="sDragChar"></label>
     <label class="row sw" title="Seret tombol ✥ di bar untuk memindahkan Iris">Angkat dari tombol ✥ <input type="checkbox" id="sDragGrip"></label>
     <label class="row sw" title="Iris menawarkan Terjemah / Rangkum / Perbaiki saat kamu menyalin teks. Yang tampak seperti kata sandi atau token diabaikan; teks tidak disimpan. Bawaan mati (juga lewat /tawar)">Tawarkan aksi saat menyalin <input type="checkbox" id="sClipOffer"></label>
-    <div class="row" title="Simpan atau muat pengaturan (tema, baju, kualitas, dll.) sebagai berkas JSON di Downloads. Persona dan suara ada di server dan tidak ikut."><span>Konfigurasi</span><span class="pair"><button id="cfgExp" class="pill">Ekspor</button><button id="cfgImp" class="pill">Impor</button></span></div>
   </div>
   <div id="log" class="interactive">
     <div id="logHead">
@@ -1370,7 +1369,7 @@ function animate(now) {
 let talk = 0;   // 0..1, naik saat Iris sedang bicara
 // ---- Pengaturan (disimpan di localStorage) + keadaan interaksi; dipakai frame() dan blok 'v6' di bawah ----
 const SET = { tlLang: 'auto', vol: 100, op: 100, follow: true, idle: true, fx: true, sleep: true, sleepMin: 5, sleepMax: 20, arms: false, voiceTimer: true, breakOn: false, breakMin: 60, mood: true, top: true, hourly: false, greetOn: false, shadow: true, sit: false, dragChar: true, dragGrip: true, watchOn: false, watchMin: 5, watchMax: 60, funOn: true, localCmd: true, funMin: 5, funMax: 60, peekHide: 3, fullBody: true, funGen: true, funTopic: '', theme: 'iris', outfitSeason: false, outfitSituasi: false, seasonFx: true, connPill: false, thoughts: true, clipOffer: false };
-const SET_DEFAULT = Object.assign({}, SET);   // v80: acuan jenis dan nama kunci untuk impor konfigurasi
+const SET_DEFAULT = Object.assign({}, SET);
 let clipSelf = '';   // v80: teks yang baru disalin oleh Iris sendiri (tombol salin), tidak ditawarkan lagi
 let peekTalkUntil = 0;   // v35: sampai kapan ucapan otomatis (fun fact, istirahat, jam) boleh keluar dari tepi layar tanpa memunculkan Iris
 let watchBusy = false, watchSpeak = false;   // v23: komentar layar otomatis sedang diproses server / sedang diucapkan (tidak memunculkan Iris dari tepi layar)
@@ -2994,7 +2993,7 @@ const SLASH_ALIAS = {   // ketik alias, perintah aslinya yang muncul (semua alia
   '/web': '/chrome', '/outfit': '/baju', '/ganti': '/baju', '/theme': '/tema', '/local': '/lokal',
   '/clipboard': '/clip', '/screen': '/layar', '/tl': '/terjemah', '/translate': '/terjemah', '/summarize': '/ringkas', '/reverse': '/rea',
   '/break': '/istirahat', '/watch': '/pantau', '/body': '/badan', '/quality': '/kualitas', '/gpu': '/kualitas',
-  '/ff': '/funfact', '/tahukah': '/funfact', '/intip': '/sembunyi', '/peek': '/sembunyi', '/time': '/jam', '/export': '/ekspor', '/konfig': '/config', '/offer': '/tawar', '/stat': '/statistik', '/stats': '/statistik'
+  '/ff': '/funfact', '/tahukah': '/funfact', '/intip': '/sembunyi', '/peek': '/sembunyi', '/time': '/jam', '/export': '/ekspor', '/offer': '/tawar', '/stat': '/statistik', '/stats': '/statistik'
 };
 const SLASH_ALIAS_OF = {}; for (const [a, c] of Object.entries(SLASH_ALIAS)) (SLASH_ALIAS_OF[c] = SLASH_ALIAS_OF[c] || []).push(a);
 let slashUse = {}; try { slashUse = JSON.parse(localStorage.getItem('iris.slashUse') || '{}') || {}; } catch { slashUse = {}; }
@@ -3798,7 +3797,7 @@ function kanaAnswer(text) {
 /* ---- timer + pomodoro ---- */
 let timer = null, pomoCount = 0;
 /* v82: statistik fokus. Tiap sesi Pomodoro "Fokus" yang selesai penuh dicatat di localStorage 'iris.focus' ({'YYYY-MM-DD': {n, min}}, tanggal lokal, maks 120 hari).
-   Hanya angka sesi dan menit; tidak ada isi layar atau judul jendela. Sesi yang dibatalkan tidak dihitung. Tidak ikut ekspor konfigurasi. */
+   Hanya angka sesi dan menit; tidak ada isi layar atau judul jendela. Sesi yang dibatalkan tidak dihitung. */
 const FOCUS_KEY = 'iris.focus', FOCUS_KEEP_DAYS = 120;
 const dayKey = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 function focusLoad() {
@@ -5227,7 +5226,6 @@ const HELP = [
   '/statistik [reset]  jam fokus 7 hari terakhir dari sesi Pomodoro yang selesai (disimpan lokal; reset = hapus catatan)',
   '/clip             tanya isi clipboard (teks atau gambar)',
   '/tawar [nyala|mati]  tawarkan Terjemah / Rangkum / Perbaiki saat kamu menyalin teks (bawaan mati; kata sandi dan token diabaikan)',
-  '/config ekspor|impor  simpan atau muat pengaturan (tema, baju, kualitas, dll.) sebagai berkas JSON di Downloads',
   '/ekspor           simpan percakapan sebagai HTML ke Downloads',
   '/layar [tanya]    foto layar lalu langsung tanya',
   '/terjemah [en|ja|auto]  pilih area layar dengan menyeret (seperti Snipping Tool), lalu ganti teks Jepang/Inggris di area itu jadi gambar berbahasa Indonesia (Ctrl+Alt+T; Esc atau klik kanan = batal; tanpa pilihan bahasa = sesuai pilihan di menu, di bawah Terjemah layar)',
@@ -5398,13 +5396,6 @@ function slashCmd(text) {
       else say('Tawaran saat menyalin dimatikan.', 'neutral', 3000, 'もう聞かないね。');
       return true;
     }
-    case 'config': case 'konfig': {
-      const a = String(arg || '').trim().toLowerCase();
-      if (/^(impor|import|muat)/.test(a)) cfgImport();
-      else if (/^(ekspor|export|simpan)/.test(a)) cfgExport();
-      else { openChat(); logAdd('task', 'Format: /config ekspor (simpan pengaturan) atau /config impor (muat dari berkas JSON).'); }
-      return true;
-    }
     case 'ringkas': case 'summarize': ringkasVideo(arg); return true;
     case 'rangkum': rangkumCmd(arg); return true;   // v81
     case 'rea': case 'reverse': reaCmd(arg); return true;   // v82
@@ -5555,78 +5546,6 @@ async function exportChat() {
 }
 gid('logExport').addEventListener('click', exportChat);
 
-/* ---- v80: ekspor / impor konfigurasi ----
-   Berkas JSON v1: {iris:'config', v:1, set:{...SET}, 'iris.outfit', 'iris.outfitBase', 'iris.q'}. Persona dan suara ada di server (.env), tidak ikut.
-   Impor memeriksa tiap kunci terhadap SET_DEFAULT (nama dan jenis nilai harus cocok, kunci asing dilewati), lalu menulis localStorage dan memuat ulang overlay. */
-const CFG_STR_KEYS = ['iris.outfit', 'iris.outfitBase', 'iris.q'];
-function cfgBuild() {
-  const o = { iris: 'config', v: 1, exported: new Date().toISOString(), set: Object.assign({}, SET) };
-  try { for (const k of CFG_STR_KEYS) { const v = localStorage.getItem(k); if (v) o[k] = v; } } catch { /* abaikan */ }
-  return o;
-}
-function cfgSanitize(o) {
-  if (!o || typeof o !== 'object' || o.iris !== 'config' || o.v !== 1 || !o.set || typeof o.set !== 'object') return { ok: false, error: 'bukan berkas konfigurasi Iris (versi 1).' };
-  const set = {}, dropped = [];
-  for (const k of Object.keys(SET_DEFAULT)) {
-    if (!Object.prototype.hasOwnProperty.call(o.set, k)) continue;
-    const d = SET_DEFAULT[k], v = o.set[k];
-    if (k === 'tlLang' && !(typeof v === 'string' && /^(auto|ja|en)$/.test(v))) dropped.push(k);
-    else if (typeof d === 'boolean' && typeof v === 'boolean') set[k] = v;
-    else if (typeof d === 'number' && typeof v === 'number' && Number.isFinite(v) && v >= -1000 && v <= 100000) set[k] = v;
-    else if (typeof d === 'string' && typeof v === 'string' && v.length <= 60 && !/[\u0000-\u001f]/.test(v)) set[k] = v;
-    else dropped.push(k);
-  }
-  for (const k of Object.keys(o.set)) if (!Object.prototype.hasOwnProperty.call(SET_DEFAULT, k)) dropped.push(k);
-  const extra = {};
-  for (const k of CFG_STR_KEYS) if (typeof o[k] === 'string' && /^[\w.\-]{1,40}$/.test(o[k])) extra[k] = o[k];
-  return { ok: true, set, extra, dropped };
-}
-async function cfgExport() {
-  const now = new Date();
-  const name = 'Iris-config_' + now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate()) + '_' + pad2(now.getHours()) + '-' + pad2(now.getMinutes());
-  const json = JSON.stringify(cfgBuild(), null, 2);
-  try {
-    if (window.companion && typeof window.companion.saveConfig === 'function') {
-      const r = await window.companion.saveConfig(name, json);
-      if (!r || !r.ok) throw new Error((r && r.error) || 'gagal menyimpan');
-      logExportCard(r.path);
-      say('Konfigurasi tersimpan di folder Downloads.', 'happy', 4500, '設定をダウンロードフォルダに保存したよ！');
-    } else {   // main.js lama tanpa IPC: unduh lewat browser
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([json], { type: 'application/json;charset=utf-8' }));
-      a.download = name + '.json'; document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    }
-  } catch (e) { showError('Ekspor konfigurasi gagal: ' + (e.message || e)); }
-}
-function cfgApply(text) {
-  let o;
-  try { o = JSON.parse(text); } catch { showError('Impor gagal: berkas bukan JSON yang valid.'); return; }
-  const r = cfgSanitize(o);
-  if (!r.ok) { showError('Impor gagal: ' + r.error); return; }
-  try {
-    localStorage.setItem('iris.set', JSON.stringify(Object.assign({}, SET_DEFAULT, r.set)));
-    for (const k of CFG_STR_KEYS) if (r.extra[k]) localStorage.setItem(k, r.extra[k]);
-  } catch (e) { showError('Impor gagal: ' + (e.message || e)); return; }
-  say('Pengaturan diimpor (' + Object.keys(r.set).length + ' butir' + (r.dropped.length ? ', ' + r.dropped.length + ' dilewati' : '') + '). Memuat ulang...', 'happy', 2500, '設定を読み込んだよ。再読み込みするね。');
-  setTimeout(() => location.reload(), 1800);
-}
-function cfgImport() {
-  const inp = document.createElement('input');
-  inp.type = 'file'; inp.accept = '.json,application/json'; inp.style.display = 'none';
-  inp.addEventListener('change', () => {
-    const f = inp.files && inp.files[0]; inp.remove();
-    if (!f) return;
-    if (f.size > 65536) { showError('Impor gagal: berkas terlalu besar untuk konfigurasi Iris.'); return; }
-    const rd = new FileReader();
-    rd.onload = () => cfgApply(String(rd.result || ''));
-    rd.onerror = () => showError('Impor gagal: berkas tidak terbaca.');
-    rd.readAsText(f);
-  });
-  document.body.appendChild(inp); inp.click();
-}
-gid('cfgExp').addEventListener('click', cfgExport);
-gid('cfgImp').addEventListener('click', cfgImport);
 
 
 

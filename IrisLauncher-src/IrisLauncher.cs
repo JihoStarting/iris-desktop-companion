@@ -124,6 +124,7 @@ namespace IrisLauncher
         public static readonly Color Green = ColorTranslator.FromHtml("#4ADE80");
         public static readonly Color Red = ColorTranslator.FromHtml("#F87171");
         public static readonly Color Gray = ColorTranslator.FromHtml("#5B5380");
+        public static readonly Color Dim = ColorTranslator.FromHtml("#7E75A8");   // teks menu nonaktif: redup tapi masih terbaca di atas Panel
         public static readonly Color Amber = ColorTranslator.FromHtml("#FBBF24");
         public static readonly Color BtnStart = ColorTranslator.FromHtml("#7C5CF0");
         public static readonly Color BtnStop = ColorTranslator.FromHtml("#C4467A");
@@ -843,6 +844,25 @@ namespace IrisLauncher
         public override Color SeparatorLight { get { return Theme.Border; } }
     }
 
+    // Item menu nonaktif tidak digambar sebagai terpilih: ToolStripProfessionalRenderer menggambar kotak aksen
+    // di sekeliling item abu-abu saat kursor di atasnya, sehingga tampak seperti bisa diklik. Teksnya diredupkan.
+    class DarkRenderer : ToolStripProfessionalRenderer
+    {
+        public DarkRenderer() : base(new DarkColors()) { }
+
+        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+        {
+            if (e.Item != null && !e.Item.Enabled) return;
+            base.OnRenderMenuItemBackground(e);
+        }
+
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            if (e.Item != null && !e.Item.Enabled) e.TextColor = Theme.Dim;
+            base.OnRenderItemText(e);
+        }
+    }
+
     // ---------------------------------------------------------------- v1.1: ikon tray berwarna sesuai status
     static class TrayIcons
     {
@@ -1341,7 +1361,7 @@ namespace IrisLauncher
             logTitle.Font = new Font("Segoe UI Semibold", 9.5F); logTitle.ForeColor = Theme.Accent;
             logTitle.Padding = new Padding(16, 6, 0, 0); logTitle.BackColor = Theme.Bg;
             log.SelectionColor = Theme.Muted;
-            log.AppendText("Siap. Tekan \u25B6 Start semua untuk menyalakan layanan,\r\natau klik salah satu status di atas untuk satu layanan saja.\r\n");
+            log.AppendText("Siap. Tekan Start semua untuk menyalakan layanan,\r\natau klik salah satu status di atas untuk satu layanan saja.\r\n");
             log.SelectionColor = log.ForeColor;
             t.Controls.Add(logTitle, 0, 3);
             t.Controls.Add(logWrap, 0, 4);
@@ -1356,7 +1376,7 @@ namespace IrisLauncher
             bFolder.Location = new Point(0, 8);
             Style(bFolder, Theme.BtnDoctor);
             ContextMenuStrip toolsMenu = BuildToolsMenu();
-            bFolder.Click += delegate { toolsMenu.Show(bFolder, new Point(0, 0), ToolStripDropDownDirection.AboveRight); };
+            bFolder.Click += delegate { ShowToolsMenu(toolsMenu, bFolder); };
             Button bClear = new RBtn(); bClear.Text = "Bersihkan log"; bClear.Size = new Size(140, 28);
             bClear.Location = new Point(0, 8);
             Style(bClear, Theme.BtnDoctor); bClear.Click += delegate { log.Clear(); };
@@ -1472,7 +1492,7 @@ namespace IrisLauncher
             Refresh2();
             timer.Start();
             CleanOldExe();
-            if (cfg.CekUpdate && Settings.IsProject(cfg.Proyek)) BackgroundCheck();
+            if (cfg.CekUpdate && Settings.IsProject(cfg.Proyek)) DelayedBackgroundCheck();
             StartUpdTimer();
             if (cfg.AutoStart)
             {
@@ -1566,10 +1586,11 @@ namespace IrisLauncher
         static ContextMenuStrip NewMenu()
         {
             ContextMenuStrip m = new ContextMenuStrip();
-            m.Renderer = new ToolStripProfessionalRenderer(new DarkColors());
+            m.Renderer = new DarkRenderer();
             m.BackColor = Theme.Panel; m.ForeColor = Theme.Text;
             m.Font = new Font("Segoe UI", 9.5F);
             m.ShowImageMargin = false;
+            m.MinimumSize = new Size(250, 0);   // lebar menu tidak menciut kalau semua teksnya pendek
             return m;
         }
 
@@ -1577,6 +1598,7 @@ namespace IrisLauncher
         {
             ToolStripMenuItem i = new ToolStripMenuItem(text);
             i.ForeColor = Theme.Text;
+            i.Padding = new Padding(2, 4, 2, 4);   // sedikit lebih lega (tinggi item naik sekitar 6 px)
             i.Click += delegate { a(); };
             return i;
         }
@@ -1831,28 +1853,156 @@ namespace IrisLauncher
             catch (Exception ex) { Log("GAGAL: " + ex.Message); }
         }
 
+        // Folder Downloads Windows (bisa dipindah pengguna; dibaca dari registri, cadangan: profil\Downloads).
+        static string DownloadsDir()
+        {
+            try
+            {
+                object v = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders",
+                    "{374DE290-123F-4565-9164-39C4925E467B}", null);
+                string p = v as string;
+                if (!string.IsNullOrEmpty(p))
+                {
+                    p = Environment.ExpandEnvironmentVariables(p);
+                    if (Directory.Exists(p)) return p;
+                }
+            }
+            catch { }
+            return Path.Combine(HomeDir(), "Downloads");
+        }
+
+        void OpenDownloads()
+        {
+            try
+            {
+                string d = DownloadsDir();
+                if (Directory.Exists(d)) Process.Start("explorer.exe", AppInfo.Quote(d));
+                else Log("Folder Downloads tidak ditemukan: " + d);
+            }
+            catch (Exception ex) { Log("[GAGAL] " + ex.Message); }
+        }
+
+        // config.yaml Hermes ada di WSL (~/.hermes/config.yaml). Lokasi dicari lewat "printenv HOME" (tanpa shell, jadi
+        // tidak bergantung pada tanda kutip), lalu dibuka lewat \\wsl.localhost\<distro>\... di Notepad. Berjalan di
+        // thread lain; kalau WSL sedang mati, perintah ini menyalakannya.
+        void OpenHermesConfig()
+        {
+            string distro = cfg.Distro;
+            if (string.IsNullOrEmpty(distro) || !Regex.IsMatch(distro, @"^[A-Za-z0-9._-]+$")) { Log("Nama distro WSL tidak valid: " + distro); return; }
+            Log("Mencari config.yaml Hermes lewat WSL (" + distro + ") ...");
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                string home = null, err = null;
+                try
+                {
+                    ProcessStartInfo psi = new ProcessStartInfo();
+                    psi.FileName = "wsl.exe";
+                    psi.Arguments = "-d " + distro + " -- printenv HOME";
+                    psi.UseShellExecute = false; psi.CreateNoWindow = true;
+                    psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
+                    psi.StandardOutputEncoding = Encoding.UTF8;
+                    using (Process p = Process.Start(psi))
+                    {
+                        if (!p.WaitForExit(25000)) { try { p.Kill(); } catch { } err = "WSL tidak menjawab dalam 25 detik"; }
+                        else if (p.ExitCode != 0) err = "WSL gagal (kode " + p.ExitCode + "); cek nama distro di Pengaturan";
+                        else home = (p.StandardOutput.ReadToEnd() ?? "").Trim();
+                    }
+                }
+                catch (Exception ex) { err = ex.Message; }
+                if (err == null && (string.IsNullOrEmpty(home) || home.IndexOf('\0') >= 0 || !Regex.IsMatch(home, @"^/[A-Za-z0-9._/@+-]+$")))
+                    err = "lokasi home di WSL tidak terbaca";
+                string found = null;
+                if (err == null)
+                {
+                    string rel = home.Replace('/', '\\') + "\\.hermes\\config.yaml";
+                    string[] roots = new string[] { @"\\wsl.localhost\" + distro, @"\\wsl$\" + distro };
+                    foreach (string r in roots) { try { if (File.Exists(r + rel)) { found = r + rel; break; } } catch { } }
+                    if (found == null) err = "config.yaml tidak ada di " + home + "/.hermes (Hermes belum dipasang?)";
+                }
+                string fFound = found, fErr = err;
+                try
+                {
+                    BeginInvoke((Action)delegate
+                    {
+                        if (fFound == null) { Log("GAGAL membuka config.yaml Hermes: " + fErr); return; }
+                        OpenText(fFound);
+                        Log("config.yaml Hermes dibuka di Notepad. Buat cadangan dulu (mis. config.yaml.bak-tanggal) dan restart Hermes setelah menyimpan.");
+                    });
+                }
+                catch { /* jendela sudah ditutup */ }
+            });
+        }
+
+        static void Avail(ToolStripMenuItem it, bool ok, string okText, string offText, string tip)
+        {
+            it.Enabled = ok;
+            it.Text = ok ? okText : offText;
+            it.ToolTipText = tip ?? "";
+        }
+
+        Action toolsRefresh;   // memperbarui teks dan status item menu Alat; dipanggil sebelum menu dihitung lebarnya dan saat dibuka
+
+        // Menu dibuka rata kiri dengan tombol; kalau lebarnya membuat menu keluar dari jendela peluncur, dibuka rata kanan
+        // (tepi kanan menu sejajar tepi kanan tombol). Lebar dihitung sesudah teks item diperbarui.
+        void ShowToolsMenu(ContextMenuStrip menu, Control anchor)
+        {
+            Point origin = new Point(0, -2);
+            ToolStripDropDownDirection dir = ToolStripDropDownDirection.AboveRight;
+            try
+            {
+                if (toolsRefresh != null) toolsRefresh();
+                int w = Math.Max(menu.GetPreferredSize(Size.Empty).Width, menu.MinimumSize.Width);
+                Point sp = anchor.PointToScreen(Point.Empty);
+                if (sp.X + w > Bounds.Right - 8) { dir = ToolStripDropDownDirection.AboveLeft; origin = new Point(anchor.Width, -2); }
+            }
+            catch { /* pakai posisi bawaan */ }
+            menu.Show(anchor, origin, dir);
+        }
+
         ContextMenuStrip BuildToolsMenu()
         {
             ContextMenuStrip m = NewMenu();
-            m.Items.Add(Item("Buka folder proyek", delegate { OpenFolder(); }));
+            m.ShowItemToolTips = true;
+            ToolStripMenuItem proj = Item("Buka folder proyek", delegate { OpenFolder(); });
+            ToolStripMenuItem dl = Item("Buka folder Downloads", delegate { OpenDownloads(); });
             ToolStripMenuItem envHome = Item("Buka .env (profil pengguna)", delegate { OpenText(HomeEnv()); });
             ToolStripMenuItem envProj = Item("Buka .env (folder proyek)", delegate { OpenText(ProjEnv()); });
             ToolStripMenuItem wslc = Item("Buka .wslconfig", delegate { OpenText(WslConfig()); });
-            m.Items.Add(envHome); m.Items.Add(envProj); m.Items.Add(wslc);
+            ToolStripMenuItem hcfg = Item("Buka config.yaml Hermes (WSL)", delegate { OpenHermesConfig(); });
+            hcfg.ToolTipText = "Membuka ~/.hermes/config.yaml di Notepad lewat WSL. Menyalakan WSL bila sedang mati.";
+            ToolStripMenuItem pipRb = Item("Pulihkan paket Python (sebelum update)", delegate { RunPipRollback(); });
+            m.Items.Add(proj); m.Items.Add(dl);
+            m.Items.Add(new ToolStripSeparator());
+            m.Items.Add(envHome); m.Items.Add(envProj); m.Items.Add(wslc); m.Items.Add(hcfg);
             m.Items.Add(new ToolStripSeparator());
             m.Items.Add(Item("Log layanan...", delegate { OpenLogViewer(); }));
             m.Items.Add(Item("Salin laporan Doctor", delegate { CopyDoctor(); }));
             m.Items.Add(Item("Rapikan log lama sekarang", delegate { RotateLogs(true); }));
-            ToolStripMenuItem pipRb = Item("Pulihkan paket Python (sebelum update terakhir)", delegate { RunPipRollback(); });
             m.Items.Add(new ToolStripSeparator());
             m.Items.Add(pipRb);
-            m.Opening += delegate
+            toolsRefresh = delegate
             {
-                envHome.Enabled = File.Exists(HomeEnv());
-                envProj.Enabled = File.Exists(ProjEnv());
-                wslc.Enabled = File.Exists(WslConfig());
-                pipRb.Enabled = File.Exists(PipSnap());
+                string pd = cfg == null ? "" : (cfg.Proyek ?? "");
+                Avail(proj, Directory.Exists(pd), "Buka folder proyek",
+                    string.IsNullOrEmpty(pd) ? "Buka folder proyek - belum diatur" : "Buka folder proyek - tidak ditemukan",
+                    string.IsNullOrEmpty(pd) ? "Atur folder proyek di Pengaturan." : pd);
+                string dd = DownloadsDir();
+                Avail(dl, Directory.Exists(dd), "Buka folder Downloads", "Buka folder Downloads - tidak ditemukan", dd);
+                string he = HomeEnv(), pe = ProjEnv(), wc = WslConfig();
+                Avail(envHome, File.Exists(he), "Buka .env (profil pengguna)", "Buka .env (profil pengguna) - tidak ada", he);
+                Avail(envProj, !string.IsNullOrEmpty(pe) && File.Exists(pe), "Buka .env (folder proyek)",
+                    string.IsNullOrEmpty(pe) ? "Buka .env (folder proyek) - belum diatur" : "Buka .env (folder proyek) - tidak ada",
+                    string.IsNullOrEmpty(pe) ? "Atur folder proyek di Pengaturan." : pe);
+                Avail(wslc, File.Exists(wc), "Buka .wslconfig", "Buka .wslconfig - tidak ada", wc);
+                string snap = PipSnap();
+                bool hasSnap = File.Exists(snap);
+                Avail(pipRb, hasSnap && !busy, "Pulihkan paket Python (sebelum update)",
+                    busy ? "Pulihkan paket Python - sedang sibuk" : "Pulihkan paket Python - belum ada cadangan",
+                    busy ? "Tunggu tugas yang sedang berjalan selesai."
+                         : (hasSnap ? "Mengembalikan paket .venv ke daftar versi sebelum update server.py yang terakhir. " + snap
+                                    : "Cadangan dibuat otomatis saat Update server.py; belum ada. " + snap));
             };
+            m.Opening += delegate { toolsRefresh(); };
             return m;
         }
 
@@ -2342,6 +2492,21 @@ namespace IrisLauncher
             return string.Join(", ", n.ToArray());
         }
 
+        // Tunda cek update ~20 detik sesudah launcher dibuka (dan tunggu sampai tidak sibuk), supaya tidak berebut CPU/jaringan
+        // dengan Auto-start atau klik "Start semua" tepat saat launcher baru terbuka.
+        void DelayedBackgroundCheck()
+        {
+            System.Windows.Forms.Timer d = new System.Windows.Forms.Timer();
+            d.Interval = 20000;
+            d.Tick += delegate
+            {
+                if (busy) return;
+                d.Stop(); d.Dispose();
+                if (cfg.CekUpdate && Settings.IsProject(cfg.Proyek)) BackgroundCheck();
+            };
+            d.Start();
+        }
+
         // Cek diam-diam saat launcher dibuka: tidak membangunkan WSL, tidak mengisi log kecuali ada update.
         void BackgroundCheck()
         {
@@ -2413,26 +2578,31 @@ namespace IrisLauncher
             }
         }
 
-        void LogUpdSummary()
+        void LogUpdSummary(string only)
         {
+            string filt = "," + only + ",";
             for (int i = 0; i < UpdKey.Length; i++)
                 foreach (UpdInfo u in updInfos)
                 {
                     if (u.Key != UpdKey[i]) continue;
+                    if (only != "semua" && filt.IndexOf("," + u.Key + ",", StringComparison.Ordinal) < 0) continue;
                     string v = u.Ins.Length > 0 && u.Lat.Length > 0 ? u.Ins + " -> " + u.Lat : (u.Ins.Length > 0 ? u.Ins : u.Lat);
                     Log(UpdName[i] + ": " + StatusWord(u.Status) + (v.Length > 0 ? " (" + v + ")" : "") + (u.Note.Length > 0 ? " - " + u.Note : ""));
                 }
         }
 
-        void CheckUpdates(bool openAfter)
+        void CheckUpdates(bool openAfter) { CheckUpdates(openAfter, "semua"); }
+
+        // only = "semua" atau daftar kunci dipisah koma. Cek sebagian (mis. sesudah update) jauh lebih cepat dan tidak menghapus hasil komponen lain.
+        void CheckUpdates(bool openAfter, string only)
         {
             if (busy || !Ready()) return;
-            updInfos.Clear();
-            Run("Cek update", "iris-update.ps1", UpdArgs("cek", "semua"), delegate (int c)
+            if (only == "semua") updInfos.Clear();
+            Run("Cek update", "iris-update.ps1", UpdArgs("cek", only), delegate (int c)
             {
                 updChecked = DateTime.Now;
                 ApplyUpd();
-                LogUpdSummary();
+                LogUpdSummary(only);
                 if (openAfter) BeginInvoke((Action)delegate { ShowUpdateDialog(); });
             });
         }
@@ -2475,8 +2645,10 @@ namespace IrisLauncher
                     // setelah SetBusy(false) selesai: tawarkan mulai ulang bila launcher baru terpasang, kalau tidak cek ulang
                     BeginInvoke((Action)delegate
                     {
+                        // chip Overlay yang tadinya "Gagal" (mis. electron.exe hilang) tidak perlu tetap merah setelah paketnya diperbaiki
+                        if (c == 0 && keys.Contains("overlay") && errChip == 5) { errChip = -1; UpdateChips(); }
                         if (keys.Contains("launcher") && File.Exists(Application.ExecutablePath + ".old")) AskRestart();
-                        else CheckUpdates(false);
+                        else CheckUpdates(false, string.Join(",", keys.ToArray()));
                     });
                 });
         }
@@ -2497,7 +2669,7 @@ namespace IrisLauncher
             string msg = "VOICEVOX akan dikembalikan ke folder cadangan terakhir (vv-engine.bak-...). Versi yang sekarang dibuang.\r\n\r\nVOICEVOX dimatikan sebentar. Lanjutkan?";
             if (MessageBox.Show(this, msg, "Pulihkan VOICEVOX", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
             Run("Pulihkan VOICEVOX", "iris-update.ps1", UpdArgs("pulihkan", "voicevox"),
-                delegate (int c) { BeginInvoke((Action)delegate { CheckUpdates(false); }); });
+                delegate (int c) { BeginInvoke((Action)delegate { CheckUpdates(false, "voicevox"); }); });
         }
 
         // Snapshot "pip freeze" yang dibuat iris-update.ps1 sebelum update server.py (satu generasi).
@@ -2513,7 +2685,7 @@ namespace IrisLauncher
                 + "server.py dimatikan sebentar. Lanjutkan?";
             if (MessageBox.Show(this, msg, "Pulihkan paket Python", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
             Run("Pulihkan paket Python", "iris-update.ps1", UpdArgs("pulihkan", "server"),
-                delegate (int c) { BeginInvoke((Action)delegate { CheckUpdates(false); }); });
+                delegate (int c) { BeginInvoke((Action)delegate { CheckUpdates(false, "server"); }); });
         }
 
         // Cek berkala saat launcher dibiarkan hidup (mis. di tray): paling sering sekali per 4 jam.
