@@ -1,4 +1,4 @@
-"""rea_triage.py - triase statis lokal untuk perintah /rea (Iris v99.1, kumulatif dengan v99.0, v98.6, v97, v96, v95, v94, v93, v92, v91).  by: KangJiho
+"""rea_triage.py - triase statis lokal untuk perintah /rea (Iris v99.20, kumulatif dengan v99.19, v99.18, v99.17, v99.16, v99.15, v99.14, v99.13, v99.12, v99.11, v99.10, v99.9, v99.8, v99.7, v99.6, v99.5, v99.4, v99.3, v99.1, v99.0, v98.6, v97, v96, v95, v94, v93, v92, v91).  by: KangJiho
 
 Dihitung langsung di PC oleh Python (hanya pustaka standar), TANPA LLM dan TANPA menjalankan file:
 hash, jenis file, entropi, header PE / ELF / ZIP (APK, JAR), import / export, bagian (section), string menarik,
@@ -29,7 +29,7 @@ v97 (lebih bertenaga; API lama tidak berubah, semua tambahan bersifat aditif):
     - perburuan satu-byte XOR / ADD / ROL untuk URL, stub DOS, dan nama API tersembunyi;
     - detail kemasan: PyInstaller (versi Python + skrip masuk dari TOC), UPX, NSIS, Inno Setup, Go, Rust, AutoIt, SFX 7-Zip, PyArmor;
     - triage_dir mengelompokkan keluarga sampel (imphash, rich header, UUID Mach-O, opsional CTPH dengan fuzzy=True);
-    - triage_md(path): laporan Markdown; rea_api(request): satu pintu JSON untuk Iris / Hermes (opsi pembatas path: env REA_ROOTS).
+    - triage_md(path): laporan Markdown; rea_api(request): satu pintu JSON untuk Iris / Hermes (pembatas path: env REA_ROOTS, atau akar bawaan dari set_default_roots() yang dipasang server.py).
 
 v96.1 (pengerasan): berkas dibuka sekali dengan fstat (tolak FIFO / perangkat / folder, tanpa TOCTOU); batas kerja entropi / MD5
     per bagian (header bagian tumpang-tindih tidak bisa memakan CPU); ZIP dibaca dengan batas dekompresi dan jumlah entri;
@@ -73,14 +73,65 @@ v98.6 (integritas, kalibrasi, derau; API lama tidak berubah, semua tambahan adit
 
 v99.0 (Asset Explorer; modul baru rea_assets.py, impor malas seperti rea_extract / rea_binary; triase PE di atas TIDAK berubah):
     REA tidak lagi terbatas pada .exe: model 3D (glTF/GLB, OBJ, STL, PLY, FBX, COLLADA), animasi (glTF, FBX, BVH), tekstur (DDS, TGA, BMP, PNG, ...),
-    audio, arsip / paket game (Quake PAK, WAD, Unreal .pak v1-v9, ZIP / APK / JAR, TAR / GZIP), SQLite, dan carving berkas tertanam di berkas apa pun.
+    audio, arsip / paket game (Quake PAK, WAD, Unreal .pak v1-v11, ZIP / APK / JAR, TAR / GZIP), SQLite, dan carving berkas tertanam di berkas apa pun.
     - assets_text(path) -> str ; assets_extract(path, outdir, pattern=None, convert=True) -> dict ; assets_carve(path, outdir=None) -> dict
     - aksi API baru: assets, assets_extract, assets_carve, formats; CLI: --assets FILE | --assets-extract OUTDIR FILE [pola] | --assets-carve FILE [OUTDIR] | --formats
     - plugin parser buatan sendiri: env REA_PLUGINS=FOLDER atau CLI --plugins FOLDER (sengaja TIDAK bisa diminta lewat API agen, karena plugin = kode).
 
+v99.12 (roadmap v2, Tier S butir 1b: tabel metadata .NET + IL; aditif; by: KangJiho): mengurai stream `#~` (ECMA-335: TypeDef, MethodDef, MemberRef, TypeRef, ImplMap, ModuleRef, AssemblyRef,
+    ManifestResource, NestedClass, MethodSpec) lalu memindai badan IL tiap metode (call / callvirt / newobj / ldftn) untuk memetakan relasi kelas -> metode -> panggilan.
+    - P/Invoke presisi dari ImplMap (dll!fungsi <- Tipe::Metode); API .NET sensitif (Process.Start, Assembly.Load, WebClient, Convert.FromBase64String, Registry ...) dikelompokkan
+      per metode pemanggil; rantai panggilan statis dari titik masuk / Main / .cctor modul ke pemanggil API sensitif (kedalaman <= 5);
+    - nama resource terkelola (ManifestResource), AssemblyRef, kandidat dekoder (xor + loop), metode fan-in tinggi (pembantu string / dekripsi obfuskator), badan IL tak valid (IL dienkripsi);
+    - kunci baru rep["dotnet_il"]; peringatan "IL .NET: ..."; CLI `--net FILE [--compact] [--raw]`, aksi API {"action": "dotnet", "path": ...}, fungsi net_text(path). Triase lama dan skor tidak berubah.
+    - batas sumber daya: NETIL_TIME (4 dtk), NETIL_MAX_METHODS, NETIL_MAX_BODY, NETIL_MAX_BYTES, NETIL_MAX_ROWS; hasil ditandai TERPOTONG bila batas tercapai.
+    - batasan: refleksi / delegate / pemanggilan lewat interface yang dibongkar saat runtime tidak terlihat; hanya `#~` (tanpa `#-`); hasil adalah petunjuk, bukan bukti.
+
+v99.13 (roadmap v2, Tier S butir 3: CFG + kompleksitas fungsi; aditif; by: KangJiho): RE Lab (PE / ELF x86 / x86-64) kini punya decoder panjang instruksi murni Python (tanpa capstone)
+    dan penelusuran rekursif dari awal fungsi: blok dasar, sisi (JMP / Jcc / LOOP / fall-through), kompleksitas siklomatik (E - N + 2), loop alami (sisi balik).
+    - kandidat loop dekripsi: loop kecil yang menulis ke memori dengan XOR / ROL / ROR / SHD / ADD / SUB; kandidat control-flow flattening: satu blok dispatcher dengan banyak sisi balik;
+    - kunci baru info["cfg"] (relab) dan kunci cc / blocks / loops pada info["functions"]; baris "CFG:" di laporan; peringatan RE Lab untuk loop dekripsi / flattening;
+    - CLI `--cfg FILE [entry|0xVA]` (tanpa alamat: ringkasan; dengan alamat: daftar blok dasar + sisi + kepala loop), aksi API {"action": "cfg", "path": ..., "at": ...}, fungsi cfg_text(path, at);
+    - batas sumber daya: CFG_TIME (4 dtk), CFG_MAX_FUNCS, CFG_MAX_INSNS, CFG_MAX_FUNC_INSNS, CFG_MAX_LOOPS; hasil ditandai TERPOTONG bila batas tercapai. Skor tidak berubah.
+    - batasan: jump table (JMP tak langsung) tidak diselesaikan (dihitung +1 pada cc); kode tak terdecode menghentikan jalur itu (fungsi ditandai tidak lengkap); hanya x86 / x86-64.
+
 NOTICE: _CAPA_RULES diturunkan dari aturan mandiant/capa-rules (c) Mandiant / Google, lisensi Apache-2.0
 (https://github.com/mandiant/capa-rules). Hanya nama aturan, ATT&CK, dan daftar API yang dipakai ulang; telah diubah bentuk dan disaring.
 
+v99.20 (roadmap v2, Tier A butir 2: deobfuscation skrip berlapis; aditif; by: KangJiho): PowerShell / VBScript / JavaScript dibongkar secara STATIS (skrip tidak dijalankan).
+      Inline: sambung string, -f, .Replace / -replace / Replace() / .split().join(), -join / .join, balik string, [char] / Chr() / fromCharCode, |%{[char]$_ -bxor N}, indeks $env:ComSpec / $ShellId / $pshome,
+      FromBase64String dalam GetString / atob / unescape, escape \\xNN / \\uNNNN, backtick, variabel konstan (termasuk di dalam "string $var"). Pembungkus: -EncodedCommand, FromBase64String + Deflate / Gzip (+ XOR -bxor),
+      iex / Invoke-Expression / [scriptblock]::Create, eval / new Function / Execute, JS packer (Dean Edwards); tiap hasil menjadi lapisan baru (DSO_MAX_LAYERS, DSO_MAX_NODES, DSO_TIME, DSO_MAX_TEXT).
+      Kunci baru rep["deobf"] (None bila tidak ada), baris "Deobfuscation skrip" di laporan, skor +2 bila isi terbuka memuat pola unduh / eksekusi; CLI `--deobf FILE [--json] [--raw] [--full]`;
+      aksi API {"action": "deobf", "path": ...}; fungsi deobfuscate(data), deobf_text(path).
+      Batasan: bukan interpreter; string-array + rotasi gaya obfuscator.io, Microsoft Script Encoder (#@~^), AES / RC4 di skrip, dan nilai yang baru diketahui saat jalan tidak dibongkar. Diuji dengan skrip sintetis; verifikasi dengan sampel nyata.
+v99.19 (roadmap v2, Tier A butir 1: Malware Config Extractor otomatis; aditif; by: KangJiho): ekstraktor statis konfigurasi tertanam (C2, mutex, kunci RC4 / XOR, campaign ID, user-agent, token bot).
+      Sumber: berkas apa adanya, overlay PE, resource PE, resource terkelola .NET, wilayah berentropi tinggi, berkas mentah kecil. Pola: blok TLV beacon Cobalt Strike (XOR 0x2E / 0x69),
+      token Telegram, webhook Discord, mutex Global\\ / Local\\, URL dead-drop, objek JSON / baris kunci=nilai konfigurasi. Dekode: satu-byte (XOR / ADD / ROL), XOR kunci berulang, RC4
+      (kunci kandidat dari string di sekitar wilayah, kunci pengguna, atau kunci di awal blob gaya Remcos), base64, zlib / gzip, bertingkat sampai 2 lapis; hanya dekode yang menghasilkan butir yang disimpan.
+      Kunci baru rep["malcfg"] (None bila kosong), baris "Konfigurasi malware" di laporan, peringatan; CLI `--config FILE [--key STR ...] [--json] [--raw]`; aksi API {"action": "config", "path": ..., "keys": [...]};
+      fungsi extract_config(path), config_text(path). Token / webhook disamarkan (sha256 untuk pivot) kecuali reveal=True. Skor TIDAK berubah.
+      Batas sumber daya: MCFG_TIME (4 dtk), MCFG_MAX_BLOBS, MCFG_MAX_BLOB, MCFG_MAX_KEYS, MCFG_MAX_ITEMS, MCFG_DEC_MAX, MCFG_MAX_DEPTH; hasil ditandai TERPOTONG bila batas tercapai.
+      Batasan: tanpa AES / RSA, string .NET terenkripsi per-obfuskator tidak dibongkar, keluarga selain Cobalt Strike hanya lewat pola umum; hasil adalah petunjuk. Diuji dengan data sintetis; verifikasi dengan sampel nyata.
+v99.18 (roadmap v2, Tier S butir 2: micro-emulation instruksi terbatas; aditif; by: KangJiho): emulator register + memori kecil murni Python untuk RE Lab (PE / ELF x86 / x86-64), STATIS (sampel tidak dijalankan).
+      Mendekode string yang disusun / diobfuskasi di stack (mov imm + xor / add / sub / rol / ror / not / neg berantai) dan buffer yang didekripsi di tempat oleh loop kecil (XOR dst, kunci; ROL / ROR; dll).
+      Nilai tak diketahui dilacak per bit; cabang berkondisi tak diketahui di-fork; call dilangkahi (kecuali get-PC `call $+5`). String yang sudah ada polos di berkas dibuang (bukan tersembunyi).
+      Kunci baru info["emu"] (strings / buffers / analyzed / steps / partial), baris "Emulasi mikro" di laporan, peringatan RE Lab; CLI `--emu FILE [entry|0xVA]` (dengan alamat: jejak instruksi + hasil),
+      aksi API {"action": "emu", "path": ..., "at": ...}, fungsi emu_text(path, at). Skor TIDAK berubah.
+      Batas sumber daya: EMU_TIME (3 dtk), EMU_MAX_FUNCS, EMU_MAX_STEPS, EMU_MAX_TOTAL, EMU_MAX_FORKS, EMU_MAX_WRITES; hasil ditandai TERPOTONG bila batas tercapai.
+      Batasan: tanpa API / syscall / SSE / string-op (rep movs / stos), jump table tak diselesaikan, paritas (jp) tak dimodelkan; kunci / data dari argumen atau heap tak diketahui, jadi dekripsi yang bergantung
+      padanya tidak terdekode. Hasil adalah petunjuk, bukan bukti.
+v99.17 (roadmap v2, Tier A: arsip game modern; aditif): Asset Explorer membuka UnityFS (daftar + ekstraksi node: LZMA / LZ4 / LZ4HC, blok info di awal / akhir, format 6-8;
+      SerializedFile TIDAK diurai) dan Unreal .pak v10 / v11 (indeks path-hash UE 4.26+: entri terenkode, nama dari indeks direktori penuh; zlib dan LZ4). Dekoder LZ4 blok mentah
+      murni Python (_lz4_block, keluaran dibatasi). Tanpa enkripsi (AES / UnityCN ditolak jelas). Diuji dengan berkas sintetis; kirim contoh asli kecil untuk verifikasi.
+v99.16 (roadmap v2, Tier B: kurva animasi COLLADA; aditif): Asset Explorer mengekspor animasi COLLADA (.dae) ke animations/NNN_<target>.csv (satu per channel: kunci waktu + nilai
+      mentah, stride 1 / 16 / lain, kolom interpolasi bila ada) dan animations/animations.json. Batas DAE_ANIM_MAX_VALUES / DAE_ANIM_MAX_CHANNELS; tanpa evaluasi atau retargeting.
+v99.15 (roadmap v2, Tier B + C; aditif): export_annotations / --export FILE ghidra|ida|x64dbg [OUT] (skrip anotasi dari RE Lab), func_diff / --funcdiff A B (diff fungsi
+      antar-dua biner), API export / funcdiff; sidik jari toolchain / packer diperluas (PyArmor, cx_Freeze, py2exe, PyOxidizer, Themida, VMProtect, Enigma, WiX Burn,
+      Bun, Node pkg / nexe, obfuscator .NET tambahan, penanda Rust / Nuitka / PyInstaller, nama bagian packer). Lihat komentar "v99.15" di dekat _API_ACTIONS.
+v99.14 (keamanan + alat tambahan; GABUNGAN rea_triage_security.patch ke v99.13; aditif, kunci lama tidak berubah): peringatan parse sebagian PE masuk rep["warn"],
+      sig_check (Authenticode penuh), reputation (hash VirusTotal, opt-in), unpack_7z; API: sigcheck / reputation / unpack7z; CLI: --sigcheck, --vt, --unpack7z.
+      Blok ini dulu berlabel "v99.10" di patch; diganti v99.14 karena v99.10 sudah dipakai untuk signature carving.
 v99.1 (gabungan v98.6 + v99.0; tidak ada perilaku lama yang berubah, semua tambahan aditif):
     - triase PE / ELF / Mach-O dari v98.6 (integritas Authenticode, daftar hash lokal, peredam derau CRT, XOR kunci berulang,
       resource terkelola .NET, mode kartu) DIPERTAHANKAN penuh, ditambah jembatan Asset Explorer dari v99.0;
@@ -90,6 +141,58 @@ v99.1 (gabungan v98.6 + v99.0; tidak ada perilaku lama yang berubah, semua tamba
 
 v99.2 (22 Nov 2026): rea_assets.py DIGABUNG ke berkas ini (bagian "rea_assets.py ... DIGABUNG", tepat sebelum assets_text); perilaku tidak berubah, VERSION tetap "99.1".
     Berkas rea_assets.py tidak dipakai lagi. CLI mandiri `python rea_assets.py ...` diganti opsi --assets / --assets-extract / --assets-carve / --formats / --plugins di sini.
+
+Cache hasil (23 Nov 2026): triage() dan re_lab_path() menyimpan hasilnya per SHA-256 isi berkas di rea-reports/.cache (JSON), jadi /rea cepat
+    atau /rea dalam ulang pada sampel yang sama tidak menghitung ulang. Otomatis tidak terpakai bila kode ini, VERSION, atau daftar
+    REA_KNOWN_HASHES berubah. env REA_CACHE=0 | REA_CACHE_DIR; CLI --no-cache | --cache-info | --cache-clear;
+    API {"action": "triage", "nocache": true} dan {"action": "cache"}; triage(path, use_cache=False). Aturan: blok "Cache hasil per SHA-256".
+
+v99.3 (roadmap [C3] Secret Scanner; aditif, kunci lama tidak berubah):
+    - pemindai rahasia berformat khusus: AWS access key (AKIA / ASIA ...), token GitHub (ghp_ / github_pat_ ...), token bot Telegram, webhook
+      Discord / Slack, token Slack, kunci API Google, kunci Stripe live, JWT, dan URI database berkredensial (postgres / mysql / mongodb /
+      redis / amqp / mssql). Hasil di ind["secrets_typed"] ("jenis: nilai-tersamar"); nilai tidak pernah ditulis utuh. Contoh dokumentasi
+      (mengandung EXAMPLE) dan sandi placeholder dibuang. Ikut ke skor / peringatan seperti "kandidat kredensial" yang lama.
+
+v99.4 (roadmap [B3] mitigasi ELF / Mach-O; aditif):
+    - ELF: elf["hard"] = PIE, RELRO (partial / full), NX (PT_GNU_STACK), stack canary (__stack_chk_fail), FORTIFY_SOURCE (jumlah impor *_chk),
+      RPATH / RUNPATH dari .dynamic; baris "ELF mitigasi" di laporan. Biner statis / stripped bisa tampak kurang: ini petunjuk, bukan vonis.
+    - Mach-O: mo["sig"] dari SuperBlob LC_CODE_SIGNATURE: hardened runtime, ad-hoc, sandbox, kunci entitlements (XML) dan entitlements berisiko
+      (allow-jit, disable-library-validation, allow-dyld-environment-variables, get-task-allow, task_for_pid-allow, com.apple.private.*).
+
+v99.5 (roadmap [C1] artefak jaringan statis; aditif): ind["net"] = User-Agent (header dan string Mozilla/...), permintaan + header HTTP mentah
+    (nilai Cookie / Authorization disamarkan), label DNS ter-encode (base32 / hex panjang), sertifikat PEM tertanam, konfigurasi proxy
+    (socks / port umum, kunci ProxyServer dll.), dan named pipe (\\\\.\\pipe\\...; pola Cobalt Strike / PsExec diberi tanda). Hanya teks; tidak ada koneksi.
+
+v99.6 (roadmap [A3] pemetaan objek COM; aditif): rep["com"] = kelompok objek COM yang dikenal dari GUID CLSID / IID di PE (biner 16-byte atau string
+    {GUID} ASCII / UTF-16): BITS, WMI, Task Scheduler, DCOM (ShellWindows / ShellBrowserWindow / MMC20), host skrip (WScript.Shell, FSO, ADODB.Stream),
+    klien HTTP, otomasi IE, elevasi COM / bypass UAC (CMSTPLUA, CMLUAUTIL, IFileOperation), firewall; plus API COM yang diimpor dan GUID string lain
+    di luar daftar. Peringatan hanya untuk DCOM dan elevasi COM. GUID ada di tuple _COM_GUIDS (mudah ditambah). Petunjuk, bukan bukti pemakaian.
+
+v99.7 (roadmap [B4] laporan HTML interaktif; aditif): triage_html(path, defang=True) -> str dan triage_html_file(path, out=None) -> path; CLI `--html FILE [OUT.html]`
+    (bawaan: <nama>.rea.html di folder kerja; --raw mematikan defang). Satu file mandiri tanpa sumber luar: navigasi antar-bagian, tabel bagian / segmen, tabel impor
+    dengan filter, IOC + artefak (URL, rahasia disamarkan, jaringan, COM) dengan pencarian, kemampuan, dan laporan teks penuh yang bisa dicari. Semua nilai di-escape
+    (nama / string sampel tidak bisa menyuntik HTML); mengikuti tema terang / gelap peramban. Tidak mengubah triage() maupun rea_api().
+
+v99.8 (roadmap [A4] BC4 / BC5; aditif): Asset Explorer mendekode tekstur DDS BC4 (ATI1 / BC4U / BC4S, DXGI 80 / 81) ke PNG abu-abu dan BC5 (ATI2 / BC5U / BC5S, DXGI 83 / 84)
+    ke PNG dua kanal; pada BC5 kanal B direkonstruksi sebagai Z peta normal (dicatat di manifest). Hanya mip pertama; BC6H / BC7 / ASTC masih belum.
+
+v99.9 (roadmap [C2] dekoder multi-layer; aditif): rep["layers"] = rantai dekode otomatis (hex / base64 -> gzip / zlib / deflate mentah -> XOR satu-byte), maksimal 3 lapis,
+    pada string skrip (blob base64, FromBase64String, -EncodedCommand), resource PE, dan resource terkelola .NET; blob base64 di dalam teks hasil dekode ikut diikuti.
+    Rantai hanya dilaporkan bila ujungnya dikenali (PE / ELF / ZIP / OLE2 / PDF / teks nyata); batas CHAIN_TIME, CHAIN_MAX_OUT (anti zip-bomb). Executable di ujung rantai +3 skor.
+    Belum: XOR kunci berulang dan RC4 di dalam rantai (butuh kunci / known-plaintext).
+
+v99.10 (roadmap v2, Tier C: signature carving; aditif): `--assets-carve` / assets_carve kini juga memotong modul WebAssembly (.wasm, section divalidasi urutan kanonik),
+    SQLite WAL (salt frame = salt header), sertifikat X.509 PEM dan DER (struktur TBS + signatureAlgorithm divalidasi), kunci privat PEM (label BEGIN = END), dan frame Zstandard
+    (panjang persis dari header block). Hanya kandidat dengan panjang valid yang dilaporkan (_CARVE_NEED_LEN), jadi magic yang kebetulan muncul tidak jadi positif palsu.
+
+v99.11 (roadmap v2, Tier S butir 1: analisis bytecode Dalvik; aditif; by: KangJiho): modul DEX membaca INSTRUKSI di code_item tiap metode `classes*.dex`, bukan hanya tabel method_ids.
+    - pelacakan nilai lurus per-blok (const-string, const, move, fill-array-data, StringBuilder.append / toString, String.getBytes, Base64.decode) sampai ke argumen
+      API sensitif: nomor SMS, perintah Runtime.exec, nama transformasi Cipher (ECB / bawaan = lemah), kunci SecretKeySpec / IV hard-coded, jalur DexClassLoader, URL;
+    - rantai panggilan statis dari kelas komponen manifest (activity / service / receiver / provider / Application) ke pemanggil API sensitif (sisi invoke, kedalaman <= 5);
+    - kunci baru: dex_info["code"] (APK) dan rep["dex_code"] (DEX mentah); peringatan "DEX bytecode: ..." untuk kunci hard-coded, exec shell, pemuatan kode dinamis;
+      CLI `--dex FILE [--compact] [--raw]`, aksi API {"action": "dex", "path": ...}, fungsi dex_text(path). Triase lama tidak berubah.
+    - batas sumber daya: DEX_CODE_TIME (6 dtk per APK), DEX_CODE_MAX_INSNS, DEX_CODE_MAX_UNITS, DEX_CODE_MAX_EDGES, DEX_CODE_MAX_FILES; paket pustaka populer dilewati; hasil ditandai TERPOTONG bila batas tercapai.
+    - batasan: pemanggilan virtual / antarmuka, refleksi, dan nilai yang masuk lewat percabangan tidak diselesaikan; hasil adalah petunjuk, bukan bukti.
 
 NOTICE: _CAPA_RULES diturunkan dari aturan mandiant/capa-rules (c) Mandiant / Google, lisensi Apache-2.0
 (https://github.com/mandiant/capa-rules). Hanya nama aturan, ATT&CK, dan daftar API yang dipakai ulang; telah diubah bentuk dan disaring.
@@ -373,6 +476,7 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
     subsys, dllch = struct.unpack_from("<HH", d, o + 68)
     nrva = struct.unpack_from("<I", d, o + (108 if is64 else 92))[0]
     dd_off = o + (112 if is64 else 96)
+    pwarn: list[str] = []   # kegagalan parse sebagian; masuk rep["warn"] supaya "tidak ada temuan" tidak tampak seperti "bersih"
     dirs = []
     for i in range(min(nrva, 16)):
         if dd_off + 8 * i + 8 > len(d):
@@ -454,7 +558,7 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
                 off += 20
                 n += 1
     except (struct.error, IndexError):
-        pass
+        pwarn.append("tabel import terpotong / rusak: daftar import mungkin tidak lengkap")
 
     delay_imports: dict[str, list[str]] = {}   # v94: delay-load import (dipakai untuk menyembunyikan API dari tabel impor biasa)
     try:
@@ -484,7 +588,7 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
                 off += 32
                 n += 1
     except (struct.error, IndexError):
-        pass
+        pwarn.append("tabel delay-import terpotong / rusak: daftar mungkin tidak lengkap")
 
     imph, ord_imp = "", 0
     try:
@@ -516,7 +620,7 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
                     if nm_:
                         exports.append(nm_)
     except (struct.error, IndexError):
-        pass
+        pwarn.append("tabel ekspor terpotong / rusak: daftar ekspor mungkin tidak lengkap")
 
     res: list[dict] = []
     ver: dict = {}
@@ -524,7 +628,7 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
         if len(dirs) > 2 and dirs[2][0]:
             res, ver = _parse_resources(d, rva2off(dirs[2][0]), rva2off)
     except (struct.error, IndexError, ValueError, OverflowError):
-        pass
+        pwarn.append("direktori resource rusak / tidak bisa diurai: resource tidak diperiksa (bisa disengaja untuk menghindari analisis)")
     try:   # v98.6: entropi bagian resource dihitung tanpa PNG / JPEG / ZIP utuh (ikon PNG membuat .rsrc tampak 'terenkripsi')
         skip_rs = [(x["off"], x["off"] + x["size"]) for x in res if x.get("fmt") and x.get("fmt_ok")]
         if skip_rs and len(dirs) > 2 and dirs[2][0]:
@@ -550,7 +654,7 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
         try:
             signers = _signers(d, dirs[4][0], dirs[4][1])
         except Exception:
-            pass
+            pwarn.append("blok tanda tangan Authenticode ada tetapi tidak bisa diurai: penandatangan tidak diketahui")
         try:
             cert_spans, cert_extra = _cert_spans(d, dirs[4][0], dirs[4][1])
         except Exception:
@@ -580,7 +684,7 @@ def _parse_pe(d: bytes, file_size: int) -> dict | None:
         "aslr": bool(dllch & 0x40), "dep": bool(dllch & 0x100), "cfg": bool(dllch & 0x4000),
         "dotnet": len(dirs) > 14 and dirs[14][0] != 0 and dirs[14][1] != 0,
         "signed": cert[0] != 0 and cert[1] != 0, "overlay": overlay, "last_raw": last_raw, "delay_imports": delay_imports,
-        "sections": secs, "imports": imports, "exports": exports, "budget_hit": budget_hit,
+        "sections": secs, "imports": imports, "exports": exports, "budget_hit": budget_hit, "pwarn": pwarn,
     }
 
 
@@ -825,18 +929,28 @@ STR_CAPS = {
 
 # (label, penanda huruf kecil di bytes mentah, saran langkah lanjut). Saran = petunjuk alur kerja, bukan temuan.
 _TOOLCHAIN = [
-    ("PyInstaller", [b"pyinstaller", b"_meipass", b"pyi-runtime", b"pyiboot"], "ekstrak arsip PyInstaller (pyinstxtractor), lalu dekompilasi .pyc"),
-    ("Nuitka", [b"nuitka"], "Python dikompilasi ke C: andalkan string, modul, dan analisis native"),
+    ("PyInstaller", [b"pyinstaller", b"_meipass", b"pyi-runtime", b"pyiboot", b"pyi-windows-manifest-filename", b"pyi_rth_"], "ekstrak arsip PyInstaller (pyinstxtractor), lalu dekompilasi .pyc"),
+    ("Nuitka", [b"nuitka", b"__nuitka_"], "Python dikompilasi ke C: andalkan string, modul, dan analisis native"),
     ("Go", [b"go build id", b"go.buildid", b"runtime.gopanic", b"\xff go buildinf:"], "biner Go: pulihkan nama fungsi dari pclntab (GoReSym / Ghidra)"),
-    ("Rust", [b"/rustc/", b"rust_panic", b"core::panicking"], "biner Rust: nama fungsi ter-mangle, cari path crate di string"),
+    ("Rust", [b"/rustc/", b"rust_panic", b"core::panicking", b".cargo/registry", b".cargo\\registry"], "biner Rust: nama fungsi ter-mangle, cari path crate di string"),
     ("AutoIt", [b"autoit v3", b"au3!ea06", b"this is a compiled autoit"], "skrip AutoIt terkompilasi: ekstrak dengan alat dekompilasi AutoIt"),
     ("NSIS installer", [b"nullsoft install system", b"nsis error"], "installer NSIS: ekstrak dengan 7-Zip, baca skrip .nsi"),
     ("Inno Setup", [b"inno setup setup data"], "installer Inno Setup: ekstrak dengan innoextract"),
     ("UPX", [b"upx!"], "kemasan UPX: unpack dengan `upx -d` (file tidak perlu dijalankan)"),
     ("Electron / asar", [b"electron.asar", b"app.asar", b"electron/js2c"], "aplikasi Electron: ekstrak app.asar, baca JavaScript"),
-    ("Obfuscator .NET", [b"confuserex", b"eazfuscator", b"smartassembly", b".net reactor", b"dotfuscator"], "kode .NET diobfuskasi: deobfuskasi dulu (de4dot) sebelum dekompilasi"),
+    ("Obfuscator .NET", [b"confuserex", b"eazfuscator", b"smartassembly", b".net reactor", b"dotfuscator", b"babelobfuscator", b"agile.net", b"cryptoobfuscator", b"dnguard", b"ilprotector"], "kode .NET diobfuskasi: deobfuskasi dulu (de4dot) sebelum dekompilasi"),
     ("Delphi / Borland", [b"borland", b"embarcadero"], "biner Delphi: pakai IDR / Ghidra dengan signature Delphi"),
     ("Visual Basic 6", [b"msvbvm60"], "VB6: analisis P-Code atau native dengan decompiler VB"),
+    ("PyArmor", [b"pyarmor", b"pytransform", b"__pyarmor__"], "Python dilindungi PyArmor: bytecode terenkripsi; cari runtime pytransform / pyarmor_runtime dan analisis di sana"),
+    ("cx_Freeze", [b"cx_freeze"], "bundel cx_Freeze: modul Python ada di library.zip di samping exe"),
+    ("py2exe", [b"py2exe"], "bundel py2exe: arsip Python di resource / library.zip, lalu dekompilasi .pyc"),
+    ("PyOxidizer", [b"pyoxidizer"], "bundel PyOxidizer: modul Python tertanam di biner"),
+    ("Themida / WinLicense", [b"themida", b"winlicense", b"oreans technologies"], "pelindung Themida / WinLicense (VM + anti-debug): unpack statis sulit; andalkan analisis dinamis di lingkungan terisolasi"),
+    ("VMProtect", [b"vmprotect"], "kode diproteksi VMProtect (virtualisasi): fungsi dilindungi menjadi bytecode VM"),
+    ("Enigma Protector", [b"the enigma protector"], "pelindung Enigma: cek bagian .enigma1 / .enigma2"),
+    ("WiX Burn bootstrapper", [b".wixburn"], "bootstrapper WiX: ekstrak dengan `dark.exe -x` atau 7-Zip"),
+    ("Bun (compile)", [b"$bunfs", b"~bun"], "JavaScript dikompilasi Bun: sumber tertanam di bagian akhir berkas"),
+    ("Node pkg / nexe", [b"pkg/prelude/bootstrap.js", b"nexe~~sentinel"], "aplikasi Node terbungkus (pkg / nexe): ekstrak JavaScript dari payload di akhir berkas"),
 ]
 
 _ANDROID_RISK = {
@@ -849,7 +963,7 @@ _ANDROID_RISK = {
 }
 
 _PDB = re.compile(r"[A-Za-z]:\\[^\x00\r\n\"<>|*?]{3,200}\.pdb", re.I)
-_PACKERS = ("upx0", "upx1", ".upx", ".themida", ".vmp0", ".vmp1", ".aspack", ".adata", ".petite", ".nsp0", ".mpress1", "mpress", ".enigma1", ".winlice", ".boom", ".vmp2", "pec1", "pec2", ".packed", "upx2", ".yp", ".perplex", ".rmnet", ".kkrunchy")
+_PACKERS = ("upx0", "upx1", ".upx", ".themida", ".vmp0", ".vmp1", ".aspack", ".adata", ".petite", ".nsp0", ".mpress1", "mpress", ".enigma1", ".winlice", ".boom", ".vmp2", "pec1", "pec2", ".packed", "upx2", ".yp", ".perplex", ".rmnet", ".kkrunchy", ".vmp3", "pecompact2", ".enigma2", ".mpress2", ".nsp2", ".pebundle", ".svkp", ".neolit", ".shrink1", ".shrink2", ".aspack2")
 
 
 def _strings(d: bytes) -> list[str]:
@@ -871,6 +985,94 @@ def _uniq(seq, limit):
 
 def _mask(s: str) -> str:
     return s[:4] + "…(%d krt)" % len(s) if len(s) > 6 else "…"
+
+
+# v99.3 [C3]: pemindai rahasia berformat khusus. Hanya pola dengan awalan / bentuk yang khas (bukan tebakan entropi), jadi
+# alarm palsu rendah. Nilai TIDAK pernah ditulis utuh ke laporan: selalu disamarkan lewat _mask (URI database: sandi diganti ***).
+_SECRET_PATS = (
+    ("AWS access key", re.compile(r"\b(?:AKIA|ASIA|AGPA|AIDA|AROA|ANPA|ANVA)[A-Z0-9]{16}\b")),
+    ("GitHub token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{50,255})\b")),
+    ("Telegram bot token", re.compile(r"(?<![\w:])\d{8,10}:AA[A-Za-z0-9_\-]{33}(?![\w\-])")),
+    ("Discord webhook", re.compile(r"https://(?:ptb\.|canary\.)?discord(?:app)?\.com/api/webhooks/\d{17,20}/[A-Za-z0-9_\-]{60,}")),
+    ("Slack webhook", re.compile(r"https://hooks\.slack\.com/services/T[A-Z0-9]{8,}/B[A-Z0-9]{8,}/[A-Za-z0-9]{20,}")),
+    ("Slack token", re.compile(r"\bxox[abprs]-[A-Za-z0-9\-]{10,}")),
+    ("Google API key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
+    ("Stripe secret key", re.compile(r"\b[sr]k_live_[0-9A-Za-z]{24,}\b")),
+    ("JWT", re.compile(r"\beyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}")),
+)
+_DB_URI = re.compile(r"\b(postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|rediss|amqps?|mssql|sqlserver)://([^\s:@/\"'<>]{1,64}):([^\s@/\"'<>]{1,128})@([^\s/\"'<>?]{1,100})", re.I)
+
+
+# v99.3+ [C1]: artefak jaringan statis (hanya teks yang tertanam; tidak ada koneksi apa pun dibuat)
+_UA_HDR = re.compile(r"(?i)User-Agent:[ \t]*([^\r\n\x00]{4,200})")
+_UA_STR = re.compile(r"\b(?:Mozilla/\d\.\d \([^)\r\n]{4,160}\)[^\r\n\x00]{0,100}|[A-Za-z][A-Za-z0-9_.\-]{2,30}/\d{1,3}(?:\.\d{1,4}){1,3} \((?:compatible|Windows|Linux|Macintosh|X11)[^)\r\n]{0,120}\))")
+_HTTP_REQ = re.compile(r"\b(GET|POST|PUT|HEAD|DELETE|OPTIONS|PATCH|CONNECT) ((?:/|https?://)[^\s\"'<>]{0,200}) HTTP/1\.[01]")
+_HTTP_HOST = re.compile(r"(?i)\bHost:[ \t]*([A-Za-z0-9.\-]{3,100}(?::\d{2,5})?)")
+_HTTP_HDR = re.compile(r"(?im)^(Cookie|Authorization|Proxy-Authorization|X-Forwarded-For|Content-Type|Referer):[ \t]*([^\r\n\x00]{0,60})")
+_DNS_ENC = re.compile(r"(?<![a-z0-9\-])((?:[a-z2-7]{32,63}|[0-9a-f]{32,63})\.(?:[a-z0-9\-]{2,40}\.)+[a-z]{2,10})(?![a-z0-9\-])", re.I)
+_CERT_PEM = re.compile(r"-----BEGIN (?:TRUSTED |X509 )?CERTIFICATE-----")
+_PROXY = re.compile(r"(?i)\b(?:socks[45][ah]?|https?)://(?:[^\s:@/\"'<>]{1,40}:[^\s@/\"'<>]{1,40}@)?[A-Za-z0-9.\-]{3,100}:(?:1080|3128|8080|8888|9050|8118|\d{4,5})\b")
+_PROXY_KEY = re.compile(r"(?i)\b(ProxyServer|ProxyEnable|ProxyOverride|AutoConfigURL|http_proxy|https_proxy|all_proxy|socks_proxy|Proxy-Authorization|WINHTTP_OPTION_PROXY)\b")
+_PIPE = re.compile(r"\\\\(?:\.|[A-Za-z0-9_\-]{1,30})\\pipe\\([^\s\x00\"'<>|*?\\]{1,80})")
+_PIPE_C2 = (
+    (re.compile(r"(?i)^msagent_[0-9a-f]{2}$"), "pola default Cobalt Strike (SMB beacon)"),
+    (re.compile(r"(?i)^MSSE-\d{2,5}-server$"), "pola default Cobalt Strike"),
+    (re.compile(r"(?i)^postex_[0-9a-f]{4}$"), "pola Cobalt Strike (post-ex)"),
+    (re.compile(r"(?i)^status_[0-9a-f]{2,4}$"), "pola Cobalt Strike"),
+    (re.compile(r"(?i)^(?:win)?(?:mojo|crashpad_)\.\d+\.\d+"), "mirip pipe Chromium (dipakai juga sebagai kamuflase)"),
+    (re.compile(r"(?i)^(?:PSEXESVC|paexec|remcom|csexec)"), "alat eksekusi jarak jauh (PsExec dan sejenis)"),
+    (re.compile(r"(?i)^(?:svcctl|atsvc|samr|lsarpc|srvsvc|netlogon)$"), "pipe RPC Windows (lazim; relevan bila dipakai langsung)"),
+)
+
+
+def _net_artifacts(blob: str) -> dict:
+    """Artefak jaringan statis dari string: User-Agent, permintaan / header HTTP mentah, DNS ter-encode, sertifikat PEM, proxy, named pipe."""
+    ua = _uniq([m.strip() for m in _UA_HDR.findall(blob)] + [m.strip() for m in _UA_STR.findall(blob)], 8)
+    http = _uniq(("%s %s" % (m, u[:120]) for m, u in _HTTP_REQ.findall(blob)), 8)
+    hosts = _uniq((h.rstrip(".") for h in _HTTP_HOST.findall(blob)), 8)
+    hdrs = _uniq(("%s: %s" % (k.title(), "***" if k.lower() in ("cookie", "authorization", "proxy-authorization") else v.strip()) for k, v in _HTTP_HDR.findall(blob)), 6)
+    dns = []
+    if "." in blob:
+        for m in _DNS_ENC.finditer(blob[:4 * 1024 * 1024]):
+            lab = m.group(1)
+            if len(set(lab.split(".")[0].lower())) >= 8:   # label berentropi rendah (aaaa...) bukan data ter-encode
+                dns.append(lab[:90])
+            if len(dns) >= 8:
+                break
+    px = []
+    for m in _PROXY.finditer(blob):
+        v = re.sub(r"//[^/@\s]+:[^/@\s]+@", "//***:***@", m.group(0))[:120]
+        if v.lower().startswith("socks") or re.search(r":(?:1080|3128|8080|8888|9050|8118)$", v):
+            px.append(v)
+    proxy = _uniq(px + [k.group(1) for k in _PROXY_KEY.finditer(blob)], 8)
+    pipes, flagged = [], []
+    for nm in _PIPE.findall(blob):
+        pipes.append(nm)
+        for rx, why in _PIPE_C2:
+            if rx.match(nm):
+                flagged.append("%s (%s)" % (nm, why))
+                break
+    return {"ua": ua, "http": http, "hosts": hosts, "hdrs": hdrs, "dns": _uniq(dns, 8), "certs": len(_CERT_PEM.findall(blob)),
+            "proxy": proxy, "pipes": _uniq(pipes, 10), "pipes_flag": _uniq(flagged, 6)}
+
+
+def _scan_secrets(blob: str, limit: int = 12) -> list[str]:
+    """Daftar 'jenis: nilai-tersamar'. Contoh dokumentasi (EXAMPLE) dan placeholder sandi dibuang."""
+    out: list[str] = []
+    for name, rx in _SECRET_PATS:
+        for m in rx.finditer(blob):
+            v = m.group(0)
+            if "EXAMPLE" in v.upper():
+                continue
+            out.append("%s: %s" % (name, _mask(v)))
+            if len(out) >= limit * 3:
+                break
+    for m in _DB_URI.finditer(blob):
+        scheme, user, pw, host = m.groups()
+        if pw.strip("*xX$<>{}%") == "" or pw.lower() in ("password", "pass", "changeme", "example", "secret"):
+            continue   # placeholder
+        out.append("URI database: %s://%s:***@%s (sandi %d krt)" % (scheme.lower(), _mask(user) if len(user) > 6 else user, host, len(pw)))
+    return _uniq(out, limit)
 
 
 def _risky_perms(perms: list[str]) -> list[str]:
@@ -1046,7 +1248,7 @@ def _score(rep: dict) -> tuple[int, str, list[str]]:
         add(1, "API jaringan dan eksekusi proses sekaligus")
     if ind["pem"]:
         add(1, "kunci privat tertanam")
-    if ind["secrets"]:
+    if ind["secrets"] or ind.get("secrets_typed"):
         add(1, "kandidat kredensial tertanam")
     emb = rep.get("emb") or {}
     if emb.get("plain") or emb.get("xor"):
@@ -1077,7 +1279,7 @@ def _score(rep: dict) -> tuple[int, str, list[str]]:
             add(1, "resource berawalan PNG / JPEG / ZIP tetapi kerangkanya tidak utuh")
         elif any(x["ent"] > 7.2 and x["size"] > 16384 and not x.get("fmt") for x in pe.get("res", [])):
             add(1, "resource besar berentropi tinggi (bukan PNG / JPEG / ZIP)")
-        if pe["ts"] > __import__("time").time() + 86400:
+        if pe["ts"] > time.time() + 86400:
             add(1, "timestamp kompilasi di masa depan")
     if zp:
         if len(_risky_perms(zp.get("perms", []))) >= 3:
@@ -1107,6 +1309,8 @@ def _score(rep: dict) -> tuple[int, str, list[str]]:
     _score_v97(rep, add)
     _score_v98(rep, add)
     _score_v986(rep, add)
+    _score_layers(rep, add)
+    _score_dso(rep, add)
     level = "TINGGI" if pts >= 7 else "SEDANG" if pts >= 4 else "RENDAH" if pts >= 1 else "TANPA TANDA"
     return pts, level, why
 
@@ -1154,6 +1358,11 @@ def _indicators(strs: list[str], api_names: set[str], ver_quads=()) -> dict:
             continue   # sama persis dengan nomor versi di resource VERSION file ini
         ips.append(ip)
     secrets = _uniq((_mask(m) for m in _SECRET.findall(blob)), 8)
+    secrets_typed = _scan_secrets(blob)   # v99.3 [C3]; kunci baru, kunci lama "secrets" tidak berubah
+    try:
+        net = _net_artifacts(blob)   # v99.5 [C1]
+    except Exception:
+        net = {}
     caps: dict[str, list[str]] = {}
     caps_weak: dict[str, list[str]] = {}
     low_blob = blob.lower()
@@ -1184,7 +1393,7 @@ def _indicators(strs: list[str], api_names: set[str], ver_quads=()) -> dict:
     return {
         "urls": urls, "ips": _uniq(ips, 15), "emails": _uniq(_MAIL.findall(blob), 10),
         "reg": _uniq(_REG.findall(blob), 12), "paths": _uniq(_WPATH.findall(blob), 12),
-        "secrets": secrets, "pem": bool(_PEM.search(blob)),
+        "secrets": secrets, "secrets_typed": secrets_typed, "net": net, "pem": bool(_PEM.search(blob)),
         "b64": sum(1 for _ in _B64.finditer(full)), "b64d": _decode_b64(full), "pdb": _uniq(_PDB.findall(blob), 3),
         "caps": caps, "caps_weak": caps_weak, "n_strings": len(strs),
     }
@@ -1245,6 +1454,154 @@ ATTACK = {
     "kripto": "T1027 / T1573 (kripto / enkripsi)",
     "jaringan": "T1071 Application Layer Protocol",
 }
+
+
+# v99.6 [A3]: GUID COM (CLSID / IID) yang dikenal. (guid, nama, kelompok, catatan). Hanya yang pasti; daftar bisa diperluas lewat tuple ini.
+_COM_GUIDS = (
+    ("4991D34B-80A1-4291-83B6-3328366B9097", "BackgroundCopyManager (CLSID)", "BITS", ""),
+    ("5CE34C0D-0DC9-4C1F-897C-DAA1B78CEE7C", "IBackgroundCopyManager (IID)", "BITS", ""),
+    ("4590F811-1D3A-11D0-891F-00AA004B2E24", "WbemLocator (CLSID)", "WMI", ""),
+    ("CB8555CC-9128-11D1-AD9B-00C04FD8FDFF", "WbemAdministrativeLocator (CLSID)", "WMI", ""),
+    ("DC12A687-737F-11CF-884D-00AA004B2E24", "IWbemLocator (IID)", "WMI", ""),
+    ("9556DC99-828C-11CF-A37E-00AA003240C7", "IWbemServices (IID)", "WMI", ""),
+    ("44ACA674-E8FC-11D0-A07C-00C04FB68820", "IWbemContext (IID)", "WMI", ""),
+    ("0F87369F-A4E5-4CFC-BD3E-73E6154572DD", "TaskScheduler (CLSID)", "Task Scheduler", ""),
+    ("2FABA4C7-4DA9-4013-9697-20CC3FD40F85", "ITaskService (IID)", "Task Scheduler", ""),
+    ("9BA05972-F6A8-11CF-A442-00A0C90A8F39", "ShellWindows (CLSID)", "DCOM Shell", "dipakai untuk eksekusi lewat objek DCOM / lateral movement"),
+    ("C08AFD90-F2A1-11D1-8455-00A0C91F3880", "ShellBrowserWindow (CLSID)", "DCOM Shell", "dipakai untuk eksekusi lewat objek DCOM / lateral movement"),
+    ("85CB6900-4D95-11CF-960C-0080C7F4EE85", "IShellWindows (IID)", "DCOM Shell", ""),
+    ("49B2791A-B1AE-4C90-9B8E-E860BA07F889", "MMC20.Application (CLSID)", "DCOM MMC", "dipakai untuk eksekusi lewat DCOM / lateral movement"),
+    ("13709620-C279-11CE-A49E-444553540000", "Shell.Application (CLSID)", "Shell", ""),
+    ("72C24DD5-D70A-438B-8A42-98424B88AFB8", "WScript.Shell (CLSID)", "Script host", ""),
+    ("0D43FE01-F093-11CF-8940-00A0C9054228", "Scripting.FileSystemObject (CLSID)", "Script host", ""),
+    ("00000566-0000-0010-8000-00AA006D2EA4", "ADODB.Stream (CLSID)", "Script host", "umum pada dropper skrip (tulis biner dari teks)"),
+    ("0E59F1D5-1FBE-11D0-8FF2-00A0D10038BC", "MSScriptControl.ScriptControl (CLSID)", "Script host", ""),
+    ("2087C2F4-2CEF-4953-A8AB-66779B670495", "WinHttpRequest.5.1 (CLSID)", "Klien HTTP", ""),
+    ("88D96A0A-F192-11D4-A65F-0040963251E5", "XMLHTTP 6.0 (CLSID)", "Klien HTTP", ""),
+    ("0002DF01-0000-0000-C000-000000000046", "InternetExplorer.Application (CLSID)", "Otomasi IE", ""),
+    ("3E5FC7F9-9A51-4367-9063-A120244FBEC7", "CMSTPLUA (CLSID)", "Elevasi COM (UAC)", "objek COM elevasi otomatis; lazim di teknik bypass UAC"),
+    ("3E000D72-A845-4CD9-BD83-80C07C3B881F", "CMLUAUTIL (CLSID)", "Elevasi COM (UAC)", "objek COM elevasi otomatis; lazim di teknik bypass UAC"),
+    ("6EDD6D74-C007-4E75-B76A-E5740995E24C", "ICMLuaUtil (IID)", "Elevasi COM (UAC)", "antarmuka ShellExec; lazim di teknik bypass UAC"),
+    ("3AD05575-8857-4850-9277-11B85BDB8E09", "FileOperation (CLSID)", "Elevasi COM (UAC)", "IFileOperation: salin berkas ke lokasi terlindungi (teknik bypass UAC)"),
+    ("947AAB5F-0A5C-4C13-B4D6-4BF7836FC9F8", "IFileOperation (IID)", "Elevasi COM (UAC)", ""),
+    ("E2B3C97F-6AE1-41AC-817A-F6F92166D7DD", "NetFwPolicy2 (CLSID)", "Firewall Windows", ""),
+    ("98325047-C671-4174-8D81-DEFCD3F03186", "INetFwPolicy2 (IID)", "Firewall Windows", ""),
+)
+_COM_NOTE_GROUPS = {"DCOM Shell", "DCOM MMC", "Elevasi COM (UAC)"}
+_COM_API = ("CoCreateInstance", "CoCreateInstanceEx", "CoGetClassObject", "CoInitialize", "CoInitializeEx", "CoInitializeSecurity",
+            "OleInitialize", "CLSIDFromProgID", "CLSIDFromString", "CoGetObject", "CoSetProxyBlanket", "StringFromCLSID", "DllGetClassObject")
+_GUID_STR = re.compile(rb"\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}")
+_GUID_CACHE: list = []
+
+
+def _com_artifacts(d: bytes, api_names) -> dict:
+    """v99.6 [A3]: objek COM dari GUID CLSID / IID (bentuk biner 16-byte, atau string {GUID} ASCII / UTF-16), plus API COM yang diimpor."""
+    import uuid as _uuid
+    if not _GUID_CACHE:
+        for g, nm, grp, note in _COM_GUIDS:
+            u = _uuid.UUID(g)
+            _GUID_CACHE.append((u.bytes_le, ("{%s}" % g).encode(), ("{%s}" % g.lower()).encode(), ("{%s}" % g).encode("utf-16-le"), nm, grp, note))
+    t0 = time.monotonic()
+    hits: dict[str, dict] = {}
+    for bin_, up, lo, u16, nm, grp, note in _GUID_CACHE:
+        if time.monotonic() - t0 > 3.0:
+            break
+        how = "biner" if bin_ in d else "string" if (up in d or lo in d or u16 in d) else ""
+        if how:
+            h = hits.setdefault(grp, {"names": [], "how": set(), "note": ""})
+            h["names"].append(nm)
+            h["how"].add(how)
+            h["note"] = h["note"] or note
+    known = {x[0].lower() for x in _COM_GUIDS}
+    unknown: list[str] = []
+    for m in _GUID_STR.finditer(d[:8 * 1024 * 1024]):
+        g = m.group(0).decode()[1:-1].lower()
+        if g not in known and g not in unknown:
+            unknown.append(g)
+        if len(unknown) >= 6:
+            break
+    apis = sorted(a for a in api_names if any(a == c or a.startswith(c) for c in _COM_API))[:8]
+    groups = [{"group": g, "names": v["names"][:5], "how": "+".join(sorted(v["how"])), "note": v["note"]} for g, v in hits.items()]
+    return {"groups": groups, "unknown": unknown, "apis": apis}
+
+
+def _elf_hardening(d: bytes, elf: dict) -> dict:
+    """v99.3 [B3]: mitigasi ELF (PIE, RELRO, NX, stack canary, FORTIFY_SOURCE, RPATH / RUNPATH). Hanya membaca header program + .dynamic.
+    Hasil = petunjuk dari struktur berkas; biner statis / stripped bisa tampak 'tidak ada' padahal diaktifkan lewat cara lain."""
+    out: dict = {"pie": "?", "relro": "?", "nx": "?", "canary": False, "fortify": 0, "rpath": [], "bind_now": False}
+    if len(d) < 64 or d[:4] != b"\x7fELF":
+        return out
+    is64 = d[4] == 2
+    en = "<" if d[5] == 1 else ">"
+    etype = struct.unpack_from(en + "H", d, 16)[0]
+    if is64:
+        phoff = struct.unpack_from(en + "Q", d, 32)[0]
+        phentsz, phnum = struct.unpack_from(en + "HH", d, 54)
+    else:
+        phoff = struct.unpack_from(en + "I", d, 28)[0]
+        phentsz, phnum = struct.unpack_from(en + "HH", d, 42)
+    esz = 56 if is64 else 32
+    has_relro = has_stack = False
+    dyn_off = dyn_sz = 0
+    loads: list[tuple[int, int, int]] = []
+    for i in range(min(phnum, 64)):
+        o = phoff + i * phentsz
+        if phentsz < esz or o + esz > len(d):
+            break
+        if is64:
+            pt, pf, poff, pva, _pa, fsz, _msz, _al = struct.unpack_from(en + "IIQQQQQQ", d, o)
+        else:
+            pt, poff, pva, _pa, fsz, _msz, pf, _al = struct.unpack_from(en + "IIIIIIII", d, o)
+        if pt == 1:
+            loads.append((pva, poff, fsz))
+        elif pt == 2:
+            dyn_off, dyn_sz = poff, fsz
+        elif pt == 0x6474E552:
+            has_relro = True
+        elif pt == 0x6474E551:
+            has_stack = True
+            out["nx"] = "tidak" if pf & 1 else "ya"
+    if not has_stack:
+        out["nx"] = "tidak pasti (tanpa PT_GNU_STACK)"
+    tags: dict[int, int] = {}
+    rp: list[tuple[int, int]] = []
+    if dyn_off and dyn_off < len(d):
+        esz_d = 16 if is64 else 8
+        for k in range(min(dyn_sz // esz_d, 512)):
+            o = dyn_off + k * esz_d
+            if o + esz_d > len(d):
+                break
+            tag, val = struct.unpack_from(en + ("qQ" if is64 else "iI"), d, o)
+            if tag == 0:
+                break
+            if tag in (15, 29):
+                rp.append((tag, val))
+            else:
+                tags[tag] = val
+    flags, flags1 = tags.get(30, 0), tags.get(0x6FFFFFFB, 0)
+    out["bind_now"] = bool(24 in tags or flags & 0x8 or flags1 & 0x1)
+    out["relro"] = ("full" if out["bind_now"] else "partial") if has_relro else "tidak ada"
+    if etype == 2:
+        out["pie"] = "tidak"
+    elif etype == 3:
+        out["pie"] = "ya" if (flags1 & 0x08000000 or elf.get("interp")) else "n/a (pustaka bersama)"
+    if rp and 5 in tags:
+        def va2off(va: int) -> int:
+            for lv, lo, lsz in loads:
+                if lv <= va < lv + lsz:
+                    return lo + (va - lv)
+            return -1
+        so = va2off(tags[5])
+        for tag, val in rp[:4]:
+            if so >= 0 and so + val < len(d):
+                e = d.find(b"\0", so + val, so + val + 256)
+                txt = d[so + val:(e if e != -1 else so + val + 256)].decode("latin-1", "replace")
+                out["rpath"].append(("RPATH " if tag == 15 else "RUNPATH ") + txt)
+    imps = (elf.get("dyn") or {}).get("imports") or []
+    base = {x.split("@")[0] for x in imps}
+    out["canary"] = bool(base & {"__stack_chk_fail", "__stack_chk_guard", "__intel_security_cookie"}) or (not imps and b"__stack_chk_fail" in d)
+    out["fortify"] = sum(1 for x in base if x.startswith("__") and x.endswith("_chk") and x != "__stack_chk_fail")
+    return out
 
 
 def _elf_imports(d: bytes) -> dict:
@@ -1671,6 +2028,8 @@ def _known_lookup(rep: dict) -> dict | None:
     for k in ("sha256", "sha1", "md5"):
         hit = km.get(rep.get(k, ""))
         if hit:
+            if hit[0] == "good" and k != "sha256":   # MD5 / SHA-1 bisa dibuat tabrakan: tidak cukup untuk label 'sah'
+                return {"tag": "note", "label": ("(entri 'good' via %s tidak dipercaya; gunakan SHA-256) " % k + hit[1]).strip(), "by": k}
             return {"tag": hit[0], "label": hit[1], "by": k}
     return None
 
@@ -1791,11 +2150,311 @@ def render_card(rep: dict, defang: bool = True) -> str:
 
 
 
-def triage(path, follow_links: bool = True, fuzzy: bool = True) -> dict:
+# ---------------------------------------------------------------------------
+# Cache hasil per SHA-256 (23 Nov 2026). Triase berkas besar bisa makan belasan detik padahal hasilnya selalu sama untuk isi yang sama.
+# Aturan keamanan / kebenaran:
+#   - berkas SELALU dibuka dulu lewat _open_regular (FIFO / perangkat / folder / symlink tetap ditolak); cache tidak pernah melewati cek itu;
+#   - kunci = SHA-256 ISI berkas (nama berkas tidak ikut; nama dipasang ulang saat cache terpakai) + tag (fuzzy / RE Lab);
+#   - entri hanya dipakai bila sidik jari KODE (mtime + ukuran rea_triage.py), VERSION, dan daftar REA_KNOWN_HASHES sama dengan saat disimpan,
+#     jadi mengedit kode atau daftar hash otomatis membuat cache lama tidak terpakai;
+#   - hanya JSON (tidak pernah pickle), dibaca dengan validasi; rusak / kedaluwarsa / tidak cocok = diabaikan, hitung ulang;
+#   - entri disimpan HANYA bila hasil dibaca-balik dari JSON menghasilkan laporan yang identik (render 4 mode, kartu, IOC), jadi cache tidak
+#     pernah mengubah keluaran; bila tidak identik, tidak disimpan;
+#   - gagal menulis / membaca cache tidak pernah menggagalkan triase (best-effort); tulis atomik (berkas sementara + os.replace);
+#   - hanya berkas bernama <sha256>-<tag>.json di folder cache yang pernah dibaca / dihapus / dipangkas (REA_CACHE_DIR salah arah tidak berbahaya).
+# Pengaturan: env REA_CACHE=0 (matikan), REA_CACHE_DIR=FOLDER (default: rea-reports/.cache di samping berkas ini), CLI --no-cache / --cache-info /
+# --cache-clear, API {"action": "triage", "nocache": true} untuk memaksa hitung ulang dan {"action": "cache"} untuk info.
+# ---------------------------------------------------------------------------
+
+CACHE_FORMAT = 1
+CACHE_MAX_FILES = 500                    # jumlah entri maksimum; yang paling lama tak terpakai dibuang dulu
+CACHE_MAX_BYTES = 128 * 1024 * 1024      # total ukuran maksimum folder cache
+CACHE_MAX_ENTRY = 8 * 1024 * 1024        # satu entri lebih besar dari ini tidak disimpan
+CACHE_TTL_DAYS = 30.0                    # entri lebih tua dari ini tidak dipakai (laporan memuat perbandingan dengan waktu sekarang)
+_CACHE_STATE: dict = {"pruned": 0.0, "code": None}
+_CACHE_NAME = re.compile(r"[0-9a-f]{64}-(?:t0|t1|re)\.json")
+_CACHE_TMP = re.compile(r"[0-9a-f]{64}-(?:t0|t1|re)\.json\.[0-9a-f]{12}\.tmp")
+
+
+def _cache_dir():
+    """Folder cache, atau None bila dimatikan (REA_CACHE=0 / off / false / no)."""
+    if os.environ.get("REA_CACHE", "").strip().lower() in ("0", "off", "false", "no", "tidak"):
+        return None
+    d = os.environ.get("REA_CACHE_DIR", "").strip()
+    return Path(d) if d else Path(__file__).resolve().parent / "rea-reports" / ".cache"
+
+
+def _cache_stamp() -> dict:
+    """Sidik jari yang harus sama agar entri boleh dipakai: format cache, VERSION, kode modul ini, dan berkas REA_KNOWN_HASHES."""
+    code = _CACHE_STATE["code"]
+    if code is None:
+        try:
+            code = hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest()[:32]   # hash ISI kode (bukan mtime + ukuran)
+        except OSError:
+            code = "?"
+        _CACHE_STATE["code"] = code
+    known = ""
+    kp = os.environ.get("REA_KNOWN_HASHES", "")
+    if kp:
+        try:
+            st = os.stat(kp)
+            known = "%s:%d:%d" % (kp, st.st_mtime_ns, st.st_size)
+        except OSError:
+            known = kp + ":-"
+    return {"fmt": CACHE_FORMAT, "ver": VERSION, "code": code, "known": known}
+
+
+def _sha256_of(f, size: int) -> str | None:
+    """SHA-256 dari paling banyak `size` byte pertama (sama dengan yang dihitung _hash_file). Posisi baca dikembalikan ke 0."""
+    h = hashlib.sha256()
+    try:
+        f.seek(0)
+        left = size
+        while left > 0:
+            chunk = f.read(min(1024 * 1024, left))
+            if not chunk:
+                break
+            h.update(chunk)
+            left -= len(chunk)
+        f.seek(0)
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
+_CACHE_KEY: dict = {"k": None}
+
+
+def _cache_key() -> bytes | None:
+    """Kunci HMAC cache: env REA_CACHE_KEY, atau berkas ~/.rea_cache_key (dibuat 0600). Sengaja DI LUAR folder cache, supaya
+    penulis folder cache tidak otomatis bisa memalsukan entri. None = tak ada kunci (cache dimatikan, aman)."""
+    if _CACHE_KEY["k"] is not None:
+        return _CACHE_KEY["k"] or None
+    key = b""
+    try:
+        e = os.environ.get("REA_CACHE_KEY", "").strip()
+        if e:
+            key = hashlib.sha256(e.encode("utf-8")).digest()
+        else:
+            kp = Path.home() / ".rea_cache_key"
+            if kp.is_file():
+                key = kp.read_bytes()[:64]
+            if len(key) < 32:
+                key = os.urandom(32)
+                fd = os.open(str(kp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(key)
+    except Exception:
+        key = b""
+    _CACHE_KEY["k"] = key
+    return key or None
+
+
+def _cache_mac(text: str) -> str:
+    import hmac
+    k = _cache_key()
+    return hmac.new(k, text.encode("utf-8"), hashlib.sha256).hexdigest() if k else ""
+
+
+def _cache_path(sha: str, tag: str):
+    d = _cache_dir()
+    if d is None or not re.fullmatch(r"[0-9a-f]{64}", sha or ""):
+        return None
+    return d / ("%s-%s.json" % (sha, tag))
+
+
+def _cache_load(sha: str, tag: str):
+    """Isi (dict) bila entri ada dan sah; selain itu None. Tidak pernah melempar."""
+    p = _cache_path(sha, tag)
+    if p is None:
+        return None
+    try:
+        if p.stat().st_size > CACHE_MAX_ENTRY:
+            return None
+        with open(p, "r", encoding="utf-8") as fh:
+            wrap = json.load(fh)
+        import hmac
+        if not isinstance(wrap, dict) or not isinstance(wrap.get("body"), str) or not isinstance(wrap.get("mac"), str):
+            return None
+        good_mac = _cache_mac(wrap["body"])
+        if not good_mac or not hmac.compare_digest(good_mac, wrap["mac"]):
+            return None             # entri dipalsukan / dibuat tanpa kunci ini: abaikan, hitung ulang
+        obj = json.loads(wrap["body"])
+        if (not isinstance(obj, dict) or obj.get("stamp") != _cache_stamp() or obj.get("sha256") != sha or obj.get("tag") != tag
+                or not isinstance(obj.get("data"), dict) or time.time() - float(obj.get("ts", 0)) > CACHE_TTL_DAYS * 86400):
+            return None
+        data = obj["data"]
+        if tag != "re" and (data.get("sha256") != sha or not isinstance(data.get("ind"), dict) or "kind" not in data or "score" not in data):
+            return None
+        try:
+            os.utime(p, None)          # tandai baru dipakai (untuk pemangkasan LRU)
+        except OSError:
+            pass
+        return data
+    except Exception:
+        return None
+
+
+def _cache_store(sha: str, tag: str, data: dict, verify) -> bool:
+    """Simpan `data` bila verify(hasil-baca-balik) benar. Tidak pernah melempar. True bila tersimpan."""
+    p = _cache_path(sha, tag)
+    if p is None:
+        return False
+    tmp = None
+    try:
+        text = json.dumps({"stamp": _cache_stamp(), "sha256": sha, "tag": tag, "ts": time.time(), "data": data},
+                          ensure_ascii=False, default=str, separators=(",", ":"))
+        if len(text) > CACHE_MAX_ENTRY or not verify(json.loads(text)["data"]):
+            return False
+        mac = _cache_mac(text)
+        if not mac:
+            return False            # tanpa kunci tidak menyimpan
+        text = json.dumps({"mac": mac, "body": text}, ensure_ascii=False, separators=(",", ":"))
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_name("%s.%s.tmp" % (p.name, os.urandom(6).hex()))   # unik per panggilan: aman untuk beberapa thread / proses
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.replace(tmp, p)
+        tmp = None
+        _cache_prune()
+        return True
+    except Exception:
+        if tmp is not None:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        return False
+
+
+def _cache_prune(force: bool = False) -> None:
+    """Buang entri kedaluwarsa, lalu yang paling lama tak terpakai bila melebihi batas jumlah / ukuran. Paling sering sekali per menit."""
+    now = time.time()
+    if not force and now - _CACHE_STATE["pruned"] < 60:
+        return
+    _CACHE_STATE["pruned"] = now
+    d = _cache_dir()
+    if d is None:
+        return
+    ents = []
+    try:
+        for e in os.scandir(d):
+            if not e.is_file(follow_symlinks=False):
+                continue
+            st = e.stat(follow_symlinks=False)
+            if _CACHE_TMP.fullmatch(e.name):
+                if now - st.st_mtime > 3600:
+                    os.unlink(e.path)
+            elif _CACHE_NAME.fullmatch(e.name):
+                ents.append((st.st_mtime, st.st_size, e.path))
+        ents.sort()
+        n, total = len(ents), sum(x[1] for x in ents)
+        for mt, sz, path in ents:
+            if now - mt > CACHE_TTL_DAYS * 86400 or n > CACHE_MAX_FILES or total > CACHE_MAX_BYTES:
+                os.unlink(path)
+                n, total = n - 1, total - sz
+            else:
+                break
+    except OSError:
+        pass
+
+
+def cache_info() -> dict:
+    """Ringkasan folder cache: aktif / tidak, lokasi, jumlah entri, total byte, umur entri tertua (hari)."""
+    d = _cache_dir()
+    info: dict = {"enabled": d is not None, "dir": str(d) if d else "", "files": 0, "bytes": 0, "oldest_days": 0.0,
+                  "max_files": CACHE_MAX_FILES, "max_bytes": CACHE_MAX_BYTES, "ttl_days": CACHE_TTL_DAYS}
+    if d is None:
+        return info
+    now, oldest = time.time(), 0.0
+    try:
+        for e in os.scandir(d):
+            if e.is_file(follow_symlinks=False) and _CACHE_NAME.fullmatch(e.name):
+                st = e.stat(follow_symlinks=False)
+                info["files"] += 1
+                info["bytes"] += st.st_size
+                oldest = max(oldest, now - st.st_mtime)
+    except OSError:
+        pass
+    info["oldest_days"] = round(oldest / 86400, 1)
+    return info
+
+
+def cache_clear() -> int:
+    """Hapus semua entri cache (hanya berkas bernama <sha256>-<tag>.json dan sisa .tmp-nya). Mengembalikan jumlah yang dihapus."""
+    d = _cache_dir()
+    n = 0
+    if d is None:
+        return 0
+    try:
+        for e in os.scandir(d):
+            if e.is_file(follow_symlinks=False) and (_CACHE_NAME.fullmatch(e.name) or _CACHE_TMP.fullmatch(e.name)):
+                try:
+                    os.unlink(e.path)
+                    n += 1
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return n
+
+
+def cache_text() -> str:
+    i = cache_info()
+    if not i["enabled"]:
+        return "Cache triase: MATI (REA_CACHE=0)."
+    return "Cache triase: aktif | %s | %d entri, %s | tertua %.1f hari | batas %d entri / %s / %.0f hari" % (
+        i["dir"], i["files"], _human(i["bytes"]), i["oldest_days"], i["max_files"], _human(i["max_bytes"]), i["ttl_days"])
+
+
+def _verify_triage(rep: dict, back: dict) -> bool:
+    """Laporan dari hasil baca-balik JSON harus identik di semua mode keluaran; kalau tidak, jangan di-cache."""
+    try:
+        for compact in (False, True):
+            for defang in (True, False):
+                if render(rep, compact=compact, defang=defang) != render(back, compact=compact, defang=defang):
+                    return False
+        if render(rep, card=True) != render(back, card=True):
+            return False
+        return json.dumps(iocs(rep), sort_keys=True, default=str) == json.dumps(iocs(back), sort_keys=True, default=str)
+    except Exception:
+        return False
+
+
+def _verify_relab(info: dict, back: dict) -> bool:
+    try:
+        for compact in (False, True):
+            for defang in (True, False):
+                a: list[str] = []
+                b: list[str] = []
+                _render_v98({"relab": info}, a.append, compact, defang)
+                _render_v98({"relab": back}, b.append, compact, defang)
+                if a != b:
+                    return False
+        return True
+    except Exception:
+        return False
+
+
+def triage(path, follow_links: bool = True, fuzzy: bool = True, use_cache: bool = True) -> dict:
+    """Triase penuh. Hasil ber-cache per SHA-256 isi berkas (lihat blok cache di atas); rep["cached"] = True bila diambil dari cache.
+    use_cache=False memaksa hitung ulang (dan memperbarui cache)."""
     p = Path(path)
     f, size = _open_regular(p, follow_links)
     with f:
-        return _triage_open(p, f, size, fuzzy)
+        tag = "t1" if fuzzy else "t0"
+        sha = _sha256_of(f, size) if _cache_dir() is not None else None
+        if sha and use_cache:
+            hit = _cache_load(sha, tag)
+            if hit is not None:
+                hit["name"] = p.name
+                hit["cached"] = True
+                return hit
+        rep = _triage_open(p, f, size, fuzzy)
+        if sha:
+            _cache_store(rep.get("sha256") or sha, tag, rep, lambda back: _verify_triage(rep, back))
+        rep["cached"] = False
+        return rep
 
 
 def _common_dll(n: str) -> bool:
@@ -1950,6 +2609,20 @@ def _triage_open(p: Path, f, size: int, fuzzy: bool = True) -> dict:
             ei = {"needed": [], "imports": [], "exports": []}
         elf["dyn"] = ei
         api_names.update(ei["imports"])
+        try:
+            elf["hard"] = _elf_hardening(d, elf)   # v99.3 [B3]; kunci baru, aditif
+        except Exception:
+            elf["hard"] = None
+    rep["com"] = None
+    if pe is not None and not pe.get("broken"):
+        try:
+            cm = _com_artifacts(d, api_names)   # v99.6 [A3]; kunci baru, aditif
+            rep["com"] = cm
+            for g in cm["groups"]:
+                if g["group"] in _COM_NOTE_GROUPS:
+                    rep["warn"].append("COM: %s (%s)%s" % (g["group"], ", ".join(g["names"][:2]), (" - " + g["note"]) if g["note"] else ""))
+        except Exception as e:
+            rep["warn"].append("pemindai COM gagal: %s" % type(e).__name__)
     rep["docs"] = None
     if pe is None and elf is None and zp is None and mo is None:
         try:
@@ -1990,6 +2663,8 @@ def _triage_open(p: Path, f, size: int, fuzzy: bool = True) -> dict:
                 rep["ind"]["caps_weak"][cap_] = [n_ for n_ in rep["ind"]["caps_weak"][cap_] if n_ not in hit_]
 
     w = rep["warn"]
+    if pe and pe.get("pwarn"):
+        w.extend(pe["pwarn"])
     if (pe and pe.get("budget_hit")) or (elf and elf.get("budget_hit")):
         w.append("batas kerja entropi / hash bagian tercapai (header bagian tumpang-tindih atau dibuat-buat); sebagian nilai dikosongkan")
     if rep["entropy"] > 7.2 and not zp:   # arsip zip wajar berentropi tinggi
@@ -2022,8 +2697,15 @@ def _triage_open(p: Path, f, size: int, fuzzy: bool = True) -> dict:
         w.extend(zp["warn"])
     if rep["ind"]["pem"]:
         w.append("ada blok PRIVATE KEY tertanam")
-    if rep["ind"]["secrets"]:
+    if rep["ind"]["secrets"] or rep["ind"].get("secrets_typed"):
         w.append("kandidat kredensial tertanam (nilai disamarkan di laporan)")
+    nt_ = rep["ind"].get("net") or {}
+    if nt_.get("pipes_flag"):
+        w.append("named pipe bernama mirip alat pasca-eksploitasi / eksekusi jarak jauh: " + "; ".join(nt_["pipes_flag"][:3]))
+    if nt_.get("certs"):
+        w.append("%d sertifikat PEM tertanam (bisa pinning C2, MITM, atau bundel CA)" % nt_["certs"])
+    if nt_.get("dns"):
+        w.append("label DNS panjang ter-encode (kandidat DNS tunneling / DGA): " + ", ".join(nt_["dns"][:2]))
 
     # --- tambahan v92: struktur lanjutan, PE tertanam, penanda pembuat / pengemas, skor
     rep["emb"] = _embedded(d, bool(pe and not pe.get("broken"))) if not zp else {"plain": [], "xor": []}
@@ -2108,10 +2790,14 @@ def _triage_open(p: Path, f, size: int, fuzzy: bool = True) -> dict:
     if rep["regions"] and not (pe and not pe.get("broken") and any(x["ent"] > 7.2 for x in pe["sections"])):
         a_, b_ = rep["regions"][0]
         w.append("wilayah berentropi tinggi di offset 0x%X-0x%X (%s)" % (a_, b_, _human(b_ - a_)))
-    _v97_enrich(d, size, rep, fuzzy)
+    _v97_enrich(d, size, rep, fuzzy, f)
     _v98_enrich(d, rep)
     _capa_enrich(rep, api_names)
     _script_enrich(rep, strs)
+    _layers_enrich(rep, d, strs)   # v99.9 [C2]; kunci baru rep["layers"], aditif
+    _dso_enrich(rep, d, strs)      # v99.20 [A2]; kunci baru rep["deobf"], aditif
+    _dexraw_enrich(rep, d)         # v99.11 [S1]; kunci baru rep["dex_code"], aditif
+    _netil_enrich(rep, d)          # v99.12 [S1b]; kunci baru rep["dotnet_il"], aditif
     rep["icon"] = _icon_hash(d, pe)
     pts, level, why = _score(rep)
     rep["score"], rep["level"], rep["why"] = pts, level, why
@@ -2225,6 +2911,12 @@ def _render(rep: dict, compact: bool = False, defang: bool = True, imp_detail: b
         a("ELF+   : interpreter %s | %s | %d segmen, %d section | stack %s" % (
             elf["interp"] or "-", {True: "stripped (tanpa .symtab)", False: "ada simbol (.symtab)", None: "tabel section tak terbaca"}[elf["stripped"]],
             elf["nseg"], elf["nsec"], "dapat dieksekusi" if elf["exec_stack"] else "NX"))
+        hd = elf.get("hard")
+        if hd:
+            a("ELF mitigasi: PIE %s | RELRO %s | NX %s | canary %s | FORTIFY %s%s" % (
+                hd["pie"], hd["relro"], hd["nx"], "ada" if hd["canary"] else "tidak terdeteksi",
+                ("%d fungsi *_chk" % hd["fortify"]) if hd["fortify"] else "tidak terdeteksi",
+                (" | " + "; ".join(hd["rpath"])) if hd["rpath"] else ""))
         if elf["sections"]:
             a("Section: " + "; ".join("%s %s ent %.1f %s" % (x["name"] or "?", x["flags"], x["ent"], _human(x["size"])) for x in elf["sections"][: (8 if compact else 20)] if x["name"]))
     dyn = elf.get("dyn") if elf else None
@@ -2250,7 +2942,7 @@ def _render(rep: dict, compact: bool = False, defang: bool = True, imp_detail: b
             a("DEX    : %d berkas classes*.dex" % zp["dex"])
         if zp.get("perms"):
             a("Izin Android (%d): %s" % (len(zp["perms"]), ", ".join(p.replace("android.permission.", "") for p in zp["perms"][: (10 if compact else 40)])))
-        _render_apk(zp, a, compact)
+        _render_apk(zp, a, compact, defang)
         if zp.get("nested"):
             a("Berkas tertanam menarik: " + ", ".join(zp["nested"][: (6 if compact else 25)]))
         risky = _risky_perms(zp.get("perms", []))
@@ -2281,6 +2973,27 @@ def _render(rep: dict, compact: bool = False, defang: bool = True, imp_detail: b
             a("%s (%d): %s" % (label, len(ind[key]), " | ".join(_df(x, defang) if key in ("urls", "ips", "emails") else x for x in ind[key][:lim])))
     if ind["secrets"]:
         a("Kandidat kredensial tertanam (disamarkan): " + ", ".join(ind["secrets"]))
+    nt = ind.get("net") or {}
+    if any(nt.get(k) for k in ("ua", "http", "hosts", "hdrs", "dns", "proxy", "pipes", "certs")):
+        lim_ = 3 if compact else 8
+        if nt.get("ua"):
+            a("User-Agent tertanam (%d): %s" % (len(nt["ua"]), " | ".join(nt["ua"][:lim_])))
+        if nt.get("http"):
+            a("Permintaan HTTP mentah: " + " | ".join(nt["http"][:lim_]))
+        if nt.get("hosts"):
+            a("Header Host: " + ", ".join(_df(x, defang) for x in nt["hosts"][:lim_]))
+        if nt.get("hdrs") and not compact:
+            a("Header HTTP lain: " + " | ".join(nt["hdrs"]))
+        if nt.get("dns"):
+            a("Label DNS ter-encode (kandidat): " + ", ".join(_df(x, defang) for x in nt["dns"][:lim_]))
+        if nt.get("proxy"):
+            a("Konfigurasi proxy: " + " | ".join(_df(x, defang) if "://" in x else x for x in nt["proxy"][:lim_]))
+        if nt.get("pipes"):
+            a("Named pipe (%d): %s" % (len(nt["pipes"]), ", ".join(nt["pipes"][:lim_])))
+        if nt.get("certs"):
+            a("Sertifikat PEM tertanam: %d" % nt["certs"])
+    if ind.get("secrets_typed"):
+        a("Rahasia berformat khusus (disamarkan): " + " | ".join(ind["secrets_typed"][:5 if compact else 12]))
     if ind.get("pdb"):
         a("Jejak PDB (nama proyek / path build pembuat): " + " | ".join(ind["pdb"]))
     if ind["b64"]:
@@ -2300,6 +3013,10 @@ def _render(rep: dict, compact: bool = False, defang: bool = True, imp_detail: b
     _render_v98(rep, a, compact, defang)
     _render_capa(rep, a, compact)
     _render_decoded(rep, a, compact, defang)
+    _render_layers(rep, a, compact, defang)
+    _render_dso(rep, a, compact, defang)
+    _render_dexcode(rep.get("dex_code"), a, compact, defang)
+    _render_netil(rep.get("dotnet_il"), a, compact, defang)
     if rep.get("icon"):
         a("Ikon   : md5 utama %s (%d ikon; gabungan %s)" % (rep["icon"]["main"], rep["icon"]["n"], rep["icon"]["all"][:12]))
     a("String terbaca: %d" % ind["n_strings"])
@@ -2310,7 +3027,7 @@ def _render(rep: dict, compact: bool = False, defang: bool = True, imp_detail: b
     _ah = _assets_hint(rep)
     if _ah:
         a(_ah)
-    a("Batas triase: hasil di atas murni pembacaan statis; tanpa dekompilasi, tanpa emulasi, tanpa jaringan, file tidak dijalankan.")
+    a("Batas triase: hasil di atas murni pembacaan statis; tanpa dekompilasi, tanpa emulasi sistem (hanya emulasi mikro statis terbatas pada RE Lab), tanpa jaringan, file tidak dijalankan.")
     return "\n".join(L)
 
 
@@ -2623,7 +3340,7 @@ def triage_json(path, ioc_only: bool = False) -> str:
 #      laporan Markdown, dan API JSON untuk Iris / Hermes. Semuanya hanya-baca, pustaka standar, file tidak dijalankan.
 # ---------------------------------------------------------------------------
 
-VERSION = "99.1"
+VERSION = "99.20"
 AUTHOR = "KangJiho"
 
 # nama impor Mach-O (garis bawah depan sudah dibuang) yang menandai manipulasi proses lain
@@ -2646,6 +3363,60 @@ def _macho_cstr(d: bytes, off: int, lim: int) -> str:
     return d[off:e if e >= 0 else stop].decode("utf-8", "replace")
 
 
+_ENT_RISKY = {
+    "com.apple.security.cs.allow-unsigned-executable-memory": "izinkan memori eksekusi tak bertanda tangan",
+    "com.apple.security.cs.allow-jit": "izinkan JIT",
+    "com.apple.security.cs.disable-library-validation": "muat dylib tanpa validasi tanda tangan (rawan dylib hijacking)",
+    "com.apple.security.cs.allow-dyld-environment-variables": "izinkan DYLD_* (injeksi dylib)",
+    "com.apple.security.cs.disable-executable-page-protection": "matikan proteksi halaman eksekusi",
+    "com.apple.security.get-task-allow": "proses boleh di-debug / task_for_pid",
+    "com.apple.security.cs.debugger": "boleh men-debug proses lain",
+    "task_for_pid-allow": "boleh task_for_pid ke proses lain",
+    "com.apple.private.tcc.allow": "bypass izin privasi (TCC), entitlement privat Apple",
+    "com.apple.rootless.install": "boleh menulis area SIP",
+    "com.apple.security.app-sandbox": None,   # sandbox aktif = mitigasi, bukan risiko
+}
+_ENT_KV = re.compile(r"<key>([^<]{1,160})</key>\s*(<true\s*/>|<false\s*/>|<string>([^<]{0,120})</string>|<array>|<dict>|<integer>(\d{1,12})</integer>)")
+
+
+def _macho_codesig(d: bytes, base: int, dataoff: int, size: int) -> dict:
+    """v99.3 [B3]: baca SuperBlob LC_CODE_SIGNATURE (big-endian): flag CodeDirectory (hardened runtime / ad-hoc) dan entitlements XML."""
+    out: dict = {"runtime": False, "adhoc": False, "keys": [], "risky": [], "sandbox": False, "has_ent": False}
+    st = base + dataoff
+    if dataoff <= 0 or size < 12 or st + 12 > len(d) or d[st:st + 4] != b"\xfa\xde\x0c\xc0":
+        return out
+    n = struct.unpack_from(">I", d, st + 8)[0]
+    end = min(len(d), st + min(size, 1 << 22))
+    for i in range(min(n, 16)):
+        p = st + 12 + i * 8
+        if p + 8 > end:
+            break
+        bo = struct.unpack_from(">I", d, p + 4)[0]
+        b0 = st + bo
+        if b0 + 8 > end:
+            continue
+        magic, blen = struct.unpack_from(">II", d, b0)
+        if magic == 0xFADE0C02 and b0 + 16 <= end:   # CodeDirectory
+            cf = struct.unpack_from(">I", d, b0 + 12)[0]
+            out["adhoc"], out["runtime"] = bool(cf & 0x2), bool(cf & 0x10000)
+        elif magic == 0xFADE7171:   # entitlements (XML plist)
+            out["has_ent"] = True
+            xml = d[b0 + 8:b0 + min(blen, 65536)].decode("utf-8", "replace")
+            for m in _ENT_KV.finditer(xml):
+                k, v = m.group(1), m.group(2)
+                val = "true" if v.startswith("<true") else "false" if v.startswith("<false") else (m.group(3) if m.group(3) is not None else (m.group(4) if m.group(4) else "..."))
+                if len(out["keys"]) < 40:
+                    out["keys"].append("%s=%s" % (k, val))
+                if k == "com.apple.security.app-sandbox" and val == "true":
+                    out["sandbox"] = True
+                elif k in _ENT_RISKY and _ENT_RISKY[k] and val != "false":
+                    out["risky"].append("%s (%s)" % (k, _ENT_RISKY[k]))
+                elif k.startswith("com.apple.private.") and val != "false" and len(out["risky"]) < 12:
+                    out["risky"].append("%s (entitlement privat Apple)" % k)
+    out["risky"] = out["risky"][:12]
+    return out
+
+
 def _macho_thin(d: bytes, base: int = 0) -> dict | None:
     if base < 0 or base + 28 > len(d):
         return None
@@ -2664,7 +3435,7 @@ def _macho_thin(d: bytes, base: int = 0) -> dict | None:
     info: dict = {"bits": 64 if is64 else 32, "endian": "little" if e == "<" else "big", "arch": _MACHO_CPU.get(cpu, "cpu 0x%X" % cpu),
                   "type": _MACHO_FT.get(ft, str(ft)), "ncmds": ncmds, "pie": bool(flags & 0x200000), "segments": [], "sections": [], "dylibs": [],
                   "weak": [], "rpaths": [], "entry": "", "signed": False, "encrypted": False, "uuid": "", "platform": "", "imports": [],
-                  "exports": [], "nsyms": 0, "warn": [], "fat": []}
+                  "exports": [], "nsyms": 0, "warn": [], "fat": [], "sig": None}
     off = base + hsz
     end = min(len(d), off + szcmds)
     symtab = None
@@ -2705,6 +3476,11 @@ def _macho_thin(d: bytes, base: int = 0) -> dict | None:
             info["entry"] = info["entry"] or "LC_UNIXTHREAD"
         elif c == 0x1D:
             info["signed"] = True
+            if csz >= 16:
+                try:
+                    info["sig"] = _macho_codesig(d, base, *struct.unpack_from(e + "II", d, off + 8))
+                except (struct.error, IndexError):
+                    info["sig"] = None
         elif c in (0x21, 0x2C) and csz >= 20:
             info["encrypted"] = struct.unpack_from(e + "I", d, off + 16)[0] != 0
         elif c == 0x1B and csz >= 24:
@@ -2749,6 +3525,14 @@ def _macho_thin(d: bytes, base: int = 0) -> dict | None:
             w.append("Mach-O: segmen %s dapat ditulis DAN dieksekusi (W+X)" % s["name"])
         if s["ent"] > 7.2 and s["fsize"] > 16384 and s["name"] != "__LINKEDIT":
             w.append("Mach-O: segmen %s berentropi %.2f (terkompres / terenkripsi / dikemas)" % (s["name"], s["ent"]))
+    sg = info.get("sig")
+    if sg:
+        if sg["risky"]:
+            w.append("Mach-O: entitlements berisiko: " + "; ".join(sg["risky"][:4]))
+        if sg["adhoc"]:
+            w.append("Mach-O: tanda tangan ad-hoc (tanpa identitas pengembang)")
+        if info["type"] == "executable" and not sg["runtime"] and not sg["adhoc"]:
+            w.append("Mach-O: hardened runtime tidak aktif")
     if any(r.startswith(("@loader_path", "@executable_path", ".")) for r in info["rpaths"]) and info["weak"]:
         w.append("Mach-O: RPATH relatif ditambah dylib lemah (kandidat dylib hijacking)")
     return info
@@ -3170,6 +3954,148 @@ def _xor_multi(d: bytes, budget: float = 3.0) -> list[dict]:
 # ----------------------------- detail kemasan / installer -------------------
 
 
+# ----------------------------- pemulihan nama fungsi Go (pclntab) ----------
+# Murni parsing struktur tabel runtime Go (tanpa dependensi, tanpa menjalankan apa pun). Mendukung pclntab Go 1.2, 1.16, 1.18 dan 1.20+.
+# Tabel dicari lewat magic + minLC + ptrSize, lalu dibuktikan dengan membaca nama fungsi pertama; kandidat palsu dibuang.
+
+GO_MAX_FUNCS = 500_000          # batas fungsi yang dibaca (biner Go besar biasanya 5 - 50 ribu)
+GO_READ_MAX = 128 << 20         # berkas Go sampai segini dibaca utuh untuk tahap ini (pindai biasa dibatasi MAX_SCAN)
+GO_TIME_BUDGET = 3.0            # detik; sisanya dilaporkan sebagai terpotong
+_GO_VER = {0xFFFFFFFB: "1.2", 0xFFFFFFFA: "1.16", 0xFFFFFFF0: "1.18", 0xFFFFFFF1: "1.20+"}
+_GO_PCLN_RE = re.compile(rb"[\xf0\xf1\xfa\xfb]\xff\xff\xff\x00\x00[\x01\x02\x04][\x04\x08]")
+_GO_NAME_OK = re.compile(rb"[\x20-\x7e\x80-\xff]{1,400}\Z")
+_GO_NOTABLE_STD = ("os/exec", "net/http", "net", "syscall", "crypto/aes", "crypto/cipher", "crypto/rsa", "crypto/tls", "os/user",
+                   "encoding/base64", "compress/gzip", "archive/zip", "plugin", "debug/pe", "golang.org/x/sys/windows")
+_GO_NOTABLE_RE = re.compile(r"(?i)ransom|keylog|stealer|socks|ngrok|chisel|mimikatz|cobalt|sliver|merlin|beacon|implant|\bc2\b|reverse(?:shell|proxy)|persist|inject")
+
+
+def _go_pkg(name: str) -> str:
+    i = name.rfind("/")
+    j = name.find(".", i + 1)
+    return name[:j] if j > 0 else name
+
+
+def _go_parse_at(d: bytes, off: int, deadline: float):
+    """Satu kandidat pclntab di offset berkas `off`. Mengembalikan dict atau None. Tidak pernah membaca di luar `d`."""
+    n = len(d)
+    if off + 8 > n:
+        return None
+    magic = struct.unpack_from("<I", d, off)[0]
+    ver = _GO_VER.get(magic)
+    ps = d[off + 7]
+    if ver is None or ps not in (4, 8) or d[off + 6] not in (1, 2, 4):
+        return None
+    fmt = "<I" if ps == 4 else "<Q"
+    hdr = {0xFFFFFFFB: 8 + ps, 0xFFFFFFFA: 8 + 7 * ps}.get(magic, 8 + 8 * ps)
+    if off + hdr > n:
+        return None
+
+    def rd(o: int) -> int:
+        return struct.unpack_from(fmt, d, o)[0]
+    nfunc = rd(off + 8)
+    if not 0 < nfunc <= GO_MAX_FUNCS * 4:
+        return None
+    text = 0
+    if magic == 0xFFFFFFFB:
+        tab, wide, fn_base = off + 8 + ps, True, off
+    else:
+        if magic == 0xFFFFFFFA:
+            fn_base, pcln, wide = off + rd(off + 8 + 2 * ps), rd(off + 8 + 6 * ps), True
+        else:
+            text, fn_base, pcln, wide = rd(off + 8 + 2 * ps), off + rd(off + 8 + 3 * ps), rd(off + 8 + 7 * ps), False
+            fn_base = off + rd(off + 8 + 3 * ps)
+        tab = off + pcln
+        if pcln > n or fn_base > n:
+            return None
+    esz = 2 * ps if wide else 8
+    if tab + esz * min(nfunc, 4) > n:
+        return None
+
+    def name_at(i: int):
+        p = tab + i * esz
+        if p + esz > n:
+            return None
+        if wide:
+            pc, fo = rd(p), rd(p + ps)
+            fp = (off + fo) if magic == 0xFFFFFFFB else (tab + fo)
+            if fp + ps + 4 > n:
+                return None
+            nm = struct.unpack_from("<i", d, fp + ps)[0]
+        else:
+            eo, fo = struct.unpack_from("<II", d, p)
+            pc = text + eo
+            fp = tab + fo
+            if fp + 8 > n:
+                return None
+            nm = struct.unpack_from("<i", d, fp + 4)[0]
+        q = fn_base + nm if magic != 0xFFFFFFFB else off + nm
+        if nm < 0 or q >= n:
+            return None
+        e = d.find(b"\0", q, min(n, q + 401))
+        if e <= q:
+            return None
+        raw = d[q:e]
+        if not _GO_NAME_OK.match(raw):
+            return None
+        return pc, raw.decode("utf-8", "replace")
+
+    probe = [name_at(i) for i in range(min(nfunc, 12))]
+    if sum(1 for x in probe if x) < max(3, len(probe) * 3 // 4):
+        return None
+    names: list = []
+    truncated = nfunc > GO_MAX_FUNCS
+    for i in range(min(nfunc, GO_MAX_FUNCS)):
+        if (i & 1023) == 0 and time.monotonic() > deadline:
+            truncated = True
+            break
+        r = name_at(i)
+        if r:
+            names.append(r)
+    if len(names) < 3:
+        return None
+    return {"ver": ver, "bits": ps * 8, "off": off, "nfunc": nfunc, "names": names, "truncated": truncated}
+
+
+def _go_pclntab(d: bytes, f=None, size: int | None = None):
+    """Pulihkan daftar fungsi biner Go dari pclntab. None bila bukan biner Go / tabel tidak ditemukan. Hanya membaca; tidak dijalankan.
+    Biner Go sering > MAX_SCAN (tabel nama ada di ujung berkas): kalau `f` dan `size` diberikan dan berkas <= GO_READ_MAX, dibaca utuh untuk tahap ini saja."""
+    if not (d.find(b"runtime.gopanic") >= 0 or d.find(b"go.buildid") >= 0 or d.find(b"Go build ID") >= 0 or d.find(b"\xff Go buildinf:") >= 0):
+        return None
+    partial = bool(size and len(d) < size)
+    if partial and f is not None and size <= GO_READ_MAX:
+        try:
+            f.seek(0)
+            full = f.read(size)
+            if len(full) == size:
+                d, partial = full, False
+        except (OSError, MemoryError):
+            pass
+    deadline = time.monotonic() + GO_TIME_BUDGET
+    best = None
+    for k, m in enumerate(_GO_PCLN_RE.finditer(d)):
+        if k >= 64 or time.monotonic() > deadline:
+            break
+        try:
+            r = _go_parse_at(d, m.start(), deadline)
+        except (struct.error, ValueError, OverflowError, MemoryError):
+            r = None
+        if r and (best is None or len(r["names"]) > len(best["names"])):
+            best = r
+    if not best:
+        return None
+    pk: collections.Counter = collections.Counter(_go_pkg(nm) for _pc, nm in best["names"])
+    main = [nm for _pc, nm in best["names"] if nm == "main" or nm.startswith("main.")]
+    third = [(p, c) for p, c in pk.most_common() if "." in p.split("/")[0] and p != "main"]
+    std = {p for p in pk if p != "main" and "." not in p.split("/")[0]}
+    notable_std = [p for p in _GO_NOTABLE_STD if p in pk or p in std]
+    flagged = sorted({p for p in pk if _GO_NOTABLE_RE.search(p)})[:12]
+    entry = {x[1]: x[0] for x in reversed(best["names"])}
+    return {"ver": best["ver"], "bits": best["bits"], "off": best["off"], "nfunc": best["nfunc"], "read": len(best["names"]),
+            "truncated": best["truncated"], "partial_scan": partial, "n_pkgs": len(pk), "n_main": len(main),
+            "main": [{"name": nm[:160], "addr": entry.get(nm, 0)} for nm in main[:60]],
+            "third": [[p[:120], c] for p, c in third[:15]], "std": notable_std[:12], "flagged": flagged}
+
+
 def _pack_details(d: bytes, size: int) -> list[str]:
     out: list[str] = []
     head = d[: 16 * 1024 * 1024]
@@ -3230,7 +4156,7 @@ def _pack_details(d: bytes, size: int) -> list[str]:
 # ----------------------------- penggabung v97 -------------------------------
 
 
-def _v97_enrich(d: bytes, size: int, rep: dict, fuzzy: bool) -> None:
+def _v97_enrich(d: bytes, size: int, rep: dict, fuzzy: bool, f=None) -> None:
     w = rep["warn"]
     zp, mo, dn = rep.get("zip"), rep.get("macho"), rep.get("dotnet")
     if mo:
@@ -3243,6 +4169,11 @@ def _v97_enrich(d: bytes, size: int, rep: dict, fuzzy: bool) -> None:
     except Exception as e:
         rep["pack"] = []
         w.append("analisis kemasan gagal: %s" % type(e).__name__)
+    try:
+        rep["go"] = _go_pclntab(d, f, size) if not zp else None
+    except Exception as e:
+        rep["go"] = None
+        w.append("pemulihan nama fungsi Go gagal: %s" % type(e).__name__)
     try:
         rep["xor"] = _xor_hunt(d) if not zp else []
     except Exception as e:
@@ -3268,6 +4199,7 @@ def _v97_enrich(d: bytes, size: int, rep: dict, fuzzy: bool) -> None:
             rep["ctph"] = ctph(d[:CTPH_SAMPLE])
         except Exception as e:
             w.append("CTPH gagal: %s" % type(e).__name__)
+    _mcfg_enrich(d, rep, (rep.get("pe") if rep.get("pe") and not rep["pe"].get("broken") else None), dn, zp)   # v99.19 [A1]; kunci baru rep["malcfg"], aditif
 
 
 def _render_v97(rep: dict, a, compact: bool, defang: bool) -> None:
@@ -3281,6 +4213,13 @@ def _render_v97(rep: dict, a, compact: bool, defang: bool) -> None:
         if not compact:
             if mo["dylibs"] or mo["weak"]:
                 a("   dylib (%d): %s%s" % (len(mo["dylibs"]) + len(mo["weak"]), ", ".join(mo["dylibs"][:10]), (" | lemah: " + ", ".join(mo["weak"][:4])) if mo["weak"] else ""))
+            sg = mo.get("sig")
+            if sg:
+                a("   code signing: hardened runtime %s | ad-hoc %s | sandbox %s | entitlements %s" % (
+                    "ya" if sg["runtime"] else "tidak", "ya" if sg["adhoc"] else "tidak", "ya" if sg["sandbox"] else "tidak",
+                    ("%d kunci" % len(sg["keys"])) if sg["has_ent"] else "tidak ada"))
+                if sg["keys"]:
+                    a("   entitlements: " + ", ".join(sg["keys"][:12]))
             if mo["rpaths"]:
                 a("   RPATH: " + ", ".join(mo["rpaths"][:4]))
             if mo["segments"]:
@@ -3289,6 +4228,13 @@ def _render_v97(rep: dict, a, compact: bool, defang: bool) -> None:
                 a("   simbol impor (%d): %s" % (len(mo["imports"]), ", ".join(mo["imports"][:25])))
             if mo["uuid"]:
                 a("   UUID: " + mo["uuid"])
+    cm = rep.get("com")
+    if cm and (cm["groups"] or cm["apis"]):
+        a("Objek COM (dari GUID CLSID / IID): " + "; ".join("%s [%s]%s" % (g["group"], ", ".join(g["names"][:3 if compact else 5]), "" if compact else " (%s)" % g["how"]) for g in cm["groups"]) if cm["groups"] else "Objek COM: tidak ada GUID yang dikenal")
+        if cm["apis"]:
+            a("   API COM diimpor: " + ", ".join(cm["apis"]))
+        if cm["unknown"] and not compact:
+            a("   GUID lain berbentuk string (tidak ada di daftar, %d): %s" % (len(cm["unknown"]), ", ".join(cm["unknown"][:4])))
     if dn:
         a(".NET   : runtime %s | %s%s | %d nama di #Strings | %d string pengguna (#US)" % (
             dn["runtime"], "IL murni" if dn["ilonly"] else "campuran (ada native)", ", strong-name" if dn["strong"] else "", dn["n_names"], len(dn["us"])))
@@ -3299,8 +4245,22 @@ def _render_v97(rep: dict, a, compact: bool, defang: bool) -> None:
                 a("   string pengguna menarik: " + " | ".join(_df(x, defang) for x in hot))
     for line in rep.get("pack") or []:
         a("Kemasan: " + line)
+    go = rep.get("go")
+    if go:
+        a("Go     : pclntab %s (%d-bit) di offset 0x%X | %d fungsi%s | %d paket | %d fungsi paket main" % (
+            go["ver"], go["bits"], go["off"], go["nfunc"], (" (terbaca %d%s)" % (go["read"], "; berkas dipindai sebagian" if go.get("partial_scan") else ", dipotong")) if (go["truncated"] or go.get("partial_scan")) else "", go["n_pkgs"], go["n_main"]))
+        if go["main"]:
+            a("   fungsi main: " + ", ".join(_clean(x["name"]) for x in go["main"][: (6 if compact else 20)]) + (" ..." if go["n_main"] > (6 if compact else 20) else ""))
+        if not compact:
+            if go["third"]:
+                a("   paket pihak ketiga: " + ", ".join("%s (%d)" % (_clean(p), c) for p, c in go["third"][:10]))
+            if go["std"]:
+                a("   paket pustaka standar yang layak dicek: " + ", ".join(_clean(x) for x in go["std"]))
+            if go["flagged"]:
+                a("   nama paket yang layak dicek: " + ", ".join(_clean(x) for x in go["flagged"]))
     for x in (rep.get("xor") or [])[: (1 if compact else 4)]:
         a("Perburuan satu-byte: %s kunci 0x%02X -> %s%s" % (x["op"], x["key"], ", ".join(x["words"]), (" | URL: " + " | ".join(_df(u, defang) for u in x["urls"])) if x["urls"] else ""))
+    _render_mcfg(rep.get("malcfg"), a, compact, defang)   # v99.19 [A1]
     if rep.get("ctph") and not compact:
         a("CTPH   : %s%s" % (rep["ctph"], " (sampel %s pertama)" % _human(CTPH_SAMPLE) if rep["size"] > CTPH_SAMPLE else ""))
 
@@ -3350,6 +4310,180 @@ def _families(items: list[dict], fuzzy: bool) -> list[dict]:
 # ----------------------------- laporan Markdown -----------------------------
 
 
+# ---------------------------------------------------------------------------
+# v99.7 [B4]: laporan HTML tunggal offline (tanpa skrip / gaya / font / gambar dari luar; semua nilai di-escape).
+# ---------------------------------------------------------------------------
+
+_HTML_CSS = """
+:root{--bg:#fff;--fg:#1d2330;--mut:#5b6577;--card:#f4f6fa;--line:#d9dee8;--acc:#2f5bd8;--hi:#c62828;--mid:#d9822b;--lo:#b59b00;--ok:#2e7d32}
+@media (prefers-color-scheme:dark){:root{--bg:#12151c;--fg:#e4e8f0;--mut:#9aa4b8;--card:#1b202b;--line:#2c3446;--acc:#7da2ff;--hi:#ff6b6b;--mid:#ffa94d;--lo:#e6c94a;--ok:#6fcf7a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:18px 20px;border-bottom:1px solid var(--line)}h1{margin:0 0 4px;font-size:20px;word-break:break-all}.sub{color:var(--mut)}
+nav{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:8px 20px;display:flex;gap:14px;flex-wrap:wrap}
+nav a{color:var(--acc);text-decoration:none}nav a:hover{text-decoration:underline}
+main{padding:0 20px 40px;max-width:1200px}section{margin-top:26px}h2{font-size:16px;margin:0 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mut);font-weight:600}
+.wrap{overflow-x:auto}code,pre,.mono{font:12.5px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace}code{word-break:break-all}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-weight:700;color:#fff}.TINGGI{background:var(--hi)}.SEDANG{background:var(--mid)}.RENDAH{background:var(--lo)}.TANPA{background:var(--ok)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0}.warn{border-left:4px solid var(--mid)}.bal{border-left:4px solid var(--ok)}
+input[type=search]{width:100%;max-width:420px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);margin:0 0 8px}
+.pre{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;max-height:70vh;overflow:auto}.ln{white-space:pre-wrap;word-break:break-word}.ln.hit{background:rgba(255,200,0,.25)}
+.mut{color:var(--mut)}ul{margin:4px 0;padding-left:20px}.kv td:first-child{width:160px;color:var(--mut)}
+"""
+
+_HTML_JS = """
+(function(){
+function flt(inp,rows,cnt){var q=inp.value.toLowerCase(),n=0;for(var i=0;i<rows.length;i++){var t=rows[i].textContent.toLowerCase();var ok=!q||t.indexOf(q)>-1;rows[i].style.display=ok?'':'none';if(ok)n++;}if(cnt)cnt.textContent=n+' / '+rows.length;}
+var a=document.getElementById('q-imp');if(a){var r=document.querySelectorAll('#t-imp tbody tr'),c=document.getElementById('c-imp');a.addEventListener('input',function(){flt(a,r,c)});flt(a,r,c);}
+var b=document.getElementById('q-txt');if(b){var l=document.querySelectorAll('#txt .ln'),c2=document.getElementById('c-txt');b.addEventListener('input',function(){var q=b.value.toLowerCase(),n=0;for(var i=0;i<l.length;i++){var ok=!q||l[i].textContent.toLowerCase().indexOf(q)>-1;l[i].style.display=ok?'':'none';l[i].className=(q&&ok)?'ln hit':'ln';if(ok)n++;}c2.textContent=n+' / '+l.length;});}
+var s=document.getElementById('q-str');if(s){var r3=document.querySelectorAll('#ioc-list li'),c3=document.getElementById('c-str');s.addEventListener('input',function(){flt(s,r3,c3)});}
+})();
+"""
+
+
+def _hesc(x) -> str:
+    import html as _h
+    return _h.escape(str(x), quote=True)
+
+
+def triage_html(path, defang: bool = True, rep: dict | None = None) -> str:
+    """Laporan HTML mandiri: ringkasan + skor, bagian / segmen, impor (bisa difilter), IOC dan artefak, kemampuan, perhatian, dan laporan teks penuh
+    yang bisa dicari. Tanpa sumber luar. Hanya-baca; file sampel tidak dijalankan."""
+    rep = rep or triage(path)
+    E = _hesc
+    ind = rep.get("ind") or {}
+    pe, elf, mo = rep.get("pe"), rep.get("elf"), rep.get("macho")
+    lvl = str(rep.get("level", ""))
+    badge = lvl.split()[0] if lvl else "RENDAH"
+    out: list[str] = []
+    w = out.append
+
+    def table(head, rows, cls=""):
+        t = ["<div class=\"wrap\"><table%s><thead><tr>%s</tr></thead><tbody>" % ((" " + cls) if cls else "", "".join("<th>%s</th>" % E(h) for h in head))]
+        for r_ in rows:
+            t.append("<tr>%s</tr>" % "".join("<td>%s</td>" % c for c in r_))
+        t.append("</tbody></table></div>")
+        return "".join(t)
+
+    w("<!doctype html><html lang=\"id\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
+    w("<title>REA v%s - %s</title><style>%s</style></head><body>" % (E(VERSION), E(rep["name"]), _HTML_CSS))
+    w("<header><h1>%s</h1><div class=\"sub\">%s &middot; %s &middot; REA v%s</div></header>" % (E(rep["name"]), E(rep["kind"]), E(_human(rep["size"])), E(VERSION)))
+    nav = [("ringkasan", "Ringkasan"), ("bagian", "Bagian"), ("impor", "Impor"), ("ioc", "IOC &amp; artefak"), ("kemampuan", "Kemampuan"), ("teks", "Laporan teks")]
+    w("<nav>%s</nav><main>" % "".join("<a href=\"#%s\">%s</a>" % (a_, b_) for a_, b_ in nav))
+
+    # --- ringkasan
+    w("<section id=\"ringkasan\"><h2>Ringkasan</h2>")
+    w("<p><span class=\"badge %s\">%s</span> &nbsp; skor heuristik <b>%s</b> <span class=\"mut\">(petunjuk dari fakta terukur, bukan vonis)</span></p>" % (E(badge), E(lvl), E(rep["score"])))
+    kv = [("SHA-256", rep["sha256"]), ("SHA-1", rep["sha1"]), ("MD5", rep["md5"]), ("Entropi", "%.2f / 8.00" % rep["entropy"])]
+    if rep.get("ctph"):
+        kv.append(("CTPH", rep["ctph"]))
+    if pe and not pe.get("broken"):
+        kv += [("Arsitektur PE", "%s, subsystem %s" % (pe.get("arch"), pe.get("subsys"))), ("Entry point", pe.get("entry")), ("Cap waktu", pe.get("stamp")), ("imphash", pe.get("imphash") or "-")]
+    if elf:
+        hd = elf.get("hard")
+        kv.append(("ELF", "%d-bit %s, %s, %s" % (elf["bits"], elf["endian"], elf["type"], elf["arch"])))
+        if hd:
+            kv.append(("Mitigasi ELF", "PIE %s | RELRO %s | NX %s | canary %s | FORTIFY %s" % (hd["pie"], hd["relro"], hd["nx"], "ada" if hd["canary"] else "-", hd["fortify"] or "-")))
+    if mo:
+        kv.append(("Mach-O", "%s %s-bit %s" % (mo["arch"], mo["bits"], mo["type"])))
+    w("<div class=\"wrap\"><table class=\"kv\"><tbody>%s</tbody></table></div>" % "".join("<tr><td>%s</td><td><code>%s</code></td></tr>" % (E(k), E(v)) for k, v in kv))
+    if rep.get("why"):
+        w("<div class=\"card\"><b>Alasan skor</b><ul>%s</ul></div>" % "".join("<li>%s</li>" % E(_clean(x)) for x in rep["why"]))
+    if rep.get("balance"):
+        w("<div class=\"card bal\"><b>Faktor penyeimbang</b> <span class=\"mut\">(lazim pada file sah; bukan jaminan aman)</span><ul>%s</ul></div>" % "".join("<li>%s</li>" % E(_clean(x)) for x in rep["balance"]))
+    if rep.get("warn"):
+        w("<div class=\"card warn\"><b>Perhatian</b><ul>%s</ul></div>" % "".join("<li>%s</li>" % E(_clean(x)) for x in rep["warn"][:40]))
+    w("</section>")
+
+    # --- bagian
+    w("<section id=\"bagian\"><h2>Bagian / segmen</h2>")
+    if pe and not pe.get("broken") and pe.get("sections"):
+        w(table(["Nama", "VA", "Ukuran virtual", "Ukuran file", "Flag", "Entropi", "MD5"],
+                [["<code>%s</code>" % E(x["name"]), "0x%X" % x["va"], E(_human(x["vsize"])), E(_human(x["rsize"])), E(x["flags"]), "%.2f" % x["ent"], "<code>%s</code>" % E(x.get("md5", ""))] for x in pe["sections"]]))
+    elif elf and elf.get("sections"):
+        w(table(["Nama", "Ukuran", "Flag", "Entropi"], [["<code>%s</code>" % E(x["name"] or "?"), E(_human(x["size"])), E(x["flags"]), "%.2f" % x["ent"]] for x in elf["sections"][:60] if x["name"]]))
+    elif mo and mo.get("segments"):
+        w(table(["Segmen", "Proteksi", "Ukuran file", "Entropi"], [["<code>%s</code>" % E(x["name"]), E(x["prot"]), E(_human(x["fsize"])), "%.2f" % x["ent"]] for x in mo["segments"]]))
+    else:
+        w("<p class=\"mut\">Tidak ada tabel bagian untuk jenis berkas ini.</p>")
+    w("</section>")
+
+    # --- impor
+    rows: list[list[str]] = []
+    if pe and not pe.get("broken") and pe.get("imports"):
+        for dll, fns in pe["imports"].items():
+            for f_ in (fns if isinstance(fns, (list, tuple)) else [fns]):
+                rows.append([E(dll), "<code>%s</code>" % E(f_[0] if isinstance(f_, (list, tuple)) and f_ else f_)])
+    elif elf and elf.get("dyn") and elf["dyn"].get("imports"):
+        lib = ", ".join(elf["dyn"].get("needed", [])[:6]) or "(dinamis)"
+        rows = [[E(lib), "<code>%s</code>" % E(x)] for x in elf["dyn"]["imports"]]
+    elif mo and mo.get("imports"):
+        rows = [[E("Mach-O"), "<code>%s</code>" % E(x)] for x in mo["imports"]]
+    w("<section id=\"impor\"><h2>Impor (<span id=\"c-imp\">%d</span>)</h2>" % len(rows))
+    if rows:
+        w("<input type=\"search\" id=\"q-imp\" placeholder=\"Filter: nama DLL atau fungsi...\">")
+        w(table(["Pustaka", "Fungsi"], rows[:6000], "id=\"t-imp\""))
+        if len(rows) > 6000:
+            w("<p class=\"mut\">Dipotong: 6000 dari %d baris.</p>" % len(rows))
+    else:
+        w("<p class=\"mut\">Tidak ada impor terbaca.</p>")
+    w("</section>")
+
+    # --- IOC & artefak
+    items: list[tuple[str, str]] = []
+    for lab, key, dfg in (("URL", "urls", True), ("IP kandidat", "ips", True), ("Email", "emails", True), ("Registry", "reg", False), ("Path", "paths", False)):
+        for x in ind.get(key, []) or []:
+            items.append((lab, _df(x, defang) if dfg else x))
+    for x in ind.get("secrets", []) or []:
+        items.append(("Kredensial (disamarkan)", x))
+    for x in ind.get("secrets_typed", []) or []:
+        items.append(("Rahasia berformat (disamarkan)", x))
+    nt = ind.get("net") or {}
+    for lab, key in (("User-Agent", "ua"), ("HTTP", "http"), ("Host", "hosts"), ("Header", "hdrs"), ("DNS ter-encode", "dns"), ("Proxy", "proxy"), ("Named pipe", "pipes")):
+        for x in nt.get(key, []) or []:
+            items.append((lab, _df(x, defang) if key in ("hosts", "dns") else x))
+    if nt.get("certs"):
+        items.append(("Sertifikat PEM", "%d tertanam" % nt["certs"]))
+    for x in ind.get("pdb", []) or []:
+        items.append(("Jejak PDB", x))
+    cm = rep.get("com")
+    if cm:
+        for g in cm.get("groups", []):
+            items.append(("Objek COM", "%s: %s" % (g["group"], ", ".join(g["names"]))))
+    w("<section id=\"ioc\"><h2>IOC &amp; artefak (<span id=\"c-str\">%d</span>)</h2>" % len(items))
+    if items:
+        w("<input type=\"search\" id=\"q-str\" placeholder=\"Cari IOC / artefak...\"><ul id=\"ioc-list\" class=\"mono\">%s</ul>" % "".join("<li><b>%s</b>: <code>%s</code></li>" % (E(a_), E(_clean(b_))) for a_, b_ in items[:600]))
+    else:
+        w("<p class=\"mut\">Tidak ada IOC terdeteksi.</p>")
+    w("</section>")
+
+    # --- kemampuan
+    caps = ind.get("caps") or {}
+    w("<section id=\"kemampuan\"><h2>Indikasi kemampuan</h2>")
+    if caps:
+        w("<ul>%s</ul>" % "".join("<li>%s%s</li>" % (E(_clean(_cap_text(ind, c_, h_))), (" <span class=\"mut\">(%s)</span>" % E(ATTACK[c_])) if c_ in ATTACK and _cap_strong(ind, c_) else "") for c_, h_ in caps.items()))
+        w("<p class=\"mut\">Petunjuk dari nama API / string, bukan bukti perilaku.</p>")
+    else:
+        w("<p class=\"mut\">Tidak ada indikasi.</p>")
+    w("</section>")
+
+    # --- teks penuh
+    txt = _render(rep, False, defang)
+    lines = txt.splitlines()[:4000]
+    w("<section id=\"teks\"><h2>Laporan teks penuh (<span id=\"c-txt\">%d</span>)</h2><input type=\"search\" id=\"q-txt\" placeholder=\"Cari di laporan...\">" % len(lines))
+    w("<div class=\"pre mono\" id=\"txt\">%s</div></section>" % "".join("<div class=\"ln\">%s</div>" % E(x) for x in lines))
+    w("</main><script>%s</script></body></html>" % _HTML_JS)
+    return "".join(out)
+
+
+def triage_html_file(path, out=None, defang: bool = True) -> str:
+    """Tulis laporan HTML ke `out` (bawaan: <nama>.rea.html di folder kerja); kembalikan path-nya."""
+    rep = triage(path)
+    target = Path(out) if out else Path.cwd() / (Path(path).name + ".rea.html")
+    target.write_text(triage_html(path, defang, rep=rep), encoding="utf-8")
+    return str(target)
+
+
 def triage_md(path, defang: bool = True) -> str:
     """Laporan Markdown siap simpan / tempel: ringkasan, skor, kemampuan, IOC, draf YARA. Hanya-baca."""
     try:
@@ -3381,6 +4515,12 @@ def triage_md(path, defang: bool = True) -> str:
             L += ["", "## %s" % lab, ""] + ["- `%s`" % _clean(_df(x, defang)) for x in ind[key][:25]]
     if rep.get("pack"):
         L += ["", "## Kemasan / toolchain", ""] + ["- " + _clean(x) for x in rep["pack"]]
+    go = rep.get("go")
+    if go:
+        L += ["", "## Fungsi Go (pclntab %s)" % _clean(go["ver"]), "", "- %d fungsi, %d paket, %d fungsi paket `main`%s" % (go["nfunc"], go["n_pkgs"], go["n_main"], " (dipotong)" if go["truncated"] else "")]
+        L += ["- `%s`" % _clean(x["name"]) for x in go["main"][:30]]
+        if go["third"]:
+            L.append("- paket pihak ketiga: " + ", ".join("`%s` (%d)" % (_clean(p), c) for p, c in go["third"][:10]))
     for label, hint in rep.get("tools", []):
         L.append("- %s: %s" % (_clean(label), _clean(hint)))
     rl = rep.get("relab")
@@ -3976,7 +5116,1990 @@ def _re_lab(d: bytes, pe: dict | None, t0: float | None = None, L: dict | None =
         "api_hashes": [{"api": k, "offset": "0x%X" % v} for k, v in list(hashes.items())[:12]] if hash_valid else [], "ror13_ops": ror_hits, "notes": notes,
     }
     ctx = {"L": L, "F": F, "sites": api_sites, "sref": sref, "fl": fl, "thunks": thunks}
+    _cfg_enrich(info, ctx, d)     # v99.13 [S3]; kunci baru info["cfg"], aditif
+    _emu_enrich(info, ctx, d)     # v99.18 [S2]; kunci baru info["emu"], aditif
     return info, ctx
+
+
+# ----------------------- v99.13 [S3]: CFG, blok dasar, kompleksitas siklomatik, loop (RE Lab x86 / x64) ------------
+# Decoder PANJANG instruksi x86 / x86-64 murni Python (tanpa capstone) + penelusuran rekursif dari awal fungsi: blok dasar, sisi (JMP / Jcc / LOOP /
+# fall-through), kompleksitas siklomatik (E - N + 2), loop alami (sisi balik), kandidat loop dekripsi (XOR / ADD / SUB / ROL / ROR / SHL / SHR ke memori
+# di dalam loop kecil), dan kandidat control-flow flattening (satu blok dispatcher menerima banyak sisi balik). Statis murni; hanya pustaka standar.
+# Batasan: lompatan tak langsung (jump table) dihitung sebagai sisi keluar bernama "switch" dan targetnya tidak diselesaikan; kode yang tidak bisa
+# didecode menghentikan jalur itu saja (fungsi ditandai tidak lengkap); hasil adalah PETUNJUK. Kunci baru info["cfg"] (RE Lab), aditif.
+
+CFG_TIME = 4.0                  # detik untuk seluruh analisis CFG satu berkas
+CFG_MAX_FUNCS = 600             # fungsi yang dianalisis (yang teratas di peringkat + yang terbesar)
+CFG_MAX_INSNS = 1_500_000       # total instruksi yang didecode
+CFG_MAX_FUNC_INSNS = 40_000     # satu fungsi lebih panjang dari ini dipotong
+CFG_MAX_LOOPS = 40              # loop yang dicatat per fungsi
+
+(_M_NONE, _M_MODRM, _M_MODRM_I8, _M_MODRM_IZ, _M_I8, _M_IZ, _M_J8, _M_JMP8, _M_CALL, _M_JMP32, _M_RET, _M_RETI, _M_MOFFS, _M_ENTER,
+ _M_G3_8, _M_G3_V, _M_FF, _M_LOOP, _M_MOVI, _M_INV, _M_HALT, _M_ESC, _M_PFX, _M_X, _M_FARPTR) = range(25)
+(_K_NORM, _K_JMP, _K_JCC, _K_CALL, _K_RET, _K_JMPI, _K_CALLI, _K_HALT, _K_LOOP) = range(9)
+_PFX_LEG = frozenset((0x66, 0x67, 0xF0, 0xF2, 0xF3, 0x26, 0x2E, 0x36, 0x3E, 0x64, 0x65))
+_ARITH_GRP = ("add", "or", "adc", "sbb", "and", "sub", "xor", "cmp")
+
+
+def _mk_x1(is64: bool) -> list:
+    t = [_M_NONE] * 256
+    for op in range(0x40):
+        lo = op & 7
+        t[op] = _M_MODRM if lo < 4 else (_M_I8 if lo == 4 else (_M_IZ if lo == 5 else (_M_INV if is64 else _M_NONE)))
+    t[0x0F] = _M_ESC
+    for p in (0x26, 0x2E, 0x36, 0x3E, 0x64, 0x65, 0x66, 0x67, 0xF0, 0xF2, 0xF3):
+        t[p] = _M_PFX
+    for op in range(0x40, 0x50):
+        t[op] = _M_PFX if is64 else _M_NONE
+    t[0x60] = t[0x61] = _M_INV if is64 else _M_NONE
+    t[0x62] = _M_X
+    t[0x63] = _M_MODRM
+    t[0x68], t[0x69], t[0x6A], t[0x6B] = _M_IZ, _M_MODRM_IZ, _M_I8, _M_MODRM_I8
+    for op in range(0x70, 0x80):
+        t[op] = _M_J8
+    t[0x80], t[0x81], t[0x82], t[0x83] = _M_MODRM_I8, _M_MODRM_IZ, (_M_INV if is64 else _M_MODRM_I8), _M_MODRM_I8
+    for op in range(0x84, 0x90):
+        t[op] = _M_MODRM
+    t[0x9A] = _M_INV if is64 else _M_FARPTR
+    for op in range(0xA0, 0xA4):
+        t[op] = _M_MOFFS
+    t[0xA8], t[0xA9] = _M_I8, _M_IZ
+    for op in range(0xB0, 0xB8):
+        t[op] = _M_I8
+    for op in range(0xB8, 0xC0):
+        t[op] = _M_MOVI
+    t[0xC0] = t[0xC1] = _M_MODRM_I8
+    t[0xC2], t[0xC3] = _M_RETI, _M_RET
+    t[0xC4] = t[0xC5] = _M_X
+    t[0xC6], t[0xC7], t[0xC8] = _M_MODRM_I8, _M_MODRM_IZ, _M_ENTER
+    t[0xCA], t[0xCB], t[0xCC], t[0xCD] = _M_RETI, _M_RET, _M_HALT, _M_I8
+    t[0xCE] = _M_INV if is64 else _M_NONE
+    t[0xCF] = _M_RET
+    for op in range(0xD0, 0xD4):
+        t[op] = _M_MODRM
+    t[0xD4] = t[0xD5] = _M_INV if is64 else _M_I8
+    t[0xD6] = _M_INV if is64 else _M_NONE
+    for op in range(0xD8, 0xE0):
+        t[op] = _M_MODRM
+    for op in range(0xE0, 0xE4):
+        t[op] = _M_LOOP
+    for op in range(0xE4, 0xE8):
+        t[op] = _M_I8
+    t[0xE8], t[0xE9] = _M_CALL, _M_JMP32
+    t[0xEA] = _M_INV if is64 else _M_FARPTR
+    t[0xEB] = _M_JMP8
+    t[0xF4] = _M_HALT
+    t[0xF6], t[0xF7], t[0xFE], t[0xFF] = _M_G3_8, _M_G3_V, _M_MODRM, _M_FF
+    return t
+
+
+_X1_32, _X1_64 = _mk_x1(False), _mk_x1(True)
+_X2_NONE = frozenset((0x05, 0x06, 0x07, 0x08, 0x09, 0x0E, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x37, 0x77, 0xA0, 0xA1, 0xA2, 0xA8, 0xA9, 0xAA,
+                      0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF))
+_X2_I8 = frozenset((0x70, 0x71, 0x72, 0x73, 0xA4, 0xAC, 0xBA, 0xC2, 0xC4, 0xC5, 0xC6, 0x0F))
+_X2_BAD = frozenset((0x04, 0x0A, 0x0C, 0x24, 0x25, 0x26, 0x27, 0x36, 0x39, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0xA6, 0xA7))
+
+
+def _modrm_len(b: bytes, j: int, addr16: bool) -> int:
+    """Panjang ModRM + SIB + disp; j = indeks byte ModRM. -1 bila terpotong."""
+    if j >= len(b):
+        return -1
+    m = b[j]
+    mod, rm = m >> 6, m & 7
+    if addr16:
+        return 1 + ((2 if rm == 6 else 0) if mod == 0 else (1 if mod == 1 else (2 if mod == 2 else 0)))
+    n = 1
+    if mod != 3 and rm == 4:
+        if j + 1 >= len(b):
+            return -1
+        n += 1
+        if mod == 0 and (b[j + 1] & 7) == 5:
+            n += 4
+    if mod == 0:
+        if rm == 5:
+            n += 4
+    elif mod == 1:
+        n += 1
+    elif mod == 2:
+        n += 4
+    return n
+
+
+def _x86_dec(b: bytes, i: int, is64: bool):
+    """Satu instruksi di b[i:] -> (panjang, jenis, rel, bendera, mnemonik) atau None.
+    bendera: 1 = operasi aritmetika / rotasi / geser, 2 = operan memori, 4 = menulis ke memori."""
+    n0, nb = i, len(b)
+    opsz16 = addr = False
+    cnt = 0
+    while i < nb and cnt < 14 and b[i] in _PFX_LEG:
+        if b[i] == 0x66:
+            opsz16 = True
+        elif b[i] == 0x67:
+            addr = True
+        i += 1
+        cnt += 1
+    if i >= nb:
+        return None
+    rexw, rex = False, 0
+    if is64 and 0x40 <= b[i] <= 0x4F:
+        rex = b[i]
+        rexw = bool(b[i] & 8)
+        i += 1
+        if i >= nb:
+            return None
+        if 0x40 <= b[i] <= 0x4F or b[i] in _PFX_LEG:      # REX tidak persis di depan opcode: CPU mengabaikannya; dihitung sebagai 1 instruksi sendiri
+            return i - n0, _K_NORM, 0, 0, ""
+    op = b[i]
+    i += 1
+    cls = (_X1_64 if is64 else _X1_32)[op]
+    addr16 = addr and not is64
+    izs = 2 if opsz16 else 4
+    kind, rel, flags, mn = _K_NORM, 0, 0, ""
+
+    def modrm(i_):
+        k = _modrm_len(b, i_, addr16)
+        return k
+
+    if cls == _M_INV or cls == _M_PFX:
+        return None
+    if cls == _M_NONE:
+        if op in (0xAA, 0xAB, 0xA4, 0xA5):
+            flags = 4
+    elif cls == _M_ESC:
+        if i >= nb:
+            return None
+        op2 = b[i]
+        i += 1
+        if op2 in _X2_BAD:
+            return None
+        if op2 == 0x0B:
+            kind = _K_HALT
+        elif 0x80 <= op2 <= 0x8F:
+            if i + 4 > nb:
+                return None
+            rel, kind, i = struct.unpack_from("<i", b, i)[0], _K_JCC, i + 4
+        elif op2 in _X2_NONE:
+            pass
+        else:
+            if op2 in (0x38, 0x3A):
+                if i >= nb:
+                    return None
+                i += 1
+            m0 = i
+            k = modrm(i)
+            if k < 0:
+                return None
+            i += k
+            if op2 == 0x3A or op2 in _X2_I8:
+                i += 1
+            mod = b[m0] >> 6
+            if mod != 3 and op2 != 0x1F and op2 != 0x18:
+                flags |= 2
+            if op2 in (0xA4, 0xA5, 0xAC, 0xAD):
+                flags |= 1
+                mn = "shd"
+            elif op2 == 0xEF:
+                if not (mod == 3 and ((b[m0] >> 3) & 7) | ((rex >> 2) & 1) << 3 == (b[m0] & 7) | (rex & 1) << 3):   # pxor reg,reg = nol-kan register, bukan dekripsi
+                    flags |= 1
+                    mn = "xor"
+    elif cls in (_M_MODRM, _M_MODRM_I8, _M_MODRM_IZ, _M_G3_8, _M_G3_V, _M_FF):
+        m0 = i
+        k = modrm(i)
+        if k < 0:
+            return None
+        i += k
+        m = b[m0]
+        mod, reg = m >> 6, (m >> 3) & 7
+        if cls == _M_MODRM_I8 or (cls == _M_G3_8 and reg < 2):
+            i += 1
+        elif cls == _M_MODRM_IZ or (cls == _M_G3_V and reg < 2):
+            i += izs
+        if cls == _M_FF:
+            if reg in (2, 3):
+                kind = _K_CALLI
+            elif reg in (4, 5):
+                kind = _K_JMPI
+        if mod != 3 and op != 0x8D:
+            flags |= 2
+        mem = mod != 3
+        if op < 0x40 and (op & 7) < 6 and (op >> 3) != 7:
+            flags |= 1
+            mn = _ARITH_GRP[op >> 3]
+            if op in (0x30, 0x31, 0x32, 0x33) and mod == 3 and (reg | ((rex >> 2) & 1) << 3) == ((m & 7) | (rex & 1) << 3):
+                flags, mn = flags & ~1, ""     # xor reg,reg = nol-kan register, bukan operasi dekripsi
+            if mem and (op & 2) == 0:
+                flags |= 4
+        elif op in (0x80, 0x81, 0x83) and reg != 7:
+            flags |= 1
+            mn = _ARITH_GRP[reg]
+            if mem:
+                flags |= 4
+        elif op in (0xC0, 0xC1, 0xD0, 0xD1, 0xD2, 0xD3) and reg in (0, 1, 4, 5):
+            flags |= 1
+            mn = ("rol", "ror", "", "", "shl", "shr")[reg]
+            if mem:
+                flags |= 4
+        elif op in (0x88, 0x89, 0xC6, 0xC7) and mem:
+            flags |= 4
+    elif cls == _M_I8 or cls == _M_IZ:
+        i += 1 if cls == _M_I8 else izs
+        if op < 0x40 and (op & 7) in (4, 5) and (op >> 3) != 7:      # op AL / eAX, imm
+            flags, mn = 1, _ARITH_GRP[op >> 3]
+    elif cls == _M_J8 or cls == _M_JMP8 or cls == _M_LOOP:
+        if i >= nb:
+            return None
+        rel = b[i] - 256 if b[i] >= 128 else b[i]
+        kind = _K_JCC if cls == _M_J8 else (_K_JMP if cls == _M_JMP8 else _K_LOOP)
+        i += 1
+    elif cls == _M_CALL or cls == _M_JMP32:
+        if i + 4 > nb:
+            return None
+        rel = struct.unpack_from("<i", b, i)[0]
+        kind = _K_CALL if cls == _M_CALL else _K_JMP
+        i += 4
+    elif cls == _M_RET:
+        kind = _K_RET
+    elif cls == _M_RETI:
+        kind = _K_RET
+        i += 2
+    elif cls == _M_HALT:
+        kind = _K_HALT
+    elif cls == _M_MOFFS:
+        i += (8 if is64 else 4) if not (addr and not is64) else 2
+        if op in (0xA2, 0xA3):
+            flags = 6
+        else:
+            flags = 2
+    elif cls == _M_ENTER:
+        i += 3
+    elif cls == _M_MOVI:
+        i += 8 if (rexw and is64) else izs
+    elif cls == _M_FARPTR:
+        i += 6 if not opsz16 else 4
+    elif cls == _M_X:       # VEX / EVEX (atau LES / LDS / BOUND pada mode 32-bit)
+        if not is64 and (i >= nb or b[i] < 0xC0):
+            k = modrm(i)
+            if k < 0:
+                return None
+            i += k
+            flags |= 2
+        elif op == 0xC5:
+            if i + 2 > nb:
+                return None
+            o2 = b[i + 1]
+            i += 2
+            if o2 != 0x77:
+                k = modrm(i)
+                if k < 0:
+                    return None
+                i += k + (1 if (o2 in _X2_I8 and o2 != 0x0F) else 0)
+        elif op == 0xC4:
+            if i + 3 > nb:
+                return None
+            mp, o2 = b[i] & 0x1F, b[i + 2]
+            i += 3
+            if not (mp == 1 and o2 == 0x77):
+                k = modrm(i)
+                if k < 0:
+                    return None
+                i += k + (1 if (mp == 3 or (mp == 1 and o2 in _X2_I8 and o2 != 0x0F)) else 0)
+        else:               # EVEX 62
+            if i + 4 > nb:
+                return None
+            mp, o2 = b[i] & 7, b[i + 3]
+            i += 4
+            k = modrm(i)
+            if k < 0:
+                return None
+            i += k + (1 if (mp == 3 or (mp == 1 and o2 in _X2_I8 and o2 != 0x0F)) else 0)
+    n = i - n0
+    if n > 15 or i > nb:
+        return None
+    return n, kind, rel, flags, mn
+
+
+def _cfg_func(d: bytes, L: dict, start: int, end: int, is64: bool, want_blocks: bool = False) -> dict | None:
+    """CFG satu fungsi [start, end). None bila awal fungsi tidak bisa dibaca."""
+    off0 = _va_off(L, start)
+    if off0 is None or end <= start:
+        return None
+    code = d[off0:off0 + (end - start)]
+    insns: dict = {}
+    leaders = {start}
+    work = [start]
+    incomplete = trunc = False
+    n_i = 0
+    while work and not trunc:
+        va = work.pop()
+        while start <= va < end and va not in insns:
+            r = _x86_dec(code, va - start, is64)
+            if r is None:
+                incomplete = True
+                break
+            n_i += 1
+            if n_i > CFG_MAX_FUNC_INSNS:
+                trunc = incomplete = True
+                break
+            insns[va] = r
+            n, kind, rel = r[0], r[1], r[2]
+            nxt = va + n
+            if kind == _K_JMP:
+                t = nxt + rel
+                if start <= t < end:
+                    leaders.add(t)
+                    work.append(t)
+                break
+            if kind in (_K_JCC, _K_LOOP):
+                t = nxt + rel
+                if start <= t < end:
+                    leaders.add(t)
+                    work.append(t)
+                leaders.add(nxt)
+                va = nxt
+                continue
+            if kind in (_K_RET, _K_HALT, _K_JMPI):
+                break
+            va = nxt
+    if not insns:
+        return None
+    # blok dasar
+    order = sorted(insns)
+    blocks: list = []                 # [va_awal, va_akhir_instruksi_terakhir]
+    bidx: dict = {}
+    cur = None
+    for k, va in enumerate(order):
+        r = insns[va]
+        if cur is None or va in leaders or order[k - 1] + insns[order[k - 1]][0] != va:
+            cur = [va, va]
+            blocks.append(cur)
+        cur[1] = va
+        bidx[va] = len(blocks) - 1
+        if r[1] in (_K_JMP, _K_JCC, _K_LOOP, _K_RET, _K_HALT, _K_JMPI):
+            cur = None
+    succ: list = [[] for _ in blocks]
+    n_switch = n_exit_ext = 0
+    for bi, (a, z) in enumerate(blocks):
+        n, kind, rel = insns[z][0], insns[z][1], insns[z][2]
+        nxt = z + n
+        tg = []
+        if kind == _K_JMP:
+            tg = [z + n + rel]
+        elif kind in (_K_JCC, _K_LOOP):
+            tg = [z + n + rel, nxt]
+        elif kind == _K_JMPI:
+            n_switch += 1
+        elif kind not in (_K_RET, _K_HALT):
+            tg = [nxt]
+        for t in tg:
+            if t in bidx and bidx[t] != -1 and blocks[bidx[t]][0] == t:
+                if bidx[t] not in succ[bi]:
+                    succ[bi].append(bidx[t])
+            else:
+                n_exit_ext += 1
+    N = len(blocks)
+    E = sum(len(s) for s in succ)
+    cc = E - N + 2 + n_switch
+    # sisi balik (DFS iteratif)
+    color = [0] * N
+    back: list = []
+    stack = [(0, 0)]
+    color[0] = 1
+    while stack:
+        u, k = stack[-1]
+        if k < len(succ[u]):
+            stack[-1] = (u, k + 1)
+            v = succ[u][k]
+            if color[v] == 0:
+                color[v] = 1
+                stack.append((v, 0))
+            elif color[v] == 1:
+                back.append((u, v))
+        else:
+            color[u] = 2
+            stack.pop()
+    pred: list = [[] for _ in blocks]
+    for u, ss in enumerate(succ):
+        for v in ss:
+            pred[v].append(u)
+    loops: list = []
+    for u, v in back[:CFG_MAX_LOOPS]:
+        body = {v, u}
+        todo = [u]
+        while todo:
+            x = todo.pop()
+            if x == v:
+                continue
+            for p in pred[x]:
+                if p not in body:
+                    body.add(p)
+                    todo.append(p)
+        ni = ops = 0
+        mem = store = False
+        calls = 0
+        mns: list = []
+        for bi in body:
+            a, z = blocks[bi]
+            for va in order[bisect.bisect_left(order, a):bisect.bisect_right(order, z)]:
+                r = insns[va]
+                ni += 1
+                if r[1] == _K_CALL or r[1] == _K_CALLI:
+                    calls += 1
+                if r[3] & 1:
+                    ops += 1
+                    if r[4] and r[4] not in mns:
+                        mns.append(r[4])
+                mem = mem or bool(r[3] & 2)
+                store = store or bool(r[3] & 4)
+        crypto = bool(ops and mem and store and ni <= 80 and calls <= 1 and any(m_ in ("xor", "add", "sub", "rol", "ror", "shl", "shr", "shd") for m_ in mns)
+                      and any(m_ in ("xor", "rol", "ror", "shd") for m_ in mns))
+        loops.append({"head": blocks[v][0], "insns": ni, "blocks": len(body), "ops": mns[:5], "crypto": crypto, "calls": calls})
+    heads = collections.Counter(v for _u, v in back)
+    flat = None
+    if N >= 8 and heads:
+        hv, hn = heads.most_common(1)[0]
+        if hn >= max(6, N // 3):
+            flat = {"head": blocks[hv][0], "back_edges": hn, "blocks": N}
+    res = {"va": start, "blocks": N, "edges": E, "cc": max(cc, 1), "loops": loops, "insns": len(insns), "incomplete": incomplete, "switch": n_switch,
+           "flat": flat, "trunc": trunc}
+    if want_blocks:
+        res["bl"] = [(blocks[i][0], blocks[i][1] + insns[blocks[i][1]][0], [blocks[j][0] for j in succ[i]], insns[blocks[i][1]][1]) for i in range(N)]
+    return res
+
+
+def _cfg_enrich(info: dict, ctx: dict, d: bytes) -> None:
+    """Dipanggil di akhir _re_lab: info["cfg"] (kunci baru) + cc / blok / loop pada info["functions"]. Tidak pernah melempar."""
+    try:
+        L, F = ctx["L"], ctx["F"]
+        is64 = L["is64"]
+        xs = [(L["base"] + s["va"], L["base"] + s["va"] + max(s["vsize"], s["rsize"])) for s in L["xsecs"]]
+        top_va = []
+        for f in info.get("functions", []):
+            try:
+                top_va.append(int(f["va"], 16))
+            except ValueError:
+                pass
+        todo = list(dict.fromkeys(top_va + [s for s, _f in sorted(F.items(), key=lambda kv: -kv[1]["size"])]))[:CFG_MAX_FUNCS]
+        deadline = time.monotonic() + CFG_TIME
+        done: dict = {}
+        tot = bad = 0
+        partial = False
+        for s in todo:
+            if time.monotonic() > deadline or tot > CFG_MAX_INSNS:
+                partial = True
+                break
+            f = F.get(s)
+            if not f or s in ctx["thunks"] or f["size"] < 2:
+                continue
+            e = s + f["size"]
+            sec_end = next((b for a, b in xs if a <= s < b), e)
+            r = _cfg_func(d, L, s, min(e, sec_end), is64)
+            if r is None:
+                bad += 1
+                continue
+            tot += r["insns"]
+            if r["incomplete"]:
+                bad += 1
+            done[s] = r
+        nm = lambda s: F[s]["name"] if s in F else "sub_%08X" % s
+        for f in info.get("functions", []):
+            try:
+                r = done.get(int(f["va"], 16))
+            except ValueError:
+                r = None
+            if r:
+                f["cc"], f["blocks"], f["loops"] = r["cc"], r["blocks"], len(r["loops"])
+        top = sorted(done.values(), key=lambda r: (-r["cc"], r["va"]))[:8]
+        dec = []
+        for s, r in sorted(done.items()):
+            for lp in r["loops"]:
+                if lp["crypto"] and len(dec) < 12:
+                    dec.append({"func": "0x%X" % s, "name": _clean(nm(s)), "head": "0x%X" % lp["head"], "insns": lp["insns"], "ops": lp["ops"]})
+        flat = [{"func": "0x%X" % s, "name": _clean(nm(s)), "head": "0x%X" % r["flat"]["head"], "back_edges": r["flat"]["back_edges"], "blocks": r["flat"]["blocks"]}
+                for s, r in sorted(done.items()) if r["flat"]][:6]
+        info["cfg"] = {
+            "analyzed": len(done), "insns": tot, "incomplete": bad, "partial": partial, "loops": sum(len(r["loops"]) for r in done.values()),
+            "switches": sum(1 for r in done.values() if r["switch"]),
+            "top": [{"va": "0x%X" % r["va"], "name": _clean(nm(r["va"])), "blocks": r["blocks"], "edges": r["edges"], "cc": r["cc"], "loops": len(r["loops"]),
+                     "insns": r["insns"]} for r in top],
+            "decrypt_loops": dec, "flatten": flat,
+        }
+    except Exception as e:
+        info["notes"].append("CFG gagal: %s" % type(e).__name__)
+
+
+def _render_cfg(r: dict, a, compact: bool) -> None:
+    c = r.get("cfg")
+    if not c or not c["analyzed"]:
+        return
+    a("   CFG: %d fungsi / %d instruksi didecode, %d loop%s%s" % (c["analyzed"], c["insns"], c["loops"],
+                                                                 (", %d fungsi tidak lengkap" % c["incomplete"]) if c["incomplete"] else "",
+                                                                 " | TERPOTONG (batas waktu / ukuran)" if c["partial"] else ""))
+    for x in c["decrypt_loops"][: (2 if compact else 8)]:
+        a("   ! kandidat loop dekripsi: %s %s (loop @%s, %d instruksi; %s)" % (x["name"], x["func"], x["head"], x["insns"], "/".join(x["ops"])))
+    for x in c["flatten"][: (1 if compact else 4)]:
+        a("   ! kandidat control-flow flattening: %s %s (dispatcher @%s, %d sisi balik, %d blok)" % (x["name"], x["func"], x["head"], x["back_edges"], x["blocks"]))
+    if compact:
+        return
+    for x in c["top"][:6]:
+        a("   kompleksitas: %s %s cc=%d (%d blok, %d sisi, %d loop, %d instruksi)" % (x["name"], x["va"], x["cc"], x["blocks"], x["edges"], x["loops"], x["insns"]))
+
+
+def cfg_text(path, at=None) -> str:
+    """Ringkasan CFG (tanpa `at`) atau daftar blok dasar satu fungsi (at = 'entry' / 0xVA). CLI --cfg, API action 'cfg'."""
+    try:
+        info, ctx, err = _relab_any(*_cfg_read(path))
+    except Exception as e:
+        return "CFG gagal (%s: %s)." % (type(e).__name__, str(e)[:120])
+    if not info:
+        return "CFG: %s." % (err or "tidak ada kode yang bisa dianalisis")
+    if at is None:
+        L: list = []
+        _render_cfg(info, L.append, False)
+        return "\n".join(L) if L else "CFG: tidak ada fungsi yang bisa dianalisis."
+    Lx, fl = ctx["L"], ctx["fl"]
+    try:
+        va = Lx["entry_va"] if str(at).lower() == "entry" else int(str(at), 0)
+    except ValueError:
+        return "CFG: alamat tidak valid (pakai entry atau 0xVA)."
+    i = bisect.bisect_right(fl, va) - 1
+    if i < 0:
+        return "CFG: tidak ada fungsi yang memuat 0x%X." % va
+    s = fl[i]
+    xs = [(Lx["base"] + x["va"], Lx["base"] + x["va"] + max(x["vsize"], x["rsize"])) for x in Lx["xsecs"]]
+    sec_end = next((b for a_, b in xs if a_ <= s < b), s)
+    e = min(fl[i + 1] if i + 1 < len(fl) else sec_end, sec_end, s + 0x10000)
+    r = _cfg_func(_cfg_read(path)[0], Lx, s, e, Lx["is64"], want_blocks=True)
+    if not r:
+        return "CFG: fungsi di 0x%X tidak bisa didecode." % s
+    out = ["Fungsi 0x%X: %d blok, %d sisi, cc=%d, %d loop%s%s" % (s, r["blocks"], r["edges"], r["cc"], len(r["loops"]), ", tidak lengkap" if r["incomplete"] else "",
+                                                               ", %d switch (jump table tak diselesaikan)" % r["switch"] if r["switch"] else "")]
+    heads = {lp["head"]: lp for lp in r["loops"]}
+    for a_, z_, ss, k in r["bl"][:200]:
+        lp = heads.get(a_)
+        out.append("  0x%X-0x%X -> %s%s" % (a_, z_, ", ".join("0x%X" % x for x in ss) or "(keluar)",
+                                           ("  [kepala loop: %d instruksi, ops %s%s]" % (lp["insns"], "/".join(lp["ops"]) or "-", ", KANDIDAT DEKRIPSI" if lp["crypto"] else "")) if lp else ""))
+    if r["flat"]:
+        out.append("  ! kandidat control-flow flattening: dispatcher @0x%X, %d sisi balik" % (r["flat"]["head"], r["flat"]["back_edges"]))
+    return "\n".join(out)
+
+
+def _cfg_read(path):
+    f_, size = _open_regular(path)
+    with f_:
+        return f_.read(MAX_SCAN), size
+
+
+# ----------------------- v99.19 [A1]: Malware Config Extractor otomatis (statis) -----------------------
+# Mengambil konfigurasi tertanam (C2, mutex, kunci RC4 / XOR, campaign ID, user-agent, token bot) dari berkas, overlay PE, resource PE, resource terkelola
+# .NET, dan wilayah berentropi tinggi. STATIS murni (sampel tidak dijalankan), hanya pustaka standar. Tiga lapis:
+#   1) pola struktur: blok TLV beacon Cobalt Strike (XOR 0x2E / 0x69), token bot Telegram, webhook Discord, mutex Global\ / Local\, URL dead-drop,
+#      objek JSON konfigurasi (kunci c2 / host / port / mutex / key / campaign / user_agent ...);
+#   2) dekode wilayah terenkode: satu-byte (XOR / ADD / ROL), XOR kunci berulang, RC4, base64, zlib / gzip; kunci kandidat diambil dari string di sekitar
+#      wilayah (plus kunci yang diberikan pengguna, plus kunci di awal blob gaya Remcos: byte pertama = panjang kunci). Dekode hanya diterima bila
+#      keluarannya memuat butir konfigurasi; tebakan yang tidak menghasilkan apa-apa dibuang;
+#   3) hasil perburuan XOR yang sudah ada (rep["xor"], rep["xor_multi"]) dipakai ulang untuk mendekode seluruh berkas.
+# Kunci baru rep["malcfg"] (None bila tidak ada), baris "Konfigurasi malware" di laporan, peringatan; CLI `--config FILE [--key STR ...] [--json] [--raw]`;
+# aksi API {"action": "config", "path": ..., "keys": [...]}; fungsi extract_config(path), config_text(path). Skor TIDAK berubah (aditif).
+# Batasan: tanpa AES / RSA (kunci tidak bisa ditebak dari string); konfigurasi .NET yang dienkripsi per-string oleh obfuskator tidak dibongkar (butuh
+# eksekusi / emulasi IL); format keluarga lain hanya tertangkap lewat pola umum. Hasil adalah PETUNJUK, bukan bukti keluarga; verifikasi dengan sampel nyata.
+
+MCFG_TIME = 4.0                  # detik untuk seluruh ekstraksi satu berkas
+MCFG_MAX_BLOBS = 12              # wilayah kandidat terenkode yang dicoba didekode
+MCFG_MAX_BLOB = 2 << 20          # byte per wilayah yang dibaca
+MCFG_MAX_KEYS = 300              # kandidat kunci (string sekitar wilayah) per wilayah
+MCFG_MAX_ITEMS = 60              # butir konfigurasi yang dilaporkan
+MCFG_DEC_MAX = 512 * 1024        # byte hasil dekode yang dipindai
+MCFG_MAX_DEPTH = 2               # lapis dekode bertingkat (mis. base64 -> RC4)
+
+_CS_PAT = {k: bytes(b ^ k for b in b"\x00\x01\x00\x01\x00\x02") for k in (0x2E, 0x69)}
+_CS_FIELDS = {1: "beacon_type", 2: "port", 3: "sleep_ms", 4: "max_get_size", 5: "jitter", 7: "public_key", 8: "c2_server", 9: "user_agent", 10: "post_uri",
+              26: "get_verb", 27: "post_verb", 29: "spawn_x86", 30: "spawn_x64", 32: "proxy", 37: "watermark", 40: "kill_date"}
+_CS_STR = frozenset((8, 9, 10, 26, 27, 29, 30, 32))
+_CS_BTYPE = {0: "HTTP", 1: "Hybrid HTTP+DNS", 2: "SMB", 4: "TCP", 8: "HTTPS", 16: "TCP bind"}
+
+_MCFG_TG = re.compile(rb"(?<![\w:])\d{8,10}:AA[\w-]{33}(?![\w-])")
+_MCFG_DISCORD = re.compile(rb"https://(?:ptb\.|canary\.)?discord(?:app)?\.com/api/webhooks/\d{17,20}/[\w-]{60,80}")
+_MCFG_MUTEX = re.compile(rb"(?:Global|Local)\\[A-Za-z0-9_\-{}.]{4,64}")
+_MCFG_MUTEX_SKIP = re.compile(r"^(?:MSCTF|CTF\.|SM0:|RasPbFile|windows_shell|ZonesCounterMutex|ZoneAttributeCacheCounterMutex|CPSharedMemory|BaseNamedObjects)", re.I)
+_MCFG_DEAD = re.compile(rb"https?://(?:pastebin\.com/raw/|paste\.ee/r/|api\.telegram\.org/bot|transfer\.sh/|ipfs\.io/ipfs/|cdn\.discordapp\.com/attachments/)[\x21-\x7e]{3,160}", re.I)
+_MCFG_DEAD_GH = re.compile(rb"https?://(?:raw|gist)\.githubusercontent\.com/[\x21-\x7e]{3,160}", re.I)   # terlalu umum di berkas polos (skema JSON, dokumentasi): hanya dari hasil dekode
+_MCFG_URL = re.compile(rb"(?:https?|ftp|wss?)://[\x21-\x7e]{4,200}", re.I)
+_MCFG_IPPORT = re.compile(rb"(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d):\d{2,5}(?!\d)")
+_MCFG_HOSTPORT = re.compile(rb"(?<![A-Za-z0-9.\-])[a-z0-9][a-z0-9\-]{1,40}(?:\.[a-z0-9\-]{1,40}){0,3}\.(?:com|net|org|info|biz|xyz|top|ru|cn|io|me|cc|tk|su|pw|club|online|site|dev|app|cloud):\d{2,5}(?!\d)", re.I)
+_MCFG_KV = re.compile(r"(?m)^[ \t]*\"?([A-Za-z_][\w.\-& ]{0,30}?)\"?[ \t]*[=:][ \t]*\"?([^\r\n\"]{1,200}?)\"?[ \t]*,?[ \t]*$")
+_MCFG_KEYSTR = re.compile(rb"[\x21-\x7e]{4,32}")
+_MCFG_KEYSKIP = re.compile(rb"[\\/:*?<>|]|^\.|\.(?:dll|exe|sys|pdb|c|h|cpp|txt)$", re.I)
+_MCFG_COMMON_KEYS = (b"key", b"password", b"admin", b"secret", b"123456", b"12345678")
+_MCFG_TXT = bytes(range(48, 58)) + bytes(range(65, 91)) + bytes(range(97, 123)) + b" .:/-_=,;@\x00\r\n"   # huruf, angka, tanda baca umum (+ NUL, CR, LF)
+_MCFG_B64 = re.compile(rb"[A-Za-z0-9+/=\r\n]{24,}")
+
+# nama kunci konfigurasi -> jenis butir
+_MCFG_NAMES = {
+    "c2": "c2", "c&c": "c2", "cnc": "c2", "host": "c2", "hosts": "c2", "server": "c2", "servers": "c2", "domain": "c2", "domains": "c2", "url": "c2", "urls": "c2",
+    "gate": "c2", "panel": "c2", "ip": "c2", "address": "c2", "remote": "c2", "callback": "c2", "c2_server": "c2", "c2_url": "c2", "server_url": "c2", "host_name": "c2",
+    "port": "port", "ports": "port",
+    "mutex": "mutex", "mtx": "mutex", "mutex_name": "mutex", "mutexname": "mutex",
+    "key": "key", "aes_key": "key", "aeskey": "key", "rc4_key": "key", "rc4key": "key", "xor_key": "key", "xorkey": "key", "password": "key", "pass": "key",
+    "secret": "key", "salt": "key", "encryption_key": "key",
+    "campaign": "campaign", "campaign_id": "campaign", "campaignid": "campaign", "bot_id": "campaign", "botid": "campaign", "build": "campaign", "build_id": "campaign",
+    "buildid": "campaign", "group": "campaign", "tag": "campaign", "affiliate": "campaign", "affiliate_id": "campaign", "botnet": "campaign",
+    "user_agent": "user_agent", "useragent": "user_agent", "ua": "user_agent",
+    "interval": "timing", "delay": "timing", "sleep": "timing", "timeout": "timing", "beacon_interval": "timing", "jitter": "timing",
+    "install_path": "install", "install_name": "install", "install_dir": "install", "startup": "install", "persistence": "install", "filename": "install",
+    "token": "token", "bot_token": "token", "webhook": "token", "chat_id": "token",
+}
+_MCFG_STRONG = frozenset(("c2", "token", "key", "mutex", "campaign"))
+
+
+class _McfgCtx:
+    """Penampung hasil + anggaran waktu satu ekstraksi."""
+
+    def __init__(self, d: bytes, reveal: bool = False):
+        self.d, self.reveal = d, reveal
+        self.deadline = time.monotonic() + MCFG_TIME
+        self.items: list = []
+        self.seen: set = set()
+        self.fam: list = []
+        self.blobs = 0
+        self.keys_tried = 0
+        self.partial = False
+
+    def left(self) -> bool:
+        if time.monotonic() > self.deadline:
+            self.partial = True
+            return False
+        return True
+
+    def add(self, kind: str, value: str, how: str, src: str, conf: str = "sedang") -> bool:
+        value = value.strip()
+        if not value or (kind, value) in self.seen:
+            return False
+        if len(self.items) >= MCFG_MAX_ITEMS:
+            self.partial = True
+            return False
+        if kind in ("url", "ip:port", "host:port") and how and value.encode("latin-1", "ignore") in self.d:
+            return False           # sudah polos di berkas: sudah tampil sebagai IOC biasa, bukan hasil dekode
+        self.seen.add((kind, value))
+        it = {"kind": kind, "value": value, "how": how or "polos", "src": src, "conf": conf}
+        if kind in ("token", "webhook") and not self.reveal:   # rahasia berformat khusus: tidak ditulis utuh (cf. _mask); sha256 untuk pivot
+            it["sha256"] = hashlib.sha256(value.encode("latin-1", "ignore")).hexdigest()[:16]
+            it["value"] = _mcfg_hide(kind, value)
+        self.items.append(it)
+        return True
+
+
+def _mcfg_hide(kind: str, v: str) -> str:
+    if kind == "webhook":
+        m = re.match(r"(https://[^/]+/api/webhooks/\d+/)", v)
+        return (m.group(1) if m else v[:24]) + "…(%d krt)" % len(v)
+    a, _, b = v.partition(":")
+    return a + ":" + _mask(b) if b else _mask(v)
+
+
+def _mcfg_ratio(b: bytes) -> float:
+    if not b:
+        return 0.0
+    return sum(1 for c in b if 9 <= c <= 13 or 32 <= c <= 126) / len(b)
+
+
+def _mcfg_ratio2(b: bytes) -> float:
+    """Seperti _mcfg_ratio tetapi NUL dan pemisah 0x1c-0x1f dihitung teks (blob konfigurasi gaya Remcos memakai pemisah kontrol / padding NUL)."""
+    if not b:
+        return 0.0
+    return sum(1 for c in b if c == 0 or 9 <= c <= 13 or 28 <= c <= 126) / len(b)
+
+
+def _mcfg_rc4(key: bytes, data: bytes) -> bytes:
+    S = list(range(256))
+    j = 0
+    kl = len(key)
+    for i in range(256):
+        j = (j + S[i] + key[i % kl]) & 255
+        S[i], S[j] = S[j], S[i]
+    out = bytearray(len(data))
+    i = j = 0
+    for n, c in enumerate(data):
+        i = (i + 1) & 255
+        si = S[i]
+        j = (j + si) & 255
+        sj = S[j]
+        S[i], S[j] = sj, si
+        out[n] = c ^ S[(si + sj) & 255]
+    return bytes(out)
+
+
+def _mcfg_rxor(data: bytes, key: bytes) -> bytes:
+    n = len(data)
+    if not n or not key:
+        return data
+    kk = (key * (n // len(key) + 1))[:n]
+    return (int.from_bytes(data, "big") ^ int.from_bytes(kk, "big")).to_bytes(n, "big")
+
+
+def _mcfg_kshow(k: bytes) -> str:
+    return "'%s'" % k.decode("latin-1") if _mcfg_ratio(k) == 1.0 and all(32 < c < 127 for c in k) else k.hex()
+
+
+def _mcfg_cs_parse(b: bytes):
+    """Blok TLV konfigurasi beacon Cobalt Strike (sudah di-XOR): id(2) tipe(2) panjang(2) nilai, big-endian. Tipe 1 = short, 2 = int, 3 = blob / string."""
+    if len(b) < 24 or b[:6] != b"\x00\x01\x00\x01\x00\x02":
+        return None
+    p, items = 0, {}
+    while p + 6 <= len(b) and len(items) < 90:
+        fid, typ, ln = struct.unpack_from(">HHH", b, p)
+        p += 6
+        if fid == 0:
+            break
+        if typ not in (1, 2, 3) or (typ == 1 and ln != 2) or (typ == 2 and ln != 4) or p + ln > len(b):
+            return None if len(items) < 6 else items
+        items[fid] = (typ, b[p:p + ln])
+        p += ln
+    return items if len(items) >= 6 and 1 in items and 2 in items else None
+
+
+def _mcfg_cs_emit(items: dict, how: str, src: str, ctx: _McfgCtx) -> None:
+    if "Cobalt Strike beacon" not in ctx.fam:
+        ctx.fam.append("Cobalt Strike beacon")
+    for fid, (typ, v) in items.items():
+        name = _CS_FIELDS.get(fid)
+        if not name:
+            continue
+        if fid in _CS_STR:
+            s = v.split(b"\0", 1)[0].decode("latin-1", "replace")
+            if not s:
+                continue
+            kind = {8: "c2", 9: "user_agent", 10: "uri", 32: "proxy"}.get(fid, "cs:" + name)
+            ctx.add(kind, s, how, src, "tinggi")
+        elif fid == 7:
+            ctx.add("key", "sha256 kunci publik RSA: " + hashlib.sha256(v).hexdigest()[:32], how, src, "tinggi")
+        elif typ == 1 or typ == 2:
+            n = int.from_bytes(v, "big")
+            if fid == 1:
+                ctx.add("cs:beacon_type", "%d (%s)" % (n, _CS_BTYPE.get(n, "?")), how, src, "tinggi")
+            elif fid == 2:
+                ctx.add("port", str(n), how, src, "tinggi")
+            elif fid == 37:
+                ctx.add("campaign", "watermark %d" % n, how, src, "tinggi")
+            elif fid in (3, 5, 4):
+                ctx.add("timing", "%s=%d" % (name, n), how, src, "tinggi")
+            else:
+                ctx.add("cs:" + name, str(n), how, src, "tinggi")
+
+
+def _mcfg_views(buf: bytes) -> list:
+    """buf + versi ASCII dari string UTF-16LE (None bila tidak ada)."""
+    vs = [buf]
+    if b"\x00" in buf[:65536] or len(buf) < 65536:
+        parts = [m.group()[::2] for m in itertools.islice(_UTF16.finditer(buf), 20000)]
+        if parts:
+            vs.append(b"\n".join(parts)[:4 << 20])
+    return vs
+
+
+def _mcfg_pairs(obj, out: list, depth: int = 0) -> None:
+    if depth > 4 or len(out) > 400:
+        return
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(v, (dict, list)):
+                if isinstance(v, list) and v and all(isinstance(x, (str, int)) for x in v):
+                    out.append((str(k), ",".join(str(x) for x in v[:8])))
+                else:
+                    _mcfg_pairs(v, out, depth + 1)
+            elif v is not None and not isinstance(v, bool):
+                out.append((str(k), str(v)))
+    elif isinstance(obj, list):
+        for x in obj[:20]:
+            _mcfg_pairs(x, out, depth + 1)
+
+
+def _mcfg_accept(pairs: list):
+    """Pasangan (nama, nilai) -> daftar (jenis, nilai) bila membentuk konfigurasi (>= 3 nama konfigurasi berbeda, atau 2 dengan satu jenis kuat)."""
+    got, names = [], set()
+    for k, v in pairs:
+        kn = re.sub(r"[\s\-]+", "_", k.strip().lower())
+        kind = _MCFG_NAMES.get(kn)
+        v = v.strip()
+        if not kind or not v or len(v) > 200:
+            continue
+        names.add(kn)
+        got.append((kind, k.strip() + "=" + v))
+    kinds = {_MCFG_NAMES[n] for n in names}
+    if len(names) >= 3 and kinds & _MCFG_STRONG or len(names) >= 2 and kinds & {"c2", "token", "key"} and len(kinds) >= 2:
+        return got[:24]
+    return None
+
+
+def _mcfg_extract(buf: bytes, how: str, src: str, ctx: _McfgCtx, plain: bool) -> int:
+    """Jalankan pengekstrak pola pada satu penyangga. plain=True: berkas asli (hanya pola spesifik, tanpa URL / ip:port umum yang sudah jadi IOC)."""
+    n0 = len(ctx.items)
+    if not buf:
+        return 0
+    # 1) Cobalt Strike
+    for key, pat in _CS_PAT.items():
+        pos, tries = buf.find(pat), 0
+        while pos >= 0 and tries < 6 and ctx.left():
+            tries += 1
+            items = _mcfg_cs_parse(buf[pos:pos + 4096].translate(_xor_table("XOR", key)))
+            if items:
+                _mcfg_cs_emit(items, ((how + " > ") if how else "") + "XOR 0x%02X" % key, "%s @0x%X" % (src, pos), ctx)
+                break
+            pos = buf.find(pat, pos + 1)
+    if not ctx.left():
+        return len(ctx.items) - n0
+    # 2) pola spesifik (ASCII dan UTF-16LE)
+    for v in _mcfg_views(buf):
+        for m in itertools.islice(_MCFG_TG.finditer(v), 8):
+            ctx.add("token", "Telegram bot " + m.group().decode("ascii"), how, src, "sedang")
+        for m in itertools.islice(_MCFG_DISCORD.finditer(v), 8):
+            ctx.add("webhook", m.group().decode("ascii"), how, src, "sedang")
+        for m in itertools.islice(_MCFG_MUTEX.finditer(v), 12):
+            s = m.group().decode("ascii")
+            if not _MCFG_MUTEX_SKIP.match(s.split("\\", 1)[1]):
+                ctx.add("mutex", s, how, src, "sedang")
+        for m in itertools.islice(_MCFG_DEAD.finditer(v), 8):
+            ctx.add("dead-drop", m.group().decode("ascii").rstrip(".,;)\"'"), how, src, "sedang")
+        if not plain:
+            for m in itertools.islice(_MCFG_DEAD_GH.finditer(v), 8):
+                ctx.add("dead-drop", m.group().decode("ascii").rstrip(".,;)\"'"), how, src, "sedang")
+            for m in itertools.islice(_MCFG_URL.finditer(v), 12):
+                ctx.add("url", m.group().decode("ascii").rstrip(".,;)\"'"), how, src, "sedang")
+            for m in itertools.islice(_MCFG_IPPORT.finditer(v), 12):
+                ctx.add("ip:port", m.group().decode("ascii"), how, src, "sedang")
+            for m in itertools.islice(_MCFG_HOSTPORT.finditer(v), 12):
+                ctx.add("host:port", m.group().decode("ascii").lower(), how, src, "sedang")
+        if not ctx.left():
+            return len(ctx.items) - n0
+        # 3) objek JSON konfigurasi
+        i, tries = v.find(b'{"'), 0
+        while i >= 0 and tries < 40 and ctx.left():
+            tries += 1
+            try:
+                obj, end = json.JSONDecoder().raw_decode(v[i:i + 16384].decode("utf-8", "ignore"))
+            except ValueError:
+                i = v.find(b'{"', i + 2)
+                continue
+            if isinstance(obj, dict) and len(obj) >= 2:
+                pr: list = []
+                _mcfg_pairs(obj, pr)
+                acc = _mcfg_accept(pr)
+                if acc:
+                    for kind, val in acc:
+                        ctx.add("cfg:" + kind, val, how, src, "rendah" if plain else "sedang")
+                i = v.find(b'{"', i + max(end, 2))
+            else:
+                i = v.find(b'{"', i + 2)
+    # 4) baris kunci=nilai (hanya wilayah / hasil dekode yang berbentuk teks)
+    if not plain and len(buf) <= (2 << 20) and _mcfg_ratio(buf[:4096]) >= 0.7:
+        pr = [(m.group(1), m.group(2)) for m in itertools.islice(_MCFG_KV.finditer(buf.decode("latin-1")), 400)]
+        acc = _mcfg_accept(pr)
+        if acc:
+            for kind, val in acc:
+                ctx.add("cfg:" + kind, val, how, src, "sedang")
+    return len(ctx.items) - n0
+
+
+def _mcfg_keys(d: bytes, near: int, extra: list) -> list:
+    """Kandidat kunci: dari pengguna, umum, lalu string pendek di sekitar wilayah (urut jarak)."""
+    out: list = []
+    seen: set = set()
+    for k in list(extra) + list(_MCFG_COMMON_KEYS):
+        if k and k not in seen:
+            seen.add(k)
+            out.append(k)
+    lo = max(0, near - 0x4000)
+    win = d[lo:min(len(d), near + 0x1000)]
+    cand = []
+    for m in itertools.islice(_MCFG_KEYSTR.finditer(win), 6000):
+        s = m.group()
+        if s in seen or _MCFG_KEYSKIP.search(s):
+            continue
+        seen.add(s)
+        cand.append((abs(lo + m.start() - near), s))
+    cand.sort()
+    out += [s for _x, s in cand[:MCFG_MAX_KEYS]]
+    return out
+
+
+def _mcfg_decoders(blob: bytes, ctx: _McfgCtx, keys: list):
+    """Hasilkan (cara, byte) untuk kandidat dekode satu wilayah. Kunci dipilih dari kepala blob (murah); kandidat baru dipakai bila memuat butir konfigurasi."""
+    import zlib
+    head = blob[:64]
+    if len(head) < 24:
+        return
+    if _mcfg_ratio(blob[:256]) >= 0.9:        # sudah teks: hanya lapis base64 yang masuk akal
+        if _MCFG_B64.fullmatch(blob[:200].strip() + b"") or _MCFG_B64.match(blob[:200]):
+            try:
+                dec = base64.b64decode(b"".join(blob.split())[:MCFG_DEC_MAX * 2], validate=False)
+                if len(dec) >= 16:
+                    yield "base64", dec[:MCFG_DEC_MAX]
+            except Exception:
+                pass
+        return
+    if len(set(head)) < 8:
+        return
+    h2 = head[:2]
+    try:
+        if h2 == b"\x1f\x8b":
+            yield "gzip", zlib.decompressobj(31).decompress(blob[:MCFG_DEC_MAX], MCFG_DEC_MAX)
+        elif h2 in (b"\x78\x9c", b"\x78\x01", b"\x78\xda", b"\x78\x5e"):
+            yield "zlib", zlib.decompressobj(15).decompress(blob[:MCFG_DEC_MAX], MCFG_DEC_MAX)
+    except Exception:
+        pass
+    cands = []      # satu-byte: semua kunci yang lolos probe diperingkat menurut kemiripan teks (kunci kecil juga menghasilkan ASCII tercetak)
+    for op, rng in (("XOR", range(1, 256)), ("ADD", range(1, 256)), ("ROL", range(1, 8))):
+        for k in rng:
+            t = _xor_table(op, k)
+            h = head.translate(t)
+            if _mcfg_ratio2(h) >= 0.9 and len(set(h)) >= 8:
+                sc = 1.0 - len(h.translate(None, _MCFG_TXT)) / len(h)
+                if sc >= 0.85:
+                    cands.append((-sc, op, k, t))
+    cands.sort(key=lambda x: x[:3])
+    for _sc, op, k, t in cands[:4]:
+        yield (("%s 0x%02X" % (op, k)) if op != "ROL" else "ROL %d" % k), blob[:MCFG_DEC_MAX].translate(t)
+    # kunci di awal blob (gaya Remcos): byte pertama = panjang kunci, lalu kunci, lalu data RC4
+    n0 = blob[0]
+    if 1 <= n0 <= 64 and len(blob) > n0 + 24:
+        pk = blob[1:1 + n0]
+        dd = blob[1 + n0:1 + n0 + MCFG_DEC_MAX]
+        h = _mcfg_rc4(pk, dd[:48])
+        if _mcfg_ratio2(h) >= 0.85 and len(set(h)) >= 8:
+            yield "RC4 kunci di awal blob (%s)" % _mcfg_kshow(pk), _mcfg_rc4(pk, dd)
+    n = 0
+    for kb in keys:
+        n += 1
+        ctx.keys_tried += 1
+        if n % 32 == 0 and not ctx.left():
+            return
+        if len(kb) >= 2:
+            h = _mcfg_rxor(head[:48], kb)
+            if _mcfg_ratio2(h) >= 0.85 and len(set(h)) >= 8:
+                yield "XOR kunci berulang %s" % _mcfg_kshow(kb), _mcfg_rxor(blob[:MCFG_DEC_MAX], kb)
+        h = _mcfg_rc4(kb, head[:48])
+        if _mcfg_ratio2(h) >= 0.85 and len(set(h)) >= 8:
+            yield "RC4 kunci %s" % _mcfg_kshow(kb), _mcfg_rc4(kb, blob[:MCFG_DEC_MAX])
+
+
+def _mcfg_process(buf: bytes, how: str, src: str, ctx: _McfgCtx, keys: list, depth: int, plain: bool = False) -> int:
+    """Ekstrak dari buf; bila depth < MCFG_MAX_DEPTH coba dekode bertingkat dan ekstrak hasilnya (hanya yang menghasilkan butir yang disimpan)."""
+    n = _mcfg_extract(buf, how, src, ctx, plain or not how)   # wilayah yang belum didekode = data apa adanya: hanya pola spesifik
+    if depth >= MCFG_MAX_DEPTH or plain or not ctx.left():
+        return n
+    for how2, dec in _mcfg_decoders(buf, ctx, keys):
+        if not dec:
+            continue
+        label = (how + " > " if how else "") + how2
+        m = _mcfg_process(dec, label, src, ctx, keys, depth + 1)
+        n += m
+        if m and "SETTINGS" in src and how2.startswith("RC4 kunci di awal"):
+            if "mirip Remcos (blob SETTINGS + RC4 kunci di awal)" not in ctx.fam:
+                ctx.fam.append("mirip Remcos (blob SETTINGS + RC4 kunci di awal)")
+        if not ctx.left():
+            break
+    return n
+
+
+def _mcfg_blobs(d: bytes, pe, dn, regions, raw_file: bool) -> list:
+    """Wilayah kandidat terenkode: (label, offset, panjang)."""
+    cand: list = []
+    if pe and not pe.get("broken"):
+        ov, st = pe.get("overlay", 0), pe.get("last_raw", 0)
+        if ov >= 32 and 0 < st < len(d):
+            cand.append(("overlay", st, ov))
+        for x in pe.get("res", []) or []:
+            if x.get("size", 0) >= 32 and 0 < x.get("off", 0) < len(d) and not (x.get("fmt") and x.get("fmt_ok")):
+                cand.append(("resource %s/%s" % (x.get("type"), x.get("name")), x["off"], x["size"]))
+    for x in (dn or {}).get("mres", []) or []:
+        if x.get("size", 0) >= 32 and 0 < x.get("off", 0) < len(d):
+            cand.append(("resource .NET", x["off"], x["size"]))
+    for a, b in regions or []:
+        if b - a >= 64:
+            cand.append(("wilayah berentropi tinggi", a, b - a))
+    if raw_file and len(d) >= 32:
+        cand.append(("berkas", 0, len(d)))
+    out, seen = [], set()
+    for lab, off, ln in cand:
+        if off in seen or off >= len(d):
+            continue
+        seen.add(off)
+        out.append((lab, off, min(ln, MCFG_MAX_BLOB, len(d) - off)))
+        if len(out) >= MCFG_MAX_BLOBS:
+            break
+    return out
+
+
+def _mcfg_run(d: bytes, pe, dn, xor, xor_multi, regions, raw_file: bool, user_keys: list, reveal: bool) -> dict | None:
+    ctx = _McfgCtx(d, reveal)
+    _mcfg_process(d, "", "berkas", ctx, [], MCFG_MAX_DEPTH, plain=True)           # pola spesifik pada berkas apa adanya
+    for x in (xor or [])[:2]:                                                        # perburuan satu-byte yang sudah ada: dekode seluruh berkas
+        if not ctx.left():
+            break
+        try:
+            _mcfg_process(d.translate(_xor_table(x["op"], x["key"])), "%s 0x%02X seluruh berkas" % (x["op"], x["key"]), "berkas", ctx, [], MCFG_MAX_DEPTH)
+        except Exception:
+            pass
+    for x in (xor_multi or [])[:2]:                                                  # XOR kunci berulang dengan MZ terkonfirmasi: PE tersembunyi
+        if not ctx.left() or not x.get("mz"):
+            continue
+        try:
+            kb = bytes.fromhex(x["key"])
+            off = x["mz_off"]
+            _mcfg_process(_mcfg_rxor(d[off:off + MCFG_MAX_BLOB * 4], kb), "XOR kunci berulang %s" % x["key"], "PE tersembunyi @0x%X" % off, ctx, [], MCFG_MAX_DEPTH)
+        except Exception:
+            pass
+    for lab, off, ln in _mcfg_blobs(d, pe, dn, regions, raw_file):
+        if not ctx.left():
+            break
+        ctx.blobs += 1
+        keys = _mcfg_keys(d, off, user_keys)
+        _mcfg_process(d[off:off + ln], "", "%s @0x%X" % (lab, off), ctx, keys, 0)
+    if not ctx.items:
+        return None
+    return {"families": ctx.fam, "items": ctx.items, "blobs": ctx.blobs, "keys_tried": ctx.keys_tried, "partial": ctx.partial}
+
+
+def _mcfg_enrich(d: bytes, rep: dict, pe, dn, zp) -> None:
+    """Dipanggil dari _v97_enrich: rep["malcfg"] (kunci baru). Tidak pernah melempar; tidak mengubah skor."""
+    rep["malcfg"] = None
+    if zp:
+        return
+    try:
+        raw = not pe and not rep.get("elf") and not rep.get("macho") and len(d) <= MCFG_MAX_BLOB and d[:2] != b"PK"
+        rep["malcfg"] = _mcfg_run(d, pe, dn, rep.get("xor"), rep.get("xor_multi"), rep.get("regions"), raw, [], False)
+    except Exception as e:
+        rep["warn"].append("ekstraksi konfigurasi malware gagal: %s" % type(e).__name__)
+        return
+    mc = rep["malcfg"]
+    if mc:
+        fam = ", ".join(mc["families"]) if mc["families"] else "tanpa keluarga dikenal"
+        rep["warn"].append("konfigurasi tertanam terekstrak (%s, %d butir): lihat baris Konfigurasi malware" % (fam, len(mc["items"])))
+
+
+def _render_mcfg(mc: dict, a, compact: bool, defang: bool) -> None:
+    if not mc:
+        return
+    fam = ", ".join(mc["families"]) if mc["families"] else "tanpa keluarga dikenal"
+    a("Konfigurasi malware (ekstraktor statis; PETUNJUK, verifikasi dengan sampel / alat khusus): %s | %d butir%s" % (fam, len(mc["items"]), " | TERPOTONG (batas waktu / jumlah)" if mc.get("partial") else ""))
+    lim = 6 if compact else MCFG_MAX_ITEMS
+    for it in mc["items"][:lim]:
+        v = it["value"]
+        if it["kind"] in ("c2", "url", "uri", "dead-drop", "webhook", "ip:port", "host:port"):
+            v = _df(v, defang)
+        a("   - %s: %s  [%s; %s; %s]%s" % (it["kind"], v, it["how"], it["src"], it["conf"], (" sha256:" + it["sha256"]) if it.get("sha256") else ""))
+    if len(mc["items"]) > lim:
+        a("   ... +%d butir lagi (lihat --config FILE)" % (len(mc["items"]) - lim))
+
+
+def extract_config(path, keys=None, reveal: bool = False) -> dict:
+    """Ekstraksi konfigurasi malware satu berkas. keys: daftar kunci (str / bytes) yang dicoba untuk RC4 / XOR. reveal=True: token / webhook ditulis utuh.
+    -> {"ok": True, "config": {...} | None, "kind": ...}; tidak melempar."""
+    try:
+        d, size = _cfg_read(path)
+        pe = _parse_pe(d, size) if d[:2] == b"MZ" else None
+        if pe and pe.get("broken"):
+            pe = None
+        dn = _dotnet_info(d, pe) if pe and pe.get("dotnet") else None
+        zp = d[:2] == b"PK"
+        if zp:
+            return {"ok": True, "config": None, "kind": "arsip", "note": "arsip ZIP: ekstrak dulu (--unpack / --assets-extract), lalu jalankan pada isinya"}
+        elf, mo = d[:4] == b"\x7fELF", d[:4] in (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe")
+        uk = [k.encode("latin-1", "replace") if isinstance(k, str) else bytes(k) for k in (keys or []) if k]
+        try:
+            xor = _xor_hunt(d)
+        except Exception:
+            xor = []
+        try:
+            xm = _xor_multi(d)
+        except Exception:
+            xm = []
+        skip = [(x["off"], x["off"] + x["size"]) for x in (pe or {}).get("res", []) if x.get("fmt") and x.get("fmt_ok")] + list((pe or {}).get("cert_spans") or [])
+        regions = _entropy_regions(d, skip)
+        raw = not pe and not elf and not mo and len(d) <= MCFG_MAX_BLOB
+        mc = _mcfg_run(d, pe, dn, xor, xm, regions, raw, uk, reveal)
+        return {"ok": True, "config": mc, "kind": "PE" if pe else "ELF" if elf else "Mach-O" if mo else "berkas mentah", "size": size}
+    except Exception as e:
+        return {"ok": False, "error": "%s: %s" % (type(e).__name__, str(e)[:120])}
+
+
+def config_text(path, defang: bool = True, keys=None) -> str:
+    """Teks ekstraksi konfigurasi malware. CLI --config, API action 'config'."""
+    r = extract_config(path, keys=keys)
+    if not r.get("ok"):
+        return "Ekstraksi konfigurasi gagal (%s)." % r.get("error")
+    if r.get("note"):
+        return "Konfigurasi: " + r["note"] + "."
+    if not r.get("config"):
+        return "Konfigurasi: tidak ada konfigurasi tertanam yang berhasil diekstrak (%s). Tidak berarti bersih: AES / RSA, string .NET terenkripsi, atau kunci yang tidak ada di berkas tidak terjangkau (coba --key STR)." % r.get("kind")
+    L_: list = []
+    _render_mcfg(r["config"], L_.append, False, defang)
+    return "\n".join(L_)
+
+
+# ----------------------- v99.18 [S2]: micro-emulation instruksi terbatas (RE Lab x86 / x64) -----------------------
+# Emulator register + memori kecil, murni Python, STATIS (sampel tidak pernah dijalankan; hanya byte di berkas yang ditafsirkan). Tujuan: mendekode string
+# yang disusun / diobfuskasi di stack (mov imm + xor / add / sub / rol / ror / not / neg berantai) dan buffer yang didekripsi di tempat oleh loop kecil, yang
+# tidak terlihat oleh pemindai pola byte. Himpunan instruksi sengaja kecil: mov / movzx / movsx / lea / ALU / shift & rotate / inc / dec / not / neg / imul /
+# push / pop / leave / jmp / jcc / loop / call (dilangkahi). Nilai yang tidak diketahui dilacak per bit (None); cabang yang kondisinya tidak diketahui
+# di-fork (EMU_MAX_FORKS). Memori: berkas (baca) + lapisan tulis (overlay) + stack sintetis; tulisan ke alamat tak diketahui dihitung, tidak dipakai.
+# Batasan: call tidak diikuti (reg volatil dianggap tak diketahui), tidak ada API / syscall / SSE / string-op (rep movs / stos), jump table tak diselesaikan,
+# paritas (jp / jnp) tidak dimodelkan. Hasil adalah PETUNJUK. Kunci baru info["emu"] (RE Lab), aditif; skor tidak berubah.
+
+EMU_TIME = 3.0                  # detik untuk seluruh emulasi satu berkas
+EMU_MAX_FUNCS = 400             # fungsi yang diemulasi
+EMU_MAX_STEPS = 50_000          # langkah per jalur
+EMU_MAX_TOTAL = 2_000_000       # langkah total per berkas
+EMU_MAX_FORKS = 16              # fork cabang tak-diketahui per fungsi
+EMU_MAX_FINALS = 24             # jalur akhir yang diperiksa per fungsi
+EMU_MAX_WRITES = 65_536         # byte tulisan per jalur
+EMU_MAX_RESULTS = 40            # string + buffer yang dilaporkan
+
+_M64 = (1 << 64) - 1
+_MK = {8: 0xFF, 16: 0xFFFF, 32: 0xFFFFFFFF, 64: _M64}
+_EMU_RX_A = re.compile(rb"[\x20-\x7e]{5,}")
+_EMU_RX_W = re.compile(rb"(?:[\x20-\x7e]\x00){4,}")
+_EMU_STRONG = frozenset(("xor", "rol", "ror", "not", "neg"))
+_EMU_SHIFT = {0: "rol", 1: "ror", 4: "shl", 5: "shr", 6: "shl", 7: "sar"}
+_EMU_R64 = ("rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi") + tuple("r%d" % i for i in range(8, 16))
+_EMU_R32 = ("eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi") + tuple("r%dd" % i for i in range(8, 16))
+_EMU_R16 = ("ax", "cx", "dx", "bx", "sp", "bp", "si", "di") + tuple("r%dw" % i for i in range(8, 16))
+_EMU_R8 = ("al", "cl", "dl", "bl", "spl", "bpl", "sil", "dil") + tuple("r%db" % i for i in range(8, 16))
+_EMU_R8H = ("ah", "ch", "dh", "bh")
+_EMU_CC = ("o", "no", "b", "ae", "e", "ne", "be", "a", "s", "ns", "p", "np", "l", "ge", "le", "g")
+
+
+def _emu_dec(c: bytes, i: int, is64: bool, va: int):
+    """Satu instruksi di c[i:] -> (n, op, a, b, w, x) atau None. Operand: ("i", nilai, w) | ("r", idx, w, hi8) | ("m", base, index, skala, disp, w, seg, rip)."""
+    i0 = i
+    try:
+        osz = seg = False
+        while True:
+            p = c[i]
+            if p == 0x66:
+                osz = True
+            elif p == 0x67:
+                return None
+            elif p in (0xF0, 0xF2, 0xF3, 0x2E, 0x3E, 0x26, 0x36):
+                pass
+            elif p in (0x64, 0x65):
+                seg = True
+            else:
+                break
+            i += 1
+            if i - i0 > 6:
+                return None
+        rex = 0
+        if is64 and 0x40 <= c[i] <= 0x4F:
+            rex = c[i]
+            i += 1
+        W, Rx, Xx, Bx = bool(rex & 8), (rex >> 2) & 1, (rex >> 1) & 1, rex & 1
+        ws = 64 if W else (16 if osz else 32)
+        pw = 64 if is64 else (16 if osz else 32)
+        op = c[i]
+        i += 1
+
+        def rg(idx, w):
+            if w == 8 and not rex and 4 <= idx < 8:
+                return ("r", idx - 4, 8, True)
+            return ("r", idx, w, False)
+
+        def modrm(w):
+            nonlocal i
+            m = c[i]
+            i += 1
+            mod, r3, rm = m >> 6, (m >> 3) & 7, m & 7
+            regx = r3 | (Rx << 3)
+            if mod == 3:
+                return r3, regx, rg(rm | (Bx << 3), w)
+            base = index = None
+            sc, disp, rip = 1, 0, False
+            if rm == 4:
+                sib = c[i]
+                i += 1
+                sc = 1 << (sib >> 6)
+                ix = ((sib >> 3) & 7) | (Xx << 3)
+                index = None if ix == 4 else ix
+                bs = sib & 7
+                if mod == 0 and bs == 5:
+                    disp = struct.unpack_from("<i", c, i)[0]
+                    i += 4
+                else:
+                    base = bs | (Bx << 3)
+            elif mod == 0 and rm == 5:
+                disp = struct.unpack_from("<i", c, i)[0]
+                i += 4
+                rip = is64
+            else:
+                base = rm | (Bx << 3)
+            if mod == 1:
+                disp += struct.unpack_from("<b", c, i)[0]
+                i += 1
+            elif mod == 2:
+                disp += struct.unpack_from("<i", c, i)[0]
+                i += 4
+            return r3, regx, ["m", base, index, sc, disp, w, seg, rip]
+
+        def imm(sz, sg=True):
+            nonlocal i
+            if i + sz > len(c):
+                raise IndexError
+            v = int.from_bytes(c[i:i + sz], "little", signed=sg)
+            i += sz
+            return v
+
+        def im(v, w):
+            return ("i", v & _MK[w], w)
+
+        def done(opn, a=None, b=None, w=0, x=0):
+            n = i - i0
+
+            def fx(o):
+                if isinstance(o, list):
+                    if o[7]:
+                        o[4] += va + n
+                        o[7] = False
+                    return tuple(o)
+                return o
+            return (n, opn, fx(a), fx(b), w, x)
+
+        isz = 2 if ws == 16 else 4
+        if op < 0x40 and (op & 7) < 6:
+            nm, lo = _ARITH_GRP[op >> 3], op & 7
+            if lo == 4:
+                return done(nm, rg(0, 8), im(imm(1), 8), 8)
+            if lo == 5:
+                return done(nm, rg(0, ws), im(imm(isz), ws), ws)
+            w = 8 if lo in (0, 2) else ws
+            _r3, rx, rm = modrm(w)
+            ro = rg(rx, w)
+            return done(nm, rm, ro, w) if lo < 2 else done(nm, ro, rm, w)
+        if op in (0x80, 0x81, 0x83):
+            w = 8 if op == 0x80 else ws
+            r3, _rx, rm = modrm(w)
+            v = imm(1) if op != 0x81 else imm(isz)
+            return done(_ARITH_GRP[r3], rm, im(v, w), w)
+        if op in (0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8B):
+            w = 8 if op in (0x84, 0x86, 0x88, 0x8A) else ws
+            _r3, rx, rm = modrm(w)
+            ro = rg(rx, w)
+            nm = "test" if op < 0x86 else ("xchg" if op < 0x88 else "mov")
+            return done(nm, ro, rm, w) if op in (0x8A, 0x8B) else done(nm, rm, ro, w)
+        if op == 0x8D:
+            _r3, rx, rm = modrm(ws)
+            if not isinstance(rm, list):
+                return None
+            return done("lea", rg(rx, ws), rm, ws)
+        if op == 0x63 and is64:
+            _r3, rx, rm = modrm(32)
+            return done("movsx", rg(rx, ws), rm, ws)
+        if op == 0x90:
+            return done("nop")
+        if 0xB0 <= op <= 0xB7:
+            return done("mov", rg((op & 7) | (Bx << 3), 8), im(imm(1), 8), 8)
+        if 0xB8 <= op <= 0xBF:
+            v = imm(8, False) if W else imm(isz)
+            return done("mov", rg((op & 7) | (Bx << 3), ws), im(v, ws), ws)
+        if op in (0xC6, 0xC7):
+            w = 8 if op == 0xC6 else ws
+            r3, _rx, rm = modrm(w)
+            if r3 != 0:
+                return None
+            return done("mov", rm, im(imm(1 if op == 0xC6 else isz), w), w)
+        if op in (0xC0, 0xC1, 0xD0, 0xD1, 0xD2, 0xD3):
+            w = 8 if op in (0xC0, 0xD0, 0xD2) else ws
+            r3, _rx, rm = modrm(w)
+            nm = _EMU_SHIFT.get(r3)
+            if nm is None:
+                return None
+            cnt = im(imm(1, False), 8) if op in (0xC0, 0xC1) else (("i", 1, 8) if op in (0xD0, 0xD1) else rg(1, 8))
+            return done(nm, rm, cnt, w)
+        if op in (0xF6, 0xF7):
+            w = 8 if op == 0xF6 else ws
+            r3, _rx, rm = modrm(w)
+            if r3 in (0, 1):
+                return done("test", rm, im(imm(1 if w == 8 else isz), w), w)
+            if r3 in (2, 3):
+                return done("not" if r3 == 2 else "neg", rm, None, w)
+            return None
+        if op in (0xFE, 0xFF):
+            w = 8 if op == 0xFE else ws
+            r3, _rx, rm = modrm(w)
+            if r3 in (0, 1):
+                return done("inc" if r3 == 0 else "dec", rm, None, w)
+            if op == 0xFF and r3 == 2:
+                return done("calli")
+            if op == 0xFF and r3 == 6:
+                if isinstance(rm, list):
+                    rm[5] = pw
+                    return done("push", rm, None, pw)
+                return done("push", ("r", rm[1], pw, False), None, pw)
+            return None
+        if not is64 and 0x40 <= op <= 0x4F:
+            return done("inc" if op < 0x48 else "dec", rg(op & 7, ws), None, ws)
+        if 0x50 <= op <= 0x57:
+            return done("push", rg((op & 7) | (Bx << 3), pw), None, pw)
+        if 0x58 <= op <= 0x5F:
+            return done("pop", rg((op & 7) | (Bx << 3), pw), None, pw)
+        if op == 0x68:
+            return done("push", im(imm(isz), pw), None, pw)
+        if op == 0x6A:
+            return done("push", im(imm(1), pw), None, pw)
+        if op in (0x69, 0x6B):
+            _r3, rx, rm = modrm(ws)
+            return done("imul3", rg(rx, ws), rm, ws, imm(isz) if op == 0x69 else imm(1))
+        if op == 0xE8:
+            return done("call", x=imm(4))
+        if op == 0xE9:
+            return done("jmp", x=imm(4))
+        if op == 0xEB:
+            return done("jmp", x=imm(1))
+        if 0x70 <= op <= 0x7F:
+            return done("jcc", w=op & 15, x=imm(1))
+        if 0xE0 <= op <= 0xE3:
+            return done(("loopne", "loope", "loop", "jcxz")[op - 0xE0], x=imm(1))
+        if op in (0xC3, 0xC2, 0xCB, 0xCA):
+            return done("ret")
+        if op == 0xC9:
+            return done("leave")
+        if op in (0xF8, 0xF9, 0xFC, 0xFD):
+            return done("clc" if op == 0xF8 else ("stc" if op == 0xF9 else "nop"))
+        if op == 0x0F:
+            o2 = c[i]
+            i += 1
+            if o2 in (0xB6, 0xB7, 0xBE, 0xBF):
+                sw = 8 if o2 in (0xB6, 0xBE) else 16
+                _r3, rx, rm = modrm(sw)
+                return done("movzx" if o2 < 0xB8 else "movsx", rg(rx, ws), rm, ws)
+            if o2 == 0xAF:
+                _r3, rx, rm = modrm(ws)
+                return done("imul2", rg(rx, ws), rm, ws)
+            if 0x80 <= o2 <= 0x8F:
+                return done("jcc", w=o2 & 15, x=imm(4))
+            if o2 == 0x1F:
+                modrm(ws)
+                return done("nop")
+            if 0xC8 <= o2 <= 0xCF:
+                return done("bswap", rg((o2 & 7) | (Bx << 3), ws), None, ws)
+            return None
+        return None
+    except (IndexError, struct.error):
+        return None
+
+
+class _EmuSt:
+    """Satu jalur emulasi: register (nilai + bit-diketahui), flag, overlay memori."""
+    __slots__ = ("rv", "rk", "fl", "ov", "nw", "pc", "steps", "ops", "am", "d", "L", "lo", "hi", "unres")
+
+    def __init__(self, d, L, am, lo, hi, nreg, pc):
+        self.rv, self.rk, self.fl, self.ov, self.nw = [0] * nreg, [0] * nreg, [None] * 4, {}, 0
+        self.pc, self.steps, self.ops, self.am, self.d, self.L, self.lo, self.hi, self.unres = pc, 0, set(), am, d, L, lo, hi, 0
+
+    def fork(self, pc):
+        s = _EmuSt.__new__(_EmuSt)
+        s.rv, s.rk, s.fl, s.ov, s.nw = self.rv[:], self.rk[:], self.fl[:], dict(self.ov), self.nw
+        s.pc, s.steps, s.ops, s.am, s.d, s.L, s.lo, s.hi, s.unres = pc, self.steps, set(self.ops), self.am, self.d, self.L, self.lo, self.hi, self.unres
+        return s
+
+    def rb(self, a):
+        v = self.ov.get(a, -1)
+        if v != -1:
+            return v
+        if self.lo <= a < self.hi:
+            return None
+        off = _va_off(self.L, a)
+        if off is None or off >= len(self.d):
+            return None
+        return self.d[off]
+
+    def read(self, a, n):
+        v = 0
+        for k in range(n):
+            b = self.rb((a + k) & self.am)
+            if b is None:
+                return None
+            v |= b << (8 * k)
+        return v
+
+    def write(self, a, n, val):
+        if self.nw > EMU_MAX_WRITES:
+            return
+        for k in range(n):
+            self.ov[(a + k) & self.am] = None if val is None else (val >> (8 * k)) & 0xFF
+        self.nw += n
+
+
+def _emu_rg(st, i):
+    m = st.am
+    return st.rv[i] & m if (st.rk[i] & m) == m else None
+
+
+def _emu_addr(st, o):
+    if o[6]:
+        return None
+    a = o[4]
+    if o[1] is not None:
+        v = _emu_rg(st, o[1])
+        if v is None:
+            return None
+        a += v
+    if o[2] is not None:
+        v = _emu_rg(st, o[2])
+        if v is None:
+            return None
+        a += v * o[3]
+    return a & st.am
+
+
+def _emu_get(st, o):
+    t = o[0]
+    if t == "i":
+        return o[1]
+    if t == "r":
+        idx, w = o[1], o[2]
+        if o[3]:
+            return (st.rv[idx] >> 8) & 0xFF if (st.rk[idx] & 0xFF00) == 0xFF00 else None
+        m = _MK[w]
+        return st.rv[idx] & m if (st.rk[idx] & m) == m else None
+    a = _emu_addr(st, o)
+    return None if a is None else st.read(a, o[5] // 8)
+
+
+def _emu_put(st, o, val):
+    if o[0] == "r":
+        idx, w = o[1], o[2]
+        if o[3]:
+            if val is None:
+                st.rk[idx] &= ~0xFF00
+            else:
+                st.rv[idx] = (st.rv[idx] & ~0xFF00) | ((val & 0xFF) << 8)
+                st.rk[idx] |= 0xFF00
+        elif w >= 32:
+            if val is None:
+                st.rk[idx] = 0
+            else:
+                st.rv[idx], st.rk[idx] = val & _MK[w], st.am
+        else:
+            m = _MK[w]
+            if val is None:
+                st.rk[idx] &= ~m
+            else:
+                st.rv[idx] = (st.rv[idx] & ~m) | (val & m)
+                st.rk[idx] |= m
+        return
+    a = _emu_addr(st, o)
+    if a is None:
+        st.unres += 1
+        return
+    st.write(a, o[5] // 8, val)
+
+
+def _emu_alu(st, opn, a, b, w):
+    m, sg = _MK[w], 1 << (w - 1)
+    c = 0
+    if opn in ("adc", "sbb"):
+        if st.fl[0] is None:
+            st.fl = [None] * 4
+            return None
+        c = st.fl[0]
+    if opn in ("add", "adc"):
+        t = a + b + c
+        r = t & m
+        st.fl = [int(t > m), int(r == 0), int(bool(r & sg)), int(bool((a ^ r) & (b ^ r) & sg))]
+        return r
+    if opn in ("sub", "sbb", "cmp"):
+        t = a - b - c
+        r = t & m
+        st.fl = [int(t < 0), int(r == 0), int(bool(r & sg)), int(bool((a ^ b) & (a ^ r) & sg))]
+        return r
+    r = (a & b) if opn in ("and", "test") else ((a | b) if opn == "or" else (a ^ b))
+    st.fl = [0, int(r == 0), int(bool(r & sg)), 0]
+    return r
+
+
+def _emu_shift(st, opn, a, cnt, w):
+    m, sg = _MK[w], 1 << (w - 1)
+    c = cnt & (63 if w == 64 else 31)
+    if c == 0:
+        return a
+    if opn == "rol":
+        k = c % w
+        r = ((a << k) | (a >> (w - k))) & m if k else a
+        st.fl[0], st.fl[3] = r & 1, None
+        return r
+    if opn == "ror":
+        k = c % w
+        r = ((a >> k) | (a << (w - k))) & m if k else a
+        st.fl[0], st.fl[3] = int(bool(r & sg)), None
+        return r
+    if opn == "shl":
+        r = (a << c) & m
+        cf = (a >> (w - c)) & 1 if c <= w else 0
+        of = (int(bool(r & sg)) ^ cf) if c == 1 else None
+    elif opn == "shr":
+        r = a >> c if c < w else 0
+        cf = (a >> (c - 1)) & 1 if c <= w else 0
+        of = int(bool(a & sg)) if c == 1 else None
+    else:
+        sa = a - (1 << w) if a & sg else a
+        r = (sa >> min(c, w)) & m
+        cf = (sa >> (min(c, w) - 1)) & 1
+        of = 0 if c == 1 else None
+    st.fl = [cf, int(r == 0), int(bool(r & sg)), of]
+    return r
+
+
+def _emu_cond(fl, cc):
+    cf, zf, sf, of = fl
+    t = cc >> 1
+    if t == 0:
+        v = of
+    elif t == 1:
+        v = cf
+    elif t == 2:
+        v = zf
+    elif t == 3:
+        v = None if cf is None or zf is None else int(bool(cf or zf))
+    elif t == 4:
+        v = sf
+    elif t == 5:
+        v = None
+    elif t == 6:
+        v = None if sf is None or of is None else int(sf != of)
+    else:
+        v = None if zf is None or sf is None or of is None else int(bool(zf or sf != of))
+    return None if v is None else (bool(v) != bool(cc & 1))
+
+
+def _emu_fmt(ins, va, is64=True):
+    """Teks satu instruksi hasil _emu_dec (untuk jejak --emu FILE 0xVA)."""
+    n, op, a, b, w, x = ins
+
+    def f(o):
+        if o is None:
+            return ""
+        if o[0] == "i":
+            return "0x%X" % o[1]
+        if o[0] == "r":
+            idx, rw = o[1], o[2]
+            if o[3]:
+                return _EMU_R8H[idx]
+            return {64: _EMU_R64, 32: _EMU_R32, 16: _EMU_R16, 8: _EMU_R8}[rw][idx]
+        parts = []
+        names = _EMU_R64 if is64 else _EMU_R32
+        if o[1] is not None:
+            parts.append(names[o[1]])
+        if o[2] is not None:
+            parts.append("%s*%d" % (names[o[2]], o[3]) if o[3] != 1 else names[o[2]])
+        s = "+".join(parts)
+        if o[4] or not s:
+            s += ("%s0x%X" % ("-" if o[4] < 0 else "+", abs(o[4]))) if s else "0x%X" % (o[4] & _M64)
+        return "%s[%s]" % ({8: "byte ", 16: "word ", 32: "dword ", 64: "qword "}.get(o[5], ""), ("fs:" if o[6] else "") + s)
+    if op in ("jmp", "call", "loop", "loope", "loopne", "jcxz"):
+        return "%s 0x%X" % (op, va + n + x)
+    if op == "jcc":
+        return "j%s 0x%X" % (_EMU_CC[w], va + n + x)
+    return (op + " " + ", ".join(t for t in (f(a), f(b)) if t)).strip()
+
+
+def _emu_func(d: bytes, L: dict, start: int, end: int, is64: bool, deadline: float, trace_max: int = 0, max_total: int = EMU_MAX_TOTAL) -> dict | None:
+    """Emulasi satu fungsi [start, end). None bila awal tidak bisa dibaca. Tidak pernah melempar karena data biner (batas sumber daya di atas)."""
+    off0 = _va_off(L, start)
+    if off0 is None or end <= start:
+        return None
+    code = d[off0:off0 + (end - start) + 15]
+    am = _M64 if is64 else 0xFFFFFFFF
+    top = 0x00007FFE00100000 if is64 else 0x7FD00000
+    lo, hi = top - 0x100000, top + 0x10000
+    nreg = 16 if is64 else 8
+    volatile = (0, 1, 2, 8, 9, 10, 11) if is64 else (0, 1, 2)
+    cache: dict = {}
+    s0 = _EmuSt(d, L, am, lo, hi, nreg, start)
+    s0.rv[4], s0.rk[4] = top, am
+    work, finals, tr = [s0], [], []
+    total = forks = 0
+    stop = ""
+    timed = False
+    while work and not timed:
+        st = work.pop()
+        first = trace_max > 0 and not finals
+        while True:
+            pc = st.pc
+            if st.steps >= EMU_MAX_STEPS or total >= max_total:
+                stop = "batas langkah"
+                break
+            if not (st.steps & 255) and time.monotonic() > deadline:
+                stop, timed = "batas waktu", True
+                break
+            if not (start <= pc < end):
+                stop = "keluar fungsi"
+                break
+            ins = cache.get(pc)
+            if ins is None:
+                ins = cache[pc] = _emu_dec(code, pc - start, is64, pc) or False
+            if not ins:
+                stop = "instruksi tak didukung"
+                break
+            n, op, a, b, w, x = ins
+            nxt = pc + n
+            st.steps += 1
+            total += 1
+            if st.nw > EMU_MAX_WRITES:
+                stop = "batas tulis"
+                break
+            if op == "mov":
+                _emu_put(st, a, _emu_get(st, b))
+            elif op in ("add", "sub", "xor", "and", "or", "cmp", "test", "adc", "sbb"):
+                zero_idiom = op in ("xor", "sub") and a[0] == "r" and b[0] == "r" and a[1:] == b[1:] and not a[3]
+                if zero_idiom:
+                    av = bv = 0
+                else:
+                    av, bv = _emu_get(st, a), _emu_get(st, b)
+                if av is None or bv is None:
+                    st.fl = [None] * 4
+                    r = None
+                else:
+                    r = _emu_alu(st, op, av, bv, w)
+                if op not in ("cmp", "test"):
+                    _emu_put(st, a, r)
+                    if r is not None and not zero_idiom and op in ("xor", "add", "sub") and not (a[0] == "r" and a[1] in (4, 5)):
+                        st.ops.add(op)
+            elif op in ("shl", "shr", "sar", "rol", "ror"):
+                av, cv = _emu_get(st, a), _emu_get(st, b)
+                if av is None or cv is None:
+                    st.fl = [None] * 4
+                    _emu_put(st, a, None)
+                else:
+                    _emu_put(st, a, _emu_shift(st, op, av, cv, w))
+                    st.ops.add(op)
+            elif op in ("inc", "dec"):
+                av = _emu_get(st, a)
+                if av is None:
+                    st.fl[1:] = [None] * 3
+                    _emu_put(st, a, None)
+                else:
+                    cf = st.fl[0]
+                    _emu_alu(st, "add" if op == "inc" else "sub", av, 1, w)
+                    st.fl[0] = cf
+                    _emu_put(st, a, (av + (1 if op == "inc" else -1)) & _MK[w])
+            elif op == "not":
+                av = _emu_get(st, a)
+                _emu_put(st, a, None if av is None else ~av & _MK[w])
+                if av is not None:
+                    st.ops.add("not")
+            elif op == "neg":
+                av = _emu_get(st, a)
+                if av is None:
+                    st.fl = [None] * 4
+                    _emu_put(st, a, None)
+                else:
+                    r = (-av) & _MK[w]
+                    st.fl = [int(av != 0), int(r == 0), int(bool(r & (1 << (w - 1)))), int(av == 1 << (w - 1))]
+                    _emu_put(st, a, r)
+                    st.ops.add("neg")
+            elif op == "lea":
+                ad = _emu_addr(st, b) if not b[6] else None
+                _emu_put(st, a, None if ad is None else ad & _MK[w])
+            elif op in ("movzx", "movsx"):
+                v = _emu_get(st, b)
+                sw_ = b[2] if b[0] == "r" else b[5]       # lebar sumber: reg di indeks 2, memori di indeks 5
+                if v is not None and op == "movsx" and v & (1 << (sw_ - 1)):
+                    v -= 1 << sw_
+                _emu_put(st, a, None if v is None else v & _MK[w])
+            elif op == "xchg":
+                av, bv = _emu_get(st, a), _emu_get(st, b)
+                _emu_put(st, a, bv)
+                _emu_put(st, b, av)
+            elif op in ("imul2", "imul3"):
+                v1 = _emu_get(st, a) if op == "imul2" else _emu_get(st, b)
+                v2 = _emu_get(st, b) if op == "imul2" else x & _MK[w]
+                st.fl = [None] * 4
+                _emu_put(st, a, None if v1 is None or v2 is None else (v1 * v2) & _MK[w])
+            elif op == "bswap":
+                av = _emu_get(st, a)
+                _emu_put(st, a, None if av is None else int.from_bytes(av.to_bytes(w // 8, "little"), "big"))
+            elif op == "push":
+                sp = _emu_rg(st, 4)
+                if sp is None:
+                    stop = "rsp tak diketahui"
+                    break
+                sp = (sp - w // 8) & am
+                st.rv[4] = sp
+                st.write(sp, w // 8, _emu_get(st, a))
+            elif op == "pop":
+                sp = _emu_rg(st, 4)
+                if sp is None:
+                    stop = "rsp tak diketahui"
+                    break
+                v = st.read(sp, w // 8)
+                st.rv[4] = (sp + w // 8) & am
+                _emu_put(st, a, v)
+            elif op == "leave":
+                bp = _emu_rg(st, 5)
+                if bp is None:
+                    stop = "rbp tak diketahui"
+                    break
+                sw = 8 if is64 else 4
+                v = st.read(bp, sw)
+                st.rv[4], st.rk[4] = (bp + sw) & am, am
+                st.rv[5], st.rk[5] = (v, am) if v is not None else (0, 0)
+            elif op in ("call", "calli"):
+                if op == "call" and x == 0:         # call $+5: get-PC, lazim di shellcode
+                    sp = _emu_rg(st, 4)
+                    if sp is None:
+                        stop = "rsp tak diketahui"
+                        break
+                    sw = 8 if is64 else 4
+                    sp = (sp - sw) & am
+                    st.rv[4] = sp
+                    st.write(sp, sw, nxt)
+                else:
+                    for r_ in volatile:
+                        st.rk[r_] = 0
+                    st.fl = [None] * 4
+            elif op == "jmp":
+                t = nxt + x
+                if not (start <= t < end):
+                    stop = "lompat keluar fungsi"
+                    break
+                st.pc = t
+                if trace_max and first and len(tr) < trace_max:
+                    tr.append((pc, _emu_fmt(ins, pc, is64), ""))
+                continue
+            elif op == "jcc":
+                cv = _emu_cond(st.fl, w)
+                t = nxt + x
+                if cv is None:
+                    if forks < EMU_MAX_FORKS and start <= t < end and len(work) < 32:
+                        forks += 1
+                        work.append(st.fork(t))
+                elif cv:
+                    if not (start <= t < end):
+                        stop = "lompat keluar fungsi"
+                        break
+                    st.pc = t
+                    if trace_max and first and len(tr) < trace_max:
+                        tr.append((pc, _emu_fmt(ins, pc, is64), "diambil"))
+                    continue
+            elif op in ("loop", "loope", "loopne", "jcxz"):
+                cw = 64 if is64 else 32
+                cx = _emu_rg(st, 1)
+                t = nxt + x
+                if cx is None:
+                    if forks < EMU_MAX_FORKS and start <= t < end and len(work) < 32:
+                        forks += 1
+                        work.append(st.fork(t))
+                else:
+                    if op != "jcxz":
+                        cx = (cx - 1) & _MK[cw]
+                        st.rv[1], st.rk[1] = cx, am
+                    z = st.fl[1]
+                    if op == "jcxz":
+                        take = cx == 0
+                    elif op == "loop":
+                        take = cx != 0
+                    elif z is None:
+                        take = None
+                    else:
+                        take = cx != 0 and (bool(z) == (op == "loope"))
+                    if take is None:
+                        stop = "ZF tak diketahui"
+                        break
+                    if take:
+                        if not (start <= t < end):
+                            stop = "lompat keluar fungsi"
+                            break
+                        st.pc = t
+                        continue
+            elif op == "clc":
+                st.fl[0] = 0
+            elif op == "stc":
+                st.fl[0] = 1
+            elif op == "ret":
+                stop = "ret"
+                break
+            elif op == "nop":
+                pass
+            else:
+                stop = "instruksi tak didukung"
+                break
+            if trace_max and first and len(tr) < trace_max:
+                note = ""
+                if a is not None and a[0] == "r" and op not in ("cmp", "test", "push", "pop"):
+                    v = _emu_get(st, a)
+                    note = "%s=0x%X" % (_emu_fmt((0, "", a, None, 0, 0), 0, is64), v) if v is not None else ""
+                tr.append((pc, _emu_fmt(ins, pc, is64), note))
+            st.pc = nxt
+        if len(finals) < EMU_MAX_FINALS:
+            finals.append(st)
+    return {"steps": total, "forks": forks, "stop": stop, "finals": finals, "trace": tr, "timed": timed}
+
+
+def _emu_runs(m: dict) -> list:
+    out: list = []
+    cur = None
+    for a in sorted(m):
+        if cur is not None and a == cur[0] + len(cur[1]):
+            cur[1].append(m[a])
+        else:
+            if cur is not None:
+                out.append(cur)
+            cur = [a, bytearray([m[a]])]
+    if cur is not None:
+        out.append(cur)
+    return out
+
+
+def _emu_collect(d: bytes, L: dict, finals: list) -> tuple[list, list, int]:
+    """(string, buffer, tulisan_tak_terselesaikan). string: dict kind / va / text / wide / ops; buffer: dict va / len / kind / preview."""
+    strs: dict = {}
+    bufs: dict = {}
+    unres = 0
+    for st in finals:
+        unres = max(unres, st.unres)
+        stk = {a: v for a, v in st.ov.items() if v is not None and st.lo <= a < st.hi}
+        dat = {}
+        for a, v in st.ov.items():
+            if v is None or st.lo <= a < st.hi:
+                continue
+            off = _va_off(L, a)
+            if off is None or off >= len(d) or d[off] != v:
+                dat[a] = v
+        ops = sorted(st.ops & _EMU_STRONG)
+        for kind, m in (("stack", stk), ("data", dat)):
+            for addr, bs in _emu_runs(m):
+                raw = bytes(bs)
+                if kind == "data" and len(raw) >= 8:
+                    pr = sum(1 for x in raw if 0x20 <= x < 0x7F or x in (9, 10, 13)) / len(raw)
+                    k = "PE" if raw[:2] == b"MZ" and b"PE\0\0" in raw[:0x600] else ("teks" if pr >= 0.85 else "biner")
+                    if (k in ("PE", "teks") or (len(raw) >= 32 and ops)) and (addr not in bufs) and len(bufs) < 24:
+                        bufs[addr] = {"va": "0x%X" % addr, "len": len(raw), "kind": k, "ops": ops,
+                                      "preview": "".join(chr(x) if 0x20 <= x < 0x7F else "." for x in raw[:48])}
+                if len(raw) < 5:
+                    continue
+                for mt in _EMU_RX_A.finditer(raw):
+                    t = mt.group().decode("ascii")
+                    if sum(ch.isalnum() for ch in t) >= max(4, int(len(t) * 0.6)) and t not in strs:
+                        strs[t] = {"kind": kind, "va": "0x%X" % (addr + mt.start()), "text": t, "wide": False, "ops": ops}
+                for mt in _EMU_RX_W.finditer(raw):
+                    t = raw[mt.start():mt.end()].decode("utf-16le")
+                    if sum(ch.isalnum() for ch in t) >= max(4, int(len(t) * 0.6)) and t not in strs:
+                        strs[t] = {"kind": kind, "va": "0x%X" % (addr + mt.start()), "text": t, "wide": True, "ops": ops}
+    return list(strs.values()), list(bufs.values()), unres
+
+
+def _emu_enrich(info: dict, ctx: dict, d: bytes) -> None:
+    """Dipanggil di akhir _re_lab (setelah CFG): info["emu"] (kunci baru). Tidak pernah melempar; tidak mengubah skor."""
+    try:
+        L, F = ctx["L"], ctx["F"]
+        is64 = L["is64"]
+        xs = [(L["base"] + s["va"], L["base"] + s["va"] + max(s["vsize"], s["rsize"])) for s in L["xsecs"]]
+        top_va = []
+        for f in info.get("functions", []):
+            try:
+                top_va.append(int(f["va"], 16))
+            except ValueError:
+                pass
+        fl = ctx["fl"]
+        ends: dict = {}
+        for k, s in enumerate(fl):          # semua awal fungsi yang ditemukan (F hanya memuat yang punya pemanggil / panggilan API)
+            sec_end = next((b for a_, b in xs if a_ <= s < b), s)
+            ends[s] = min(fl[k + 1] if k + 1 < len(fl) else sec_end, sec_end, s + 0x10000)
+        first = [L["entry_va"]] if L.get("entry_va") in ends else []
+        rest = sorted((s for s in fl if s not in F), key=lambda s: s - ends[s])
+        todo = list(dict.fromkeys(first + [s for s in top_va if s in ends] + [s for s, _f in sorted(F.items(), key=lambda kv: -kv[1]["size"]) if s in ends] + rest))[:EMU_MAX_FUNCS]
+        deadline = time.monotonic() + EMU_TIME
+        have = [x["text"] for x in info.get("stack_strings", [])]
+        nm = lambda s: F[s]["name"] if s in F else ("start" if s == L.get("entry_va") else (L["exports"].get(s) or "sub_%08X" % s))
+        n_an = steps = unres = 0
+        partial = False
+        sout: list = []
+        bout: list = []
+        seen: set = set()
+        for s in todo:
+            if time.monotonic() > deadline or steps >= EMU_MAX_TOTAL:
+                partial = True
+                break
+            if s in ctx["thunks"] or ends[s] - s < 6:
+                continue
+            r = _emu_func(d, L, s, ends[s], is64, deadline, max_total=EMU_MAX_TOTAL - steps)
+            if r is None:
+                continue
+            n_an += 1
+            steps += r["steps"]
+            if r["timed"]:
+                partial = True
+            ss, bb, u = _emu_collect(d, L, r["finals"])
+            unres += u
+            for x in ss:
+                t = x["text"]
+                plain = t.encode("utf-16le" if x["wide"] else "latin-1") in d
+                if plain or t in seen or len(sout) >= EMU_MAX_RESULTS:
+                    continue
+                seen.add(t)
+                clean = _clean(t)[:100]
+                sout.append({"va": x["va"], "func": "0x%X" % s, "name": _clean(nm(s)), "text": clean, "kind": x["kind"], "wide": x["wide"], "ops": x["ops"],
+                             "tag": _str_tag(t), "new": not any(clean == h or clean in h or h in clean for h in have)})
+            for x in bb:
+                if len(bout) < 16:
+                    bout.append(dict(x, func="0x%X" % s, name=_clean(nm(s)), preview=_clean(x["preview"])))
+        info["emu"] = {"analyzed": n_an, "steps": steps, "partial": partial, "unresolved_writes": unres, "strings": sout, "buffers": bout}
+    except Exception as e:
+        info["notes"].append("Emulasi gagal: %s" % type(e).__name__)
+
+
+def _render_emu(r: dict, a, compact: bool, defang: bool) -> None:
+    c = r.get("emu")
+    if not c or not c["analyzed"]:
+        return
+    new = [x for x in c["strings"] if x["new"]]
+    a("   Emulasi mikro: %d fungsi / %d langkah, %d string tersembunyi (%d baru), %d buffer dimodifikasi%s" % (
+        c["analyzed"], c["steps"], len(c["strings"]), len(new), len(c["buffers"]), " | TERPOTONG (batas waktu / langkah)" if c["partial"] else ""))
+    for x in (new if compact else c["strings"])[: (3 if compact else 10)]:
+        a("   ! string hasil emulasi: %s [%s%s] di %s %s%s" % (_df(x["text"], defang), x["tag"], ", UTF-16" if x["wide"] else "", x["name"], x["func"],
+                                                           (" | operasi: " + "/".join(x["ops"])) if x["ops"] else ""))
+    for x in c["buffers"][: (2 if compact else 6)]:
+        a("   ! buffer dimodifikasi emulasi (%s): %d byte @%s di %s%s | %s" % (x["kind"], x["len"], x["va"], x["name"], (" (" + "/".join(x["ops"]) + ")") if x["ops"] else "",
+                                                                             _df(x["preview"], defang)))
+
+
+def emu_text(path, at=None, defang: bool = True) -> str:
+    """Ringkasan emulasi mikro (tanpa `at`) atau jejak + hasil satu fungsi (at = 'entry' / 0xVA). CLI --emu, API action 'emu'."""
+    try:
+        d, size = _cfg_read(path)
+        info, ctx, err = _relab_any(d, size)
+    except Exception as e:
+        return "Emulasi gagal (%s: %s)." % (type(e).__name__, str(e)[:120])
+    if not info:
+        return "Emulasi: %s." % (err or "tidak ada kode yang bisa dianalisis")
+    if at is None:
+        L_: list = []
+        _render_emu(info, L_.append, False, defang)
+        return "\n".join(L_) if L_ else "Emulasi: tidak ada string / buffer tersembunyi yang berhasil diturunkan."
+    Lx, fl = ctx["L"], ctx["fl"]
+    try:
+        va = Lx["entry_va"] if str(at).lower() == "entry" else int(str(at), 0)
+    except ValueError:
+        return "Emulasi: alamat tidak valid (pakai entry atau 0xVA)."
+    i = bisect.bisect_right(fl, va) - 1
+    if i < 0:
+        return "Emulasi: tidak ada fungsi yang memuat 0x%X." % va
+    s = fl[i]
+    xs = [(Lx["base"] + x["va"], Lx["base"] + x["va"] + max(x["vsize"], x["rsize"])) for x in Lx["xsecs"]]
+    sec_end = next((b for a_, b in xs if a_ <= s < b), s)
+    e = min(fl[i + 1] if i + 1 < len(fl) else sec_end, sec_end, s + 0x10000)
+    r = _emu_func(d, Lx, s, e, Lx["is64"], time.monotonic() + EMU_TIME, trace_max=200)
+    if not r:
+        return "Emulasi: fungsi di 0x%X tidak bisa dibaca." % s
+    ss, bb, unres = _emu_collect(d, Lx, r["finals"])
+    out = ["Fungsi 0x%X: %d langkah, %d jalur (%d fork), berhenti: %s%s" % (s, r["steps"], len(r["finals"]), r["forks"], r["stop"] or "-",
+                                                                          ", %d tulisan ke alamat tak diketahui diabaikan" % unres if unres else "")]
+    out += ["  0x%X  %-34s %s" % (pc, t, ("; " + nt) if nt else "") for pc, t, nt in r["trace"]]
+    for x in ss[:20]:
+        out.append("  string [%s%s] @%s: %s%s" % (x["kind"], ", UTF-16" if x["wide"] else "", x["va"], _df(_clean(x["text"])[:100], defang),
+                                               (" | operasi: " + "/".join(x["ops"])) if x["ops"] else ""))
+    for x in bb[:8]:
+        out.append("  buffer dimodifikasi (%s): %d byte @%s | %s" % (x["kind"], x["len"], x["va"], _df(_clean(x["preview"]), defang)))
+    return "\n".join(out)
 
 
 def _v98_enrich(d: bytes, rep: dict) -> None:
@@ -3997,6 +7120,16 @@ def _v98_enrich(d: bytes, rep: dict) -> None:
     for x in info["anti"]:
         if x["technique"].startswith(("syscall", "Heaven")):
             rep["warn"].append("RE Lab: %s (%d lokasi, pertama 0x%s)" % (x["technique"], x["count"], x["first"][2:]))
+    cf_ = info.get("cfg") or {}
+    for x in (cf_.get("decrypt_loops") or [])[:2]:
+        rep["warn"].append("RE Lab: kandidat loop dekripsi di %s %s (%s)" % (x["name"], x["func"], "/".join(x["ops"])))
+    for x in (cf_.get("flatten") or [])[:1]:
+        rep["warn"].append("RE Lab: kandidat control-flow flattening di %s %s (%d sisi balik)" % (x["name"], x["func"], x["back_edges"]))
+    for x in [x for x in ((info.get("emu") or {}).get("strings") or []) if x["new"] and (x["tag"] != "menarik" or x["ops"])][:3]:
+        rep["warn"].append("RE Lab: emulasi mikro menurunkan string tersembunyi di %s %s: %s [%s]" % (x["name"], x["func"], _clean(x["text"])[:60], x["tag"]))
+    for x in ((info.get("emu") or {}).get("buffers") or [])[:1]:
+        if x["kind"] in ("PE", "teks"):
+            rep["warn"].append("RE Lab: loop kecil mendekripsi buffer (%s, %d byte) di %s %s" % (x["kind"], x["len"], x["name"], x["func"]))
     if info["api_hashes"]:
         rep["warn"].append("RE Lab: konstanta API hash terdeteksi (%s): kemungkinan resolusi API tersembunyi / shellcode" % ", ".join(h["api"] for h in info["api_hashes"][:3]))
 
@@ -4017,6 +7150,8 @@ def _render_v98(rep: dict, a, compact: bool, defang: bool) -> None:
             (" | anti: " + ", ".join(f["anti"])) if f["anti"] else ""))
         if f["strings"] and not compact:
             a("       string: " + " | ".join(_df(x, defang) for x in f["strings"][:3]))
+    _render_cfg(r, a, compact)
+    _render_emu(r, a, compact, defang)
     if compact:
         for x in r["anti"][:3]:
             a("   anti-analisis: %s x%d" % (x["technique"], x["count"]))
@@ -4065,8 +7200,15 @@ def re_lab_path(path) -> dict:
     try:
         f, size = _open_regular(path)
         with f:
+            sha = _sha256_of(f, size) if _cache_dir() is not None else None
+            if sha:
+                hit = _cache_load(sha, "re")
+                if hit is not None:
+                    return hit
             d = f.read(MAX_SCAN)
         info, _c, err = _relab_any(d, size)
+        if info and sha:
+            _cache_store(sha, "re", info, lambda back: _verify_relab(info, back))
         return info or {"error": (err or "tidak ada bagian kode yang bisa dianalisis") + "; RE Lab mendukung PE dan ELF x86 / x64"}
     except Exception as e:
         return {"error": "%s: %s" % (type(e).__name__, str(e)[:120])}
@@ -4405,6 +7547,24 @@ def _render_capa(rep: dict, a, compact: bool) -> None:
 
 UNPACK_MAX = 256 * 1024 * 1024
 UNPACK_TIMEOUT = 40
+UNPACK_MEM = 1536 * 1024 * 1024      # batas memori proses upx (RLIMIT_AS, hanya POSIX)
+
+
+def _upx_limits():
+    """preexec_fn untuk POSIX: batasi memori, waktu CPU, dan ukuran berkas yang boleh ditulis upx. Pada Windows tidak ada (None);
+    di sana batas ukuran hasil tetap diperiksa setelah upx selesai, dan timeout tetap berlaku."""
+    if os.name != "posix":
+        return None
+
+    def _apply():
+        import resource
+        for lim, val in ((resource.RLIMIT_AS, UNPACK_MEM), (resource.RLIMIT_CPU, UNPACK_TIMEOUT + 5),
+                         (resource.RLIMIT_FSIZE, UNPACK_MAX + (1 << 20)), (resource.RLIMIT_CORE, 0)):
+            try:
+                resource.setrlimit(lim, (val, val))
+            except (ValueError, OSError):
+                pass
+    return _apply
 
 
 def unpack_upx(path, outdir) -> dict:
@@ -4419,17 +7579,28 @@ def unpack_upx(path, outdir) -> dict:
         if size > UNPACK_MAX:
             f.close()
             return {"ok": False, "error": "berkas lebih besar dari batas %d MB" % (UNPACK_MAX >> 20)}
-        with f:
-            head = f.read(size)
-        if b"UPX!" not in head and b"UPX0" not in head:
-            return {"ok": False, "error": "tidak ada penanda UPX di berkas; tidak dicoba"}
         out = Path(outdir).expanduser().resolve()
-        out.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as td:
             src = Path(td) / "in.bin"
             dst = Path(td) / "out.bin"
-            src.write_bytes(head)
-            r = subprocess.run([upx, "-d", "-q", "-o", str(dst), str(src)], capture_output=True, timeout=UNPACK_TIMEOUT)
+            found, tail, left = False, b"", size
+            with f, open(src, "wb") as sf:           # salin bertahap (tanpa memuat seluruh berkas), sambil mencari penanda UPX
+                while left > 0:
+                    chunk = f.read(min(1 << 20, left))
+                    if not chunk:
+                        break
+                    left -= len(chunk)
+                    sf.write(chunk)
+                    if not found:
+                        win = tail + chunk
+                        found = b"UPX!" in win or b"UPX0" in win
+                        tail = win[-3:]
+            if not found:
+                return {"ok": False, "error": "tidak ada penanda UPX di berkas; tidak dicoba"}
+            out.mkdir(parents=True, exist_ok=True)
+            r = subprocess.run([upx, "-d", "-q", "-o", str(dst), str(src)], capture_output=True, timeout=UNPACK_TIMEOUT,
+                               stdin=subprocess.DEVNULL, cwd=td, env={"PATH": os.environ.get("PATH", ""), "LANG": "C"},
+                               preexec_fn=_upx_limits())
             if r.returncode != 0 or not dst.exists():
                 return {"ok": False, "error": "upx -d gagal: " + _clean(r.stderr.decode("latin-1", "replace"))[:200]}
             if dst.stat().st_size > UNPACK_MAX:
@@ -4643,8 +7814,1233 @@ def _dex_scan(d: bytes) -> dict | None:
             "obf": bool(len(app_types) >= 20 and short / len(app_types) > 0.5), "app_types": len(app_types)}
 
 
+# ----------------------- v99.11 [S1]: analisis bytecode Dalvik (DEX) ---------------------------------------------
+# Membaca INSTRUKSI di code_item setiap metode, bukan hanya tabel method_ids: argumen konstan yang sampai ke API sensitif
+# (nomor SMS, perintah shell, nama transformasi Cipher, URL), string yang dirakit lewat StringBuilder, kunci / IV hard-coded
+# (fill-array-data), Base64 konstan, dan rantai panggilan dari komponen manifest ke pemanggil API sensitif. Pelacakan nilai
+# bersifat lurus per-blok (dibuang di target lompatan / handler), jadi hasilnya PETUNJUK, bukan bukti; pemanggilan virtual
+# dan refleksi tidak diselesaikan. Statis murni: tidak ada kode yang dijalankan. Hanya pustaka standar.
+
+DEX_CODE_TIME = 6.0              # detik untuk seluruh analisis bytecode satu berkas / APK; sisanya dilaporkan sebagai terpotong
+DEX_CODE_MAX_INSNS = 8_000_000   # unit 16-bit yang diurai per DEX
+DEX_CODE_MAX_UNITS = 200_000     # satu metode lebih panjang dari ini dilewati
+DEX_CODE_MAX_EDGES = 400_000     # sisi graf panggilan yang disimpan
+DEX_CODE_MAX_CALLS = 60          # pemanggilan berargumen konstan yang dilaporkan
+DEX_CODE_MAX_FILES = 8           # classes*.dex yang dianalisis per APK
+
+_DEX_EXTRA_API = {   # tambahan khusus analisis bytecode (tidak mengubah _DEX_API / dex_info["hits"] yang lama)
+    "jaringan / URL": ("Ljava/net/URL;-><init>", "Ljava/net/URL;->openConnection", "Ljava/net/Socket;-><init>",
+                       "Lorg/apache/http/client/methods/HttpGet;-><init>", "Lorg/apache/http/client/methods/HttpPost;-><init>"),
+    "pustaka native": ("Ljava/lang/System;->loadLibrary", "Ljava/lang/System;->load"),
+    "hash / IV / sandi": ("Ljava/security/MessageDigest;->getInstance", "Ljavax/crypto/spec/IvParameterSpec;-><init>", "Ljavax/crypto/spec/PBEKeySpec;-><init>"),
+    "sembunyikan komponen": ("PackageManager;->setComponentEnabledSetting",),
+}
+_DEX_ALLAPI = dict(_DEX_API)
+_DEX_ALLAPI.update(_DEX_EXTRA_API)
+# paket pustaka populer: kelasnya dilewati (hemat waktu) dan tidak dianggap kode aplikasi di graf panggilan
+_DEX_LIB_PREFIX = ("Landroidx/", "Landroid/support/", "Lkotlin/", "Lkotlinx/", "Lcom/google/android/gms/", "Lcom/google/firebase/",
+                   "Lcom/google/android/material/", "Lcom/squareup/", "Lokhttp3/", "Lokio/", "Lcom/bumptech/", "Lcom/facebook/",
+                   "Lio/reactivex/", "Lorg/jetbrains/")
+_DEX_FW_PREFIX = _DEX_LIB_PREFIX + ("Landroid/", "Ljava/", "Ljavax/", "Ldalvik/", "Lorg/json/", "Lorg/apache/", "Lorg/w3c/", "Lorg/xml/")
+
+
+def _dex_len_table() -> list:
+    """Panjang instruksi Dalvik (unit 16-bit) per opcode; opcode tak terpakai dihitung 1 supaya penelusuran tidak macet."""
+    t = [1] * 256
+    for lo, hi in ((0x2D, 0x3D), (0x44, 0x6D), (0x90, 0xAF), (0xD0, 0xE2)):
+        for i in range(lo, hi + 1):
+            t[i] = 2
+    for i in (0x02, 0x05, 0x08, 0x13, 0x15, 0x16, 0x19, 0x1A, 0x1C, 0x1F, 0x20, 0x22, 0x23, 0x29, 0xFE, 0xFF):
+        t[i] = 2
+    for i in (0x03, 0x06, 0x09, 0x14, 0x17, 0x1B, 0x24, 0x25, 0x26, 0x2A, 0x2B, 0x2C, 0xFC, 0xFD):
+        t[i] = 3
+    for i in list(range(0x6E, 0x73)) + list(range(0x74, 0x79)):
+        t[i] = 3
+    t[0x18] = 5
+    t[0xFA] = t[0xFB] = 4
+    return t
+
+
+_DEX_LEN = _dex_len_table()
+# opcode yang menulis register tujuan (selain yang ditangani khusus): 4 = nibble rendah byte tinggi, 8 = byte tinggi, 16 = unit berikutnya
+_DEX_DEST: dict[int, int] = {}
+for _r, _m in (((0x04, 0x04), 4), ((0x20, 0x21), 4), ((0x23, 0x23), 4), ((0x52, 0x58), 4), ((0x7B, 0x8F), 4), ((0xB0, 0xD7), 4),
+               ((0x05, 0x05), 8), ((0x0A, 0x0B), 8), ((0x0D, 0x0D), 8), ((0x16, 0x19), 8), ((0x2D, 0x31), 8), ((0x44, 0x4A), 8),
+               ((0x60, 0x66), 8), ((0x90, 0xAF), 8), ((0xD8, 0xE2), 8), ((0xFE, 0xFF), 8), ((0x06, 0x06), 16)):
+    for _o in range(_r[0], _r[1] + 1):
+        _DEX_DEST[_o] = _m
+_DEX_ENDS = frozenset((0x0E, 0x0F, 0x10, 0x11, 0x27, 0x28, 0x29, 0x2A))   # return / throw / goto: setelahnya hanya terjangkau lewat lompatan
+
+
+def _dex_payload_len(u, pc: int, n: int) -> int:
+    """Panjang (unit) payload semu packed-switch / sparse-switch / fill-array-data di u[pc]."""
+    try:
+        ident = u[pc]
+        if ident == 0x100:
+            return u[pc + 1] * 2 + 4
+        if ident == 0x200:
+            return u[pc + 1] * 4 + 2
+        if ident == 0x300:
+            return ((u[pc + 2] | (u[pc + 3] << 16)) * u[pc + 1] + 1) // 2 + 4
+    except IndexError:
+        pass
+    return 1
+
+
+def _dex_s32(lo: int, hi: int) -> int:
+    v = lo | (hi << 16)
+    return v - (1 << 32) if v & 0x80000000 else v
+
+
+def _dex_targets(u, n: int) -> set:
+    """Alamat (unit) yang menjadi tujuan lompatan: di sana nilai register yang dilacak dibuang."""
+    t: set = set()
+    pc = 0
+    while pc < n:
+        w = u[pc]
+        op = w & 0xFF
+        if op == 0 and w in (0x100, 0x200, 0x300):
+            pc += _dex_payload_len(u, pc, n)
+            continue
+        if 0x32 <= op <= 0x3D:
+            if pc + 1 < n:
+                o = u[pc + 1]
+                t.add(pc + (o - 65536 if o & 0x8000 else o))
+        elif op == 0x28:
+            o = w >> 8
+            t.add(pc + (o - 256 if o & 0x80 else o))
+        elif op == 0x29:
+            if pc + 1 < n:
+                o = u[pc + 1]
+                t.add(pc + (o - 65536 if o & 0x8000 else o))
+        elif op == 0x2A:
+            if pc + 2 < n:
+                t.add(pc + _dex_s32(u[pc + 1], u[pc + 2]))
+        elif op in (0x2B, 0x2C) and pc + 2 < n:
+            pp = pc + _dex_s32(u[pc + 1], u[pc + 2])
+            try:
+                if 0 <= pp < n - 1:
+                    sz = min(u[pp + 1], 4096)
+                    if u[pp] == 0x100:
+                        base = pp + 4
+                    elif u[pp] == 0x200:
+                        base = pp + 2 + 2 * sz
+                    else:
+                        base = -1
+                    if base > 0:
+                        for i in range(sz):
+                            t.add(pc + _dex_s32(u[base + 2 * i], u[base + 2 * i + 1]))
+            except IndexError:
+                pass
+        pc += _DEX_LEN[op]
+    return t
+
+
+def _dex_pretty(cls: str, name: str = "") -> str:
+    """'Lcom/x/Y;' + 'm' -> 'com.x.Y.m'."""
+    c = cls[1:-1].replace("/", ".") if cls.startswith("L") and cls.endswith(";") else cls
+    return "%s.%s" % (c, name) if name else c
+
+
+def _dex_valtext(v) -> str:
+    """Teks nilai untuk perakitan StringBuilder; yang tak diketahui jadi {?}."""
+    if v is None:
+        return "{?}"
+    k = v[0]
+    if k == "s":
+        return v[1]
+    if k == "i":
+        return str(v[1])
+    if k == "sb":
+        return "".join(v[1])
+    return "{?}"
+
+
+def _dex_valrepr(v) -> str:
+    if v is None:
+        return "?"
+    k = v[0]
+    if k in ("s", "sb"):
+        return "\"%s\"" % (v[1] if k == "s" else "".join(v[1]))[:120]
+    if k == "i":
+        return str(v[1]) if -256 < v[1] < 256 else "0x%X" % (v[1] & 0xFFFFFFFF)
+    if k == "b":
+        b = v[1]
+        txt = b.decode("latin-1")
+        return "byte[%d] %s%s" % (len(b), b[:24].hex(), (" \"%s\"" % txt[:40]) if txt.isprintable() and len(b) >= 4 else "")
+    if k == "c":
+        return "class " + _dex_pretty(v[1])
+    if k == "n":
+        return "new " + _dex_pretty(v[1])
+    return "?"
+
+
+def _dex_code(d: bytes, entries=None, deadline: float | None = None) -> dict | None:
+    """Analisis bytecode satu DEX. entries: himpunan deskriptor kelas komponen manifest ('Lcom/x/Y;') untuk rantai panggilan.
+    Berhenti sebagian (partial=True) bila waktu / batas instruksi habis. Tidak pernah membaca di luar `d`."""
+    if len(d) < 0x70 or d[:4] != b"dex\n":
+        return None
+    n = len(d)
+    ss, so, ts, to, _ps, _po, _fs, _fo, ms, mo, cs, co = struct.unpack_from("<12I", d, 0x38)
+    ss, ts, ms, cs = min(ss, 400000), min(ts, 200000), min(ms, 400000), min(cs, 100000)
+    deadline = deadline or (time.monotonic() + DEX_CODE_TIME)
+    LEN = _DEX_LEN
+    scache: dict[int, str] = {}
+    tcache: dict[int, str] = {}
+    mcache: dict[int, tuple] = {}
+    gcache: dict[int, tuple] = {}
+    acache: dict[int, bool] = {}
+
+    def sget(i: int, lim: int = 600) -> str:
+        r = scache.get(i)
+        if r is not None:
+            return r
+        r = ""
+        if 0 <= i < ss and so + 4 * i + 4 <= n:
+            o = struct.unpack_from("<I", d, so + 4 * i)[0]
+            if o < n:
+                _l, p = _uleb(d, o)
+                e = d.find(b"\0", p, min(n, p + lim * 3))
+                r = d[p:(e if e >= 0 else min(n, p + lim * 3))].decode("utf-8", "replace")[:lim]
+        scache[i] = r
+        return r
+
+    def tname(i: int) -> str:
+        r = tcache.get(i)
+        if r is None:
+            r = ""
+            if 0 <= i < ts and to + 4 * i + 4 <= n:
+                r = sget(struct.unpack_from("<I", d, to + 4 * i)[0])
+            tcache[i] = r
+        return r
+
+    def mparts(mi: int) -> tuple:
+        r = mcache.get(mi)
+        if r is None:
+            r = ("?", "?")
+            if 0 <= mi < ms and mo + 8 * mi + 8 <= n:
+                ci, _pi, ni = struct.unpack_from("<HHI", d, mo + 8 * mi)
+                r = (tname(ci), sget(ni))
+            mcache[mi] = r
+        return r
+
+    def groups_of(mi: int) -> tuple:
+        r = gcache.get(mi)
+        if r is None:
+            c, nm = mparts(mi)
+            full = "%s->%s" % (c, nm)
+            r = tuple(g for g, keys in _DEX_ALLAPI.items() if any(k in full for k in keys))
+            gcache[mi] = r
+        return r
+
+    def is_app(mi: int) -> bool:
+        r = acache.get(mi)
+        if r is None:
+            r = not mparts(mi)[0].startswith(_DEX_FW_PREFIX)
+            acache[mi] = r
+        return r
+
+    st = {"methods": 0, "insns": 0, "sites": 0, "classes": 0, "lib": 0, "partial": False}
+    groups: dict[str, dict] = {}
+    calls: list[dict] = []
+    percall: dict[str, int] = {}
+    keys: list[dict] = []
+    notes: list[str] = []
+    edges: dict[int, list] = {}
+    nedges = 0
+    sites: list[tuple] = []      # (indeks metode pemanggil, kelompok, nama callee) untuk rantai panggilan
+
+    def note(x: str) -> None:
+        if x not in notes and len(notes) < 14:
+            notes.append(x)
+
+    def walk(mi: int, code: int, cname: str, mname: str) -> None:
+        nonlocal nedges
+        if code + 16 > n:
+            return
+        nu = struct.unpack_from("<I", d, code + 12)[0]
+        if nu == 0 or nu > DEX_CODE_MAX_UNITS or code + 16 + 2 * nu > n:
+            return
+        u = struct.unpack_from("<%dH" % nu, d, code + 16)
+        st["methods"] += 1
+        st["insns"] += nu
+        tg = _dex_targets(u, nu)
+        regs: dict[int, tuple] = {}
+        last = None
+        me = None            # nama pemanggil (dibuat sekali bila dibutuhkan)
+        pc = 0
+        while pc < nu:
+            w = u[pc]
+            op = w & 0xFF
+            if op == 0:
+                pc += _dex_payload_len(u, pc, nu) if w in (0x100, 0x200, 0x300) else 1
+                continue
+            ln = LEN[op]
+            if pc + ln > nu:
+                break
+            if pc in tg:
+                regs.clear()
+                last = None
+            if op == 0x1A or op == 0x1B:
+                a = w >> 8
+                idx = u[pc + 1] if op == 0x1A else (u[pc + 1] | (u[pc + 2] << 16))
+                regs[a] = ("s", sget(idx))
+                regs.pop(a + 1, None)
+            elif op == 0x12:
+                a = (w >> 8) & 0xF
+                v = (w >> 12) & 0xF
+                regs[a] = ("i", v - 16 if v > 7 else v)
+            elif op == 0x13 or op == 0x14 or op == 0x15:
+                a = w >> 8
+                if op == 0x13:
+                    v = u[pc + 1] - 65536 if u[pc + 1] & 0x8000 else u[pc + 1]
+                elif op == 0x14:
+                    v = _dex_s32(u[pc + 1], u[pc + 2])
+                else:
+                    v = (u[pc + 1] - 65536 if u[pc + 1] & 0x8000 else u[pc + 1]) << 16
+                regs[a] = ("i", v)
+            elif op in (0x01, 0x07):
+                a, b = (w >> 8) & 0xF, (w >> 12) & 0xF
+                if b in regs:
+                    regs[a] = regs[b]
+                else:
+                    regs.pop(a, None)
+            elif op in (0x02, 0x08) or op in (0x03, 0x09):
+                a, b = (w >> 8, u[pc + 1]) if op in (0x02, 0x08) else (u[pc + 1], u[pc + 2])
+                if b in regs:
+                    regs[a] = regs[b]
+                else:
+                    regs.pop(a, None)
+            elif op == 0x0C:
+                a = w >> 8
+                if last is not None:
+                    regs[a] = last
+                else:
+                    regs.pop(a, None)
+                last = None
+            elif op == 0x1C:
+                regs[w >> 8] = ("c", tname(u[pc + 1]))
+            elif op == 0x22:
+                t = tname(u[pc + 1])
+                regs[w >> 8] = ("sb", []) if t == "Ljava/lang/StringBuilder;" else ("n", t)
+            elif op == 0x26:     # fill-array-data: isi larik byte konstan (kandidat kunci / IV / blob)
+                a = w >> 8
+                pp = pc + _dex_s32(u[pc + 1], u[pc + 2])
+                regs.pop(a, None)
+                if 0 <= pp and pp + 4 <= nu and u[pp] == 0x300 and u[pp + 1] == 1:
+                    cnt = min(u[pp + 2] | (u[pp + 3] << 16), 4096)
+                    raw = b"".join(struct.pack("<H", x) for x in u[pp + 4:pp + 4 + (cnt + 1) // 2])[:cnt]
+                    if raw:
+                        regs[a] = ("b", raw)
+            elif (0x6E <= op <= 0x72) or (0x74 <= op <= 0x78) or op in (0xFA, 0xFB):
+                mi2 = u[pc + 1]
+                if op in (0x74, 0x75, 0x76, 0x77, 0x78, 0xFB):
+                    args = [u[pc + 2] + i for i in range(w >> 8)]
+                else:
+                    x = u[pc + 2]
+                    args = [x & 0xF, (x >> 4) & 0xF, (x >> 8) & 0xF, (x >> 12) & 0xF, (w >> 8) & 0xF][:(w >> 12) & 0xF]
+                cls, nm = mparts(mi2)
+                static = op in (0x71, 0x77)
+                vals = [regs.get(r) for r in args]
+                recv = None if static or not vals else vals[0]
+                argv = vals if static else vals[1:]
+                res = None
+                if cls == "Ljava/lang/StringBuilder;":
+                    if nm == "<init>" and args and not static:
+                        regs[args[0]] = ("sb", [argv[0][1]] if argv and argv[0] and argv[0][0] == "s" else [])
+                    elif nm == "append" and recv and recv[0] == "sb":
+                        recv[1].append(_dex_valtext(argv[0] if argv else None))
+                        res = recv
+                    elif nm == "toString" and recv and recv[0] == "sb":
+                        res = ("s", "".join(recv[1])[:2000])
+                elif cls == "Ljava/lang/String;" and nm == "getBytes" and recv and recv[0] == "s":
+                    res = ("b", recv[1].encode("utf-8", "replace")[:4096])
+                elif cls == "Landroid/util/Base64;" and nm == "decode" and argv and argv[0] and argv[0][0] in ("s", "b"):
+                    raw = argv[0][1].encode("latin-1", "replace") if argv[0][0] == "s" else argv[0][1]
+                    try:
+                        res = ("b", base64.b64decode(raw + b"=" * (-len(raw) % 4), altchars=b"-_" if (b"-" in raw or b"_" in raw) else None)[:4096])
+                    except Exception:
+                        res = None
+                gl = groups_of(mi2)
+                if gl:
+                    st["sites"] += 1
+                    if me is None:
+                        me = _dex_pretty(cname, mname)
+                    callee = _dex_pretty(cls, nm)
+                    known = any(v is not None for v in argv)
+                    for g in gl:
+                        e = groups.setdefault(g, {"n": 0, "callers": []})
+                        e["n"] += 1
+                        if me not in e["callers"] and len(e["callers"]) < 4:
+                            e["callers"].append(me)
+                    if known and len(calls) < DEX_CODE_MAX_CALLS and percall.get(gl[0], 0) < 8:
+                        percall[gl[0]] = percall.get(gl[0], 0) + 1
+                        calls.append({"group": gl[0], "caller": me, "callee": callee, "args": [_dex_valrepr(v) for v in argv][:6]})
+                    if len(sites) < 400:
+                        sites.append((mi, gl[0], callee))
+                    # temuan bernilai tinggi dari argumen konstan
+                    if cls == "Ljavax/crypto/spec/SecretKeySpec;" and nm == "<init>":
+                        kb = next((v[1] for v in argv if v and v[0] == "b"), None)
+                        al = next((v[1] for v in reversed(argv) if v and v[0] == "s"), "?")
+                        if kb:
+                            if len(keys) < 12:
+                                keys.append({"kind": "kunci", "algo": al[:20], "len": len(kb), "hex": kb[:32].hex(), "caller": me})
+                            note("kunci kripto hard-coded (%s, %d byte) di %s" % (al[:20], len(kb), me))
+                    elif cls == "Ljavax/crypto/spec/IvParameterSpec;" and nm == "<init>":
+                        kb = next((v[1] for v in argv if v and v[0] == "b"), None)
+                        if kb and len(keys) < 12:
+                            keys.append({"kind": "IV", "algo": "", "len": len(kb), "hex": kb[:32].hex(), "caller": me})
+                    elif cls == "Ljavax/crypto/Cipher;" and nm == "getInstance" and argv and argv[0] and argv[0][0] == "s":
+                        tr = argv[0][1].upper()
+                        if "ECB" in tr or tr in ("AES", "DES", "DESEDE", "3DES") or tr.startswith("DES/"):
+                            note("Cipher %s (mode ECB / bawaan = ECB atau DES lemah) di %s" % (argv[0][1][:40], me))
+                    elif cls == "Ljava/lang/Runtime;" and nm == "exec" and argv and argv[0] and argv[0][0] in ("s", "sb"):
+                        cmd = _dex_valtext(argv[0]).strip()
+                        if re.match(r"(su|sh|/system/(?:x?bin)/su|busybox|chmod|pm install|am start|su -c)\b", cmd):
+                            note("exec perintah shell \"%s\" di %s" % (cmd[:60], me))
+                    elif nm == "<init>" and cls.endswith("ClassLoader;") and "dalvik" in cls:
+                        pth = next((v for v in argv if v and v[0] in ("s", "sb")), None)
+                        note("pemuatan kode dinamis%s di %s" % ((" dari \"%s\"" % _dex_valtext(pth)[:70]) if pth else "", me))
+                if is_app(mi2) and nedges < DEX_CODE_MAX_EDGES:
+                    lst = edges.setdefault(mi2, [])
+                    if len(lst) < 16 and mi not in lst:
+                        lst.append(mi)
+                        nedges += 1
+                last = res
+            elif op in (0xFC, 0xFD):
+                last = None
+            else:
+                m = _DEX_DEST.get(op)
+                if m:
+                    a = (w >> 8) & 0xF if m == 4 else (w >> 8 if m == 8 else u[pc + 1])
+                    regs.pop(a, None)
+                    regs.pop(a + 1, None)
+                if op in _DEX_ENDS:
+                    regs.clear()
+                    last = None
+            if op == 0x0D:
+                regs.clear()      # awal handler pengecualian: keadaan masuk tidak diketahui
+            pc += ln
+
+    stop = False
+    for ci in range(cs):
+        if (ci & 15) == 0 and time.monotonic() > deadline:
+            st["partial"] = True
+            break
+        if stop:
+            break
+        p = co + 32 * ci
+        if p + 32 > n:
+            break
+        cidx, _acc, _sup, _itf, _src, _ann, cdo, _sv = struct.unpack_from("<8I", d, p)
+        if not cdo or cdo >= n:
+            continue
+        cname = tname(cidx)
+        if cname.startswith(_DEX_LIB_PREFIX):
+            st["lib"] += 1
+            continue
+        st["classes"] += 1
+        o = cdo
+        sf, o = _uleb(d, o)
+        inf, o = _uleb(d, o)
+        dm, o = _uleb(d, o)
+        vm, o = _uleb(d, o)
+        if max(sf, inf, dm, vm) > 50000:
+            continue
+        for _ in range(sf + inf):
+            _v, o = _uleb(d, o)
+            _v, o = _uleb(d, o)
+        for cnt in (dm, vm):
+            mi = 0
+            for _ in range(cnt):
+                diff, o = _uleb(d, o)
+                _fl, o = _uleb(d, o)
+                code, o = _uleb(d, o)
+                mi += diff
+                if o > n:
+                    break
+                if code:
+                    if st["insns"] > DEX_CODE_MAX_INSNS or ((st["methods"] & 63) == 0 and time.monotonic() > deadline):
+                        st["partial"] = True
+                        stop = True
+                        break
+                    walk(mi, code, cname, mparts(mi)[1])
+            if stop:
+                break
+
+    # rantai panggilan: dari metode di kelas komponen manifest ke pemanggil API sensitif (maks. kedalaman 5, menurut sisi invoke statis)
+    chains: list[str] = []
+    if entries and sites:
+        seen_chain: set = set()
+        for mi, g, callee in sites:
+            if len(chains) >= 12:
+                break
+            frontier = [(mi, (mi,))]
+            visited = {mi}
+            found = None
+            for _depth in range(6):
+                nxt = []
+                for node, path in frontier:
+                    if mparts(node)[0] in entries:
+                        found = path
+                        break
+                    for c in edges.get(node, ()):
+                        if c not in visited:
+                            visited.add(c)
+                            nxt.append((c, path + (c,)))
+                if found or not nxt or len(visited) > 4000:
+                    break
+                frontier = nxt
+            if found:
+                txt = " -> ".join([_dex_pretty(*mparts(x)) for x in reversed(found)] + [callee])
+                if txt not in seen_chain:
+                    seen_chain.add(txt)
+                    chains.append("[%s] %s" % (g, txt))
+    return {"methods": st["methods"], "insns": st["insns"], "classes": st["classes"], "lib_skipped": st["lib"], "sites": st["sites"],
+            "partial": st["partial"], "groups": groups, "calls": calls, "keys": keys, "notes": notes, "chains": chains}
+
+
+def _dex_entry_classes(man) -> set:
+    """Deskriptor kelas komponen manifest (activity / service / receiver / provider + kelas Application)."""
+    out: set = set()
+    if not man:
+        return out
+    pkg = man.get("package") or ""
+    names: list = []
+    for lst in (man.get("components") or {}).values():
+        names.extend(lst)
+    if man.get("app_class"):
+        names.append(man["app_class"])
+    for nm in names:
+        if not nm or not isinstance(nm, str):
+            continue
+        if nm.startswith("."):
+            nm = pkg + nm
+        elif "." not in nm and pkg:
+            nm = pkg + "." + nm
+        out.add("L" + nm.replace(".", "/") + ";")
+    return out
+
+
+def _dex_code_merge(acc: dict, r: dict) -> None:
+    for k in ("methods", "insns", "classes", "lib_skipped", "sites"):
+        acc[k] = acc.get(k, 0) + r.get(k, 0)
+    acc["partial"] = acc.get("partial", False) or r.get("partial", False)
+    for g, e in r["groups"].items():
+        cur = acc.setdefault("groups", {}).setdefault(g, {"n": 0, "callers": []})
+        cur["n"] += e["n"]
+        cur["callers"].extend(x for x in e["callers"] if x not in cur["callers"] and len(cur["callers"]) < 4)
+    for k, lim in (("calls", DEX_CODE_MAX_CALLS), ("keys", 12), ("notes", 14), ("chains", 12)):
+        cur = acc.setdefault(k, [])
+        cur.extend(x for x in r[k] if x not in cur and len(cur) < lim)
+
+
+def _render_dexcode(code, a, compact: bool, defang: bool = True) -> None:
+    if not code or not code.get("methods"):
+        return
+    a("Bytecode DEX: %d metode / %d instruksi diurai (%d kelas aplikasi%s), %d pemanggilan API sensitif%s" % (
+        code["methods"], code["insns"], code["classes"], ", %d kelas pustaka dilewati" % code["lib_skipped"] if code.get("lib_skipped") else "",
+        code["sites"], " | TERPOTONG (batas waktu / ukuran)" if code.get("partial") else ""))
+    for x in (code.get("notes") or [])[: (3 if compact else 14)]:
+        a("   ! " + _clean(x))
+    for g, e in list((code.get("groups") or {}).items())[: (4 if compact else 16)]:
+        a("   - %s x%d dari %s" % (g, e["n"], ", ".join(_clean(c) for c in e["callers"][:2])))
+    if compact:
+        return
+    for c in (code.get("calls") or [])[:14]:
+        a("   > %s: %s(%s)" % (_clean(c["group"]), _clean(c["callee"]), _df(_clean(", ".join(c["args"])[:200]), defang)))
+    for x in (code.get("chains") or [])[:8]:
+        a("   rantai: " + _clean(x))
+    for k in (code.get("keys") or [])[:6]:
+        a("   %s hard-coded: %d byte %s%s | di %s" % (k["kind"], k["len"], k["hex"], (" (%s)" % _clean(k["algo"])) if k.get("algo") else "", _clean(k["caller"])))
+
+
+def _dex_code_path(path) -> tuple[dict, list]:
+    """Analisis bytecode untuk .dex mentah atau APK / ZIP berisi classes*.dex. Mengembalikan (agregat, catatan)."""
+    f_, size = _open_regular(path)
+    notes: list = []
+    acc: dict = {}
+    deadline = time.monotonic() + DEX_CODE_TIME
+    with f_:
+        head = f_.read(4)
+        f_.seek(0)
+        if head == b"dex\n":
+            r = _dex_code(f_.read(min(size, 128 * 1024 * 1024)), None, deadline)
+            if r:
+                _dex_code_merge(acc, r)
+            return acc, notes
+        if not zipfile.is_zipfile(f_):
+            return acc, ["bukan DEX / APK"]
+        with zipfile.ZipFile(f_) as z:
+            infos = {i.filename.lower(): i for i in z.infolist()}
+            entries: set = set()
+            if "androidmanifest.xml" in infos:
+                try:
+                    entries = _dex_entry_classes(_axml_summary(_zread(z, infos["androidmanifest.xml"], 2 * 1024 * 1024)))
+                except Exception:
+                    pass
+            nfile = 0
+            for nm in sorted(infos, key=lambda s: (len(s), s)):
+                if not re.fullmatch(r"classes\d*\.dex", nm):
+                    continue
+                if nfile >= DEX_CODE_MAX_FILES:
+                    notes.append("hanya %d classes*.dex pertama dianalisis" % DEX_CODE_MAX_FILES)
+                    break
+                nfile += 1
+                r = _dex_code(_zread(z, infos[nm], 64 * 1024 * 1024), entries, deadline)
+                if r:
+                    _dex_code_merge(acc, r)
+            if not nfile:
+                notes.append("tidak ada classes*.dex")
+    return acc, notes
+
+
+def dex_text(path, defang: bool = True, compact: bool = False) -> str:
+    """Laporan bytecode Dalvik untuk .dex / APK (CLI --dex, API action 'dex')."""
+    try:
+        acc, notes = _dex_code_path(path)
+    except Exception as e:
+        return "DEX gagal (%s: %s)." % (type(e).__name__, str(e)[:120])
+    L: list = []
+    _render_dexcode(acc, L.append, compact, defang)
+    if not L:
+        return "DEX: tidak ada metode berkode yang bisa dianalisis%s." % ((" (" + "; ".join(notes) + ")") if notes else "")
+    return "\n".join(L + ["   (%s)" % x for x in notes])
+
+
+def _dexraw_enrich(rep: dict, d) -> None:
+    """DEX mandiri (bukan di dalam APK): hasil di rep["dex_code"]; kunci baru, aditif."""
+    if d[:4] != b"dex\n":
+        return
+    try:
+        r = _dex_code(d)
+    except Exception as e:
+        rep["warn"].append("analisis bytecode DEX gagal: %s" % type(e).__name__)
+        return
+    if r and r["methods"]:
+        rep["dex_code"] = r
+        for x in r["notes"][:6]:
+            rep["warn"].append("DEX bytecode: " + x)
+
+
+# ----------------------- v99.12 [S1b]: tabel metadata .NET (#~) + pemindaian IL ----------------------------------
+# Mengurai stream `#~` (ECMA-335): TypeDef / MethodDef / MemberRef / TypeRef / ImplMap (P/Invoke) / ModuleRef / AssemblyRef /
+# ManifestResource, lalu memindai badan IL tiap metode (opcode call / callvirt / newobj / ldftn) untuk memetakan siapa memanggil
+# siapa: metode internal, API .NET sensitif (Process.Start, Assembly.Load, WebClient, Convert.FromBase64String ...), dan P/Invoke
+# (dll!fungsi). Statis murni: tidak ada kode yang dijalankan; hanya pustaka standar. Hasil adalah PETUNJUK: pemanggilan lewat
+# refleksi / delegate dinamis / IL terenkripsi (obfuskator) tidak terlihat, dan IL yang tidak valid menghentikan pemindaian
+# metode itu saja. Kunci baru rep["dotnet_il"]; triase lama tidak berubah.
+
+NETIL_TIME = 4.0                 # detik untuk seluruh analisis IL satu berkas; sisanya dilaporkan sebagai terpotong
+NETIL_MAX_METHODS = 80_000       # metode berbadan yang dipindai
+NETIL_MAX_BODY = 1 << 20         # satu badan IL lebih panjang dari ini dilewati
+NETIL_MAX_BYTES = 64 << 20       # total byte IL yang dipindai
+NETIL_MAX_ROWS = 1_000_000       # baris per tabel; lebih dari ini dianggap metadata rusak / dibuat-buat
+NETIL_MAX_CALLS = 60             # pemanggilan sensitif yang dilaporkan
+
+_NT_CODED = {   # nama: (jumlah bit tag, tabel per tag); -1 = tag tidak dipakai
+    "ResolutionScope": (2, (0, 26, 35, 1)),
+    "TypeDefOrRef": (2, (2, 1, 27)),
+    "MemberRefParent": (3, (2, 1, 26, 6, 27)),
+    "HasConstant": (2, (4, 8, 23)),
+    "HasCustomAttribute": (5, (6, 4, 1, 2, 8, 9, 10, 0, 14, 23, 20, 17, 26, 27, 32, 35, 38, 39, 40, 42, 44, 43)),
+    "CustomAttributeType": (3, (-1, -1, 6, 10, -1)),
+    "HasFieldMarshal": (1, (4, 8)),
+    "HasDeclSecurity": (2, (2, 6, 32)),
+    "HasSemantics": (1, (20, 23)),
+    "MethodDefOrRef": (1, (6, 10)),
+    "MemberForwarded": (1, (4, 6)),
+    "Implementation": (2, (38, 35, 39)),
+    "TypeOrMethodDef": (1, (2, 6)),
+}
+# skema kolom per tabel: int = byte tetap; "S" / "G" / "B" = indeks heap #Strings / #GUID / #Blob; ("T", n) = indeks ke tabel n;
+# ("C", nama) = indeks berkode
+_NT_SCHEMA = {
+    0: (2, "S", "G", "G", "G"), 1: (("C", "ResolutionScope"), "S", "S"), 2: (4, "S", "S", ("C", "TypeDefOrRef"), ("T", 4), ("T", 6)),
+    3: (("T", 4),), 4: (2, "S", "B"), 5: (("T", 6),), 6: (4, 2, 2, "S", "B", ("T", 8)), 7: (("T", 8),), 8: (2, 2, "S"),
+    9: (("T", 2), ("C", "TypeDefOrRef")), 10: (("C", "MemberRefParent"), "S", "B"), 11: (2, ("C", "HasConstant"), "B"),
+    12: (("C", "HasCustomAttribute"), ("C", "CustomAttributeType"), "B"), 13: (("C", "HasFieldMarshal"), "B"),
+    14: (2, ("C", "HasDeclSecurity"), "B"), 15: (2, 4, ("T", 2)), 16: (4, ("T", 4)), 17: ("B",), 18: (("T", 2), ("T", 20)),
+    19: (("T", 20),), 20: (2, "S", ("C", "TypeDefOrRef")), 21: (("T", 2), ("T", 23)), 22: (("T", 23),), 23: (2, "S", "B"),
+    24: (2, ("T", 6), ("C", "HasSemantics")), 25: (("T", 2), ("C", "MethodDefOrRef"), ("C", "MethodDefOrRef")), 26: ("S",),
+    27: ("B",), 28: (2, ("C", "MemberForwarded"), "S", ("T", 26)), 29: (4, ("T", 4)), 30: (4, 4), 31: (4,),
+    32: (4, 2, 2, 2, 2, 4, "B", "S", "S"), 33: (4,), 34: (4, 4, 4), 35: (2, 2, 2, 2, 4, "B", "S", "S", "B"), 36: (4, ("T", 35)),
+    37: (4, 4, 4, ("T", 35)), 38: (4, "S", "B"), 39: (4, 4, "S", "S", ("C", "Implementation")),
+    40: (4, 4, "S", ("C", "Implementation")), 41: (("T", 2), ("T", 2)), 42: (2, 2, ("C", "TypeOrMethodDef"), "S"),
+    43: (("C", "MethodDefOrRef"), "B"), 44: (("T", 42), ("C", "TypeDefOrRef")),
+}
+
+# ukuran operand opcode CIL: -1 = opcode tidak valid; -2 = switch
+_IL1 = [-1] * 256
+_IL2: dict = {}
+for _o in range(0x00, 0x0E):
+    _IL1[_o] = 0
+for _o in (0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x1F):
+    _IL1[_o] = 1
+for _o in (0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x25, 0x26, 0x2A):
+    _IL1[_o] = 0
+for _o in (0x20, 0x22, 0x27, 0x28, 0x29):
+    _IL1[_o] = 4
+_IL1[0x21] = _IL1[0x23] = 8
+for _o in range(0x2B, 0x38):
+    _IL1[_o] = 1
+for _o in range(0x38, 0x45):
+    _IL1[_o] = 4
+_IL1[0x45] = -2
+for _o in range(0x46, 0x6F):
+    _IL1[_o] = 0
+for _o in (0x6F, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x79, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F, 0x80, 0x81, 0x8C, 0x8D, 0x8F, 0xA3, 0xA4, 0xA5,
+           0xC2, 0xC6, 0xD0, 0xDD):
+    _IL1[_o] = 4
+for _o in (0x76, 0x7A, 0x8E, 0xC3, 0xDC, 0xDF, 0xE0):
+    _IL1[_o] = 0
+for _o in range(0x82, 0x8C):
+    _IL1[_o] = 0
+for _o in range(0x90, 0xA3):
+    _IL1[_o] = 0
+for _o in range(0xB3, 0xBB):
+    _IL1[_o] = 0
+for _o in range(0xD1, 0xDC):
+    _IL1[_o] = 0
+_IL1[0xDE] = 1
+for _o, _s in ((0x00, 0), (0x01, 0), (0x02, 0), (0x03, 0), (0x04, 0), (0x05, 0), (0x06, 4), (0x07, 4), (0x09, 2), (0x0A, 2), (0x0B, 2),
+               (0x0C, 2), (0x0D, 2), (0x0E, 2), (0x0F, 0), (0x11, 0), (0x12, 1), (0x13, 0), (0x14, 0), (0x15, 4), (0x16, 4), (0x17, 0),
+               (0x18, 0), (0x19, 1), (0x1A, 0), (0x1C, 4), (0x1D, 0), (0x1E, 0)):
+    _IL2[_o] = _s
+
+# (grup, tipe lengkap, metode | None = semua metode tipe itu); nama grup sejalan dengan _NET_CAPS
+_NETIL_API = (
+    ("eksekusi proses / shell", "System.Diagnostics.Process", ("Start",)),
+    ("muat kode dinamis", "System.Reflection.Assembly", ("Load", "LoadFrom", "LoadFile", "UnsafeLoadFrom", "ReflectionOnlyLoad")),
+    ("muat kode dinamis", "System.AppDomain", ("Load",)),
+    ("muat kode dinamis", "System.Reflection.MethodBase", ("Invoke",)),
+    ("muat kode dinamis", "System.Reflection.MethodInfo", ("Invoke",)),
+    ("muat kode dinamis", "System.Activator", ("CreateInstance",)),
+    ("muat kode dinamis", "System.Runtime.InteropServices.Marshal", ("GetDelegateForFunctionPointer", "GetFunctionPointerForDelegate")),
+    ("muat kode dinamis", "System.Reflection.Emit.AssemblyBuilder", None),
+    ("muat kode dinamis", "System.Reflection.Emit.ILGenerator", None),
+    ("jaringan", "System.Net.WebClient", ("DownloadString", "DownloadData", "DownloadFile", "UploadData", "UploadString", "UploadFile", "OpenRead")),
+    ("jaringan", "System.Net.Http.HttpClient", ("GetAsync", "PostAsync", "GetStringAsync", "GetByteArrayAsync", "GetStreamAsync", "SendAsync")),
+    ("jaringan", "System.Net.WebRequest", ("Create", "GetResponse")),
+    ("jaringan", "System.Net.HttpWebRequest", ("GetResponse", "GetRequestStream")),
+    ("jaringan", "System.Net.Sockets.TcpClient", (".ctor", "Connect", "ConnectAsync")),
+    ("jaringan", "System.Net.Sockets.Socket", ("Connect", "ConnectAsync")),
+    ("dekode / kripto", "System.Convert", ("FromBase64String",)),
+    ("dekode / kripto", "System.IO.Compression.GZipStream", (".ctor",)),
+    ("dekode / kripto", "System.IO.Compression.DeflateStream", (".ctor",)),
+    ("dekode / kripto", "System.Security.Cryptography.ICryptoTransform", ("TransformFinalBlock",)),
+    ("dekode / kripto", "System.Security.Cryptography.SymmetricAlgorithm", ("CreateDecryptor", "CreateEncryptor")),
+    ("persistensi / registri", "Microsoft.Win32.RegistryKey", ("SetValue", "CreateSubKey")),
+    ("persistensi / registri", "Microsoft.Win32.Registry", ("SetValue",)),
+    ("berkas", "System.IO.File", ("WriteAllBytes", "Delete")),
+    ("penyadap input / layar", "System.Drawing.Graphics", ("CopyFromScreen",)),
+    ("penyadap input / layar", "System.Windows.Forms.Clipboard", ("GetText", "GetDataObject")),
+    ("anti-debug / anti-analisis", "System.Diagnostics.Debugger", ("get_IsAttached", "IsLogging")),
+    ("anti-debug / anti-analisis", "System.Management.ManagementObjectSearcher", (".ctor",)),
+)
+_NETIL_API_IDX: dict = {}
+for _g, _t, _ms in _NETIL_API:
+    _NETIL_API_IDX.setdefault(_t, []).append((_g, _ms))
+# grup yang menghasilkan peringatan (bukan sekadar daftar)
+_NETIL_WARN_GROUPS = {"muat kode dinamis", "eksekusi proses / shell"}
+
+
+def _net_clr(d: bytes, pe: dict):
+    """Cari stream metadata CLR. -> (streams {nama: (offset berkas, ukuran)}, r2o, entry_token) atau None."""
+    pe_off = struct.unpack_from("<I", d, 0x3C)[0]
+    o = pe_off + 24
+    is64 = struct.unpack_from("<H", d, o)[0] == 0x20B
+    nrva = struct.unpack_from("<I", d, o + (108 if is64 else 92))[0]
+    if nrva <= 14:
+        return None
+    rva, _sz = struct.unpack_from("<II", d, o + (112 if is64 else 96) + 8 * 14)
+
+    def r2o(x: int):
+        for s in pe["sections"]:
+            if s["va"] <= x < s["va"] + max(s["vsize"], s["rsize"]):
+                return s["rptr"] + x - s["va"]
+        return None
+
+    co = r2o(rva)
+    if co is None or co + 24 > len(d):
+        return None
+    _cb, _ma, _mi, mrva, _msz, _cf, etok = struct.unpack_from("<IHHIIII", d, co)
+    mo = r2o(mrva)
+    if mo is None or mo + 20 > len(d) or d[mo:mo + 4] != b"BSJB":
+        return None
+    vlen = struct.unpack_from("<I", d, mo + 12)[0]
+    if vlen > 255 or mo + 16 + vlen + 4 > len(d):
+        return None
+    p = mo + 16 + vlen
+    nstreams = struct.unpack_from("<H", d, p + 2)[0]
+    p += 4
+    streams: dict = {}
+    for _ in range(min(nstreams, 16)):
+        if p + 9 > len(d):
+            break
+        so, ssz = struct.unpack_from("<II", d, p)
+        e = d.find(b"\0", p + 8, p + 40)
+        if e < 0:
+            break
+        nm = d[p + 8:e].decode("ascii", "replace")
+        streams[nm] = (mo + so, ssz)
+        p += 8 + ((len(nm) + 1 + 3) & ~3)
+    return streams, r2o, etok
+
+
+def _net_tables(d: bytes, base: int, size: int):
+    """Urai header #~ dan tata letak tabel. -> {"rows", "lay", "sizes"} atau None (metadata rusak / tak didukung)."""
+    end = min(base + size, len(d))
+    if size < 24 or base + 24 > len(d):
+        return None
+    hs = d[base + 6]
+    valid = struct.unpack_from("<Q", d, base + 8)[0]
+    p = base + 24
+    rows: dict = {}
+    for t in range(64):
+        if valid >> t & 1:
+            if p + 4 > end:
+                return None
+            n = struct.unpack_from("<I", d, p)[0]
+            p += 4
+            if t > 44 or n > NETIL_MAX_ROWS:
+                return None
+            rows[t] = n
+    if hs & 0x40:
+        p += 4
+    ssz, gsz, bsz = (4 if hs & 1 else 2), (4 if hs & 2 else 2), (4 if hs & 4 else 2)
+    lay: dict = {}
+    for t in sorted(rows):
+        cols = []
+        for c in _NT_SCHEMA[t]:
+            if isinstance(c, int):
+                cols.append(c)
+            elif c == "S":
+                cols.append(ssz)
+            elif c == "G":
+                cols.append(gsz)
+            elif c == "B":
+                cols.append(bsz)
+            elif c[0] == "T":
+                cols.append(4 if rows.get(c[1], 0) > 0xFFFF else 2)
+            else:
+                bits, tabs = _NT_CODED[c[1]]
+                cols.append(4 if max(rows.get(x, 0) for x in tabs) >= (1 << (16 - bits)) else 2)
+        rs = sum(cols)
+        if p + rs * rows[t] > end:
+            return None
+        lay[t] = (p, rs, cols)
+        p += rs * rows[t]
+    return {"rows": rows, "lay": lay}
+
+
+def _nt_rows(d: bytes, tb: dict, t: int) -> list:
+    """Semua baris tabel t sebagai daftar tuple bilangan bulat (kosong bila tabel tak ada)."""
+    ent = tb["lay"].get(t)
+    if not ent or not tb["rows"][t]:
+        return []
+    off, rs, cols = ent
+    fmt = "<" + "".join({1: "B", 2: "H", 4: "I"}[c] for c in cols)
+    return list(struct.iter_unpack(fmt, d[off:off + rs * tb["rows"][t]]))
+
+
+def _il_body(d: bytes, off: int):
+    """Badan metode CIL di offset berkas off -> (kode, panjang) atau None."""
+    if off < 0 or off >= len(d):
+        return None
+    b = d[off]
+    if b & 3 == 2:
+        sz, start = b >> 2, off + 1
+    elif b & 3 == 3 and off + 12 <= len(d):
+        hs = (struct.unpack_from("<H", d, off)[0] >> 12) * 4
+        sz = struct.unpack_from("<I", d, off + 4)[0]
+        start = off + hs
+        if hs < 12:
+            return None
+    else:
+        return None
+    if sz <= 0 or sz > NETIL_MAX_BODY or start + sz > len(d):
+        return None
+    return d[start:start + sz], sz
+
+
+def _il_scan(code: bytes):
+    """Pindai opcode. -> (token_pemanggilan, jumlah xor, jumlah lompat mundur, ldstr) atau None bila opcode tak valid / terpotong."""
+    i, n = 0, len(code)
+    calls: list = []
+    xors = back = lds = 0
+    while i < n:
+        op = code[i]
+        i += 1
+        if op == 0xFE:
+            if i >= n:
+                return None
+            op2 = code[i]
+            i += 1
+            sz = _IL2.get(op2)
+            if sz is None:
+                return None
+            if op2 in (0x06, 0x07) and i + 4 <= n:
+                calls.append(int.from_bytes(code[i:i + 4], "little"))
+            i += sz
+            continue
+        sz = _IL1[op]
+        if sz == -1:
+            return None
+        if sz == -2:
+            if i + 4 > n:
+                return None
+            i += 4 + 4 * int.from_bytes(code[i:i + 4], "little")
+            continue
+        if sz:
+            if i + sz > n:
+                return None
+            if op in (0x28, 0x6F, 0x73):
+                calls.append(int.from_bytes(code[i:i + 4], "little"))
+            elif op == 0x72:
+                lds += 1
+            elif 0x2B <= op <= 0x37 or op == 0xDE:
+                if code[i] >= 0x80:
+                    back += 1
+            elif 0x38 <= op <= 0x44 or op == 0xDD:
+                if code[i + 3] >= 0x80:
+                    back += 1
+            i += sz
+        elif op == 0x61:
+            xors += 1
+    if i != n:
+        return None
+    return calls, xors, back, lds
+
+
+def _netil_analyze(d: bytes, pe: dict, dn: dict | None = None) -> dict | None:
+    clr = _net_clr(d, pe)
+    if not clr:
+        return None
+    streams, r2o, etok = clr
+    ts = streams.get("#~")
+    if not ts:
+        return {"notes": ["stream '#-' (tabel tak terkompresi) / '#~' tidak ada: tabel metadata tidak diurai"], "types": 0, "methods": 0,
+                "bodies": 0, "partial": False, "pinvoke": [], "groups": {}, "calls": [], "chains": [], "decoders": [], "resources": [],
+                "assemblies": [], "refs": 0, "entry": ""}
+    tb = _net_tables(d, ts[0], ts[1])
+    if not tb:
+        return {"notes": ["tabel metadata .NET tidak bisa diurai (rusak / disengaja merusak parser)"], "types": 0, "methods": 0, "bodies": 0,
+                "partial": False, "pinvoke": [], "groups": {}, "calls": [], "chains": [], "decoders": [], "resources": [], "assemblies": [],
+                "refs": 0, "entry": ""}
+    deadline = time.time() + NETIL_TIME
+    sb, ssz = streams.get("#Strings", (0, 0))
+    scache: dict = {}
+
+    def sname(i: int) -> str:
+        v = scache.get(i)
+        if v is None:
+            if i >= ssz or sb + i >= len(d):
+                v = ""
+            else:
+                e = d.find(b"\0", sb + i, min(sb + ssz, sb + i + 512))
+                v = _clean(d[sb + i:e if e >= 0 else sb + i + 256].decode("utf-8", "replace"))
+            scache[i] = v
+        return v
+
+    def coded(name: str, v: int):
+        bits, tabs = _NT_CODED[name]
+        tag = v & ((1 << bits) - 1)
+        return (tabs[tag] if tag < len(tabs) else -1), v >> bits
+
+    typeref = _nt_rows(d, tb, 1)
+    typedef = _nt_rows(d, tb, 2)
+    methoddef = _nt_rows(d, tb, 6)
+    memberref = _nt_rows(d, tb, 10)
+    modref = _nt_rows(d, tb, 26)
+    implmap = _nt_rows(d, tb, 28)
+    asmref = _nt_rows(d, tb, 35)
+    mres = _nt_rows(d, tb, 40)
+    nested = _nt_rows(d, tb, 41)
+    mspec = _nt_rows(d, tb, 43)
+    nmeth = len(methoddef)
+    enclosing = {a: b for a, b in nested}
+
+    def tr_full(i: int) -> str:     # TypeRef (1-berbasis)
+        if not 1 <= i <= len(typeref):
+            return "?"
+        sc, n_, ns_ = typeref[i - 1]
+        nm, ns = sname(n_), sname(ns_)
+        return (ns + "." + nm) if ns else nm
+
+    td_cache: dict = {}
+
+    def td_full(i: int, depth: int = 0) -> str:     # TypeDef
+        if not 1 <= i <= len(typedef):
+            return "?"
+        v = td_cache.get(i)
+        if v is None:
+            _fl, n_, ns_ = typedef[i - 1][:3]
+            nm, ns = sname(n_), sname(ns_)
+            if i in enclosing and depth < 6:
+                v = td_full(enclosing[i], depth + 1) + "/" + nm
+            else:
+                v = (ns + "." + nm) if ns else nm
+            td_cache[i] = v
+        return v
+
+    owner = [0] * (nmeth + 2)
+    for i, row in enumerate(typedef):
+        a = row[5]
+        b = typedef[i + 1][5] if i + 1 < len(typedef) else nmeth + 1
+        for m in range(a, min(b, nmeth + 1)):
+            owner[m] = i + 1
+
+    def meth_full(m: int) -> str:     # MethodDef (1-berbasis)
+        if not 1 <= m <= nmeth:
+            return "?"
+        t = owner[m]
+        return "%s::%s" % (td_full(t) if t else "?", sname(methoddef[m - 1][3]))
+
+    pinv: dict = {}      # MethodDef -> (dll, fungsi)
+    for _fl, fwd, imp, scope in implmap:
+        tab, idx = coded("MemberForwarded", fwd)
+        if tab == 6 and 1 <= idx <= nmeth:
+            dll = sname(modref[scope - 1][0]) if 1 <= scope <= len(modref) else "?"
+            pinv[idx] = (dll, sname(imp))
+
+    tok_cache: dict = {}
+
+    def tok_name(tok: int, depth: int = 0):
+        """token -> (nama, jenis) dengan jenis 'int' (MethodDef), 'ref' (MemberRef), 'pinvoke'."""
+        v = tok_cache.get(tok)
+        if v is not None:
+            return v
+        t, i = tok >> 24, tok & 0xFFFFFF
+        v = ("?", "?")
+        if t == 0x06 and 1 <= i <= nmeth:
+            v = (meth_full(i), "pinvoke" if i in pinv else "int")
+        elif t == 0x0A and 1 <= i <= len(memberref):
+            cls, n_, _sig = memberref[i - 1]
+            ct, ci = coded("MemberRefParent", cls)
+            if ct == 1:
+                owner_ = tr_full(ci)
+            elif ct == 2:
+                owner_ = td_full(ci)
+            elif ct == 26:
+                owner_ = sname(modref[ci - 1][0]) if 1 <= ci <= len(modref) else "?"
+            elif ct == 6:
+                owner_ = meth_full(ci)
+            else:
+                owner_ = "?"
+            v = ("%s::%s" % (owner_, sname(n_)), "ref")
+        elif t == 0x2B and 1 <= i <= len(mspec) and depth < 2:
+            mt, mi = coded("MethodDefOrRef", mspec[i - 1][0])
+            v = tok_name((6 if mt == 6 else 10) << 24 | mi, depth + 1)
+        tok_cache[tok] = v
+        return v
+
+    def api_group(name: str):
+        t, _, m = name.rpartition("::")
+        for g, ms in _NETIL_API_IDX.get(t, ()):
+            if ms is None or m in ms:
+                return g
+        return None
+
+    pcap: dict = {}
+    for cap, keys in _NET_CAPS.items():
+        for k in keys:
+            pcap.setdefault(k, cap)
+
+    adj: dict = {}          # MethodDef -> {MethodDef}
+    sens: dict = {}         # MethodDef -> {grup: {callee,...}}
+    fan: dict = {}
+    calls: list = []
+    decoders: list = []
+    bodies = insns = scanned = bad = 0
+    partial = False
+    for m in range(1, nmeth + 1):
+        if m % 64 == 0 and time.time() > deadline:
+            partial = True
+            break
+        if bodies >= NETIL_MAX_METHODS or scanned > NETIL_MAX_BYTES:
+            partial = True
+            break
+        rva, _impl, flags = methoddef[m - 1][:3]
+        if not rva or flags & 0x400 or flags & 0x2000:    # abstract / pinvokeimpl
+            continue
+        off = r2o(rva)
+        if off is None:
+            continue
+        body = _il_body(d, off)
+        if not body:
+            bad += 1
+            continue
+        code, sz = body
+        scanned += sz
+        res = _il_scan(code)
+        if res is None:
+            bad += 1
+            continue
+        bodies += 1
+        cl, xors, back, _lds = res
+        insns += len(cl)
+        if xors and back and sz <= 4096 and len(decoders) < 12:
+            decoders.append("%s (xor x%d, loop x%d, %d byte IL)" % (meth_full(m), xors, back, sz))
+        for tok in cl:
+            nm, kind = tok_name(tok)
+            if kind == "int":
+                callee = tok & 0xFFFFFF
+                adj.setdefault(m, set()).add(callee)
+                fan[callee] = fan.get(callee, 0) + 1
+                continue
+            if kind == "pinvoke":
+                callee = tok & 0xFFFFFF
+                adj.setdefault(m, set()).add(callee)
+                dll, fn = pinv[callee]
+                g = pcap.get(fn)
+                if g:
+                    sens.setdefault(m, {}).setdefault(g, set()).add("%s!%s" % (dll, fn))
+                    if len(calls) < NETIL_MAX_CALLS:
+                        calls.append({"group": g, "callee": "%s!%s" % (dll, fn), "caller": meth_full(m)})
+                continue
+            g = api_group(nm) if kind == "ref" else None
+            if g:
+                sens.setdefault(m, {}).setdefault(g, set()).add(nm)
+                if len(calls) < NETIL_MAX_CALLS:
+                    calls.append({"group": g, "callee": nm, "caller": meth_full(m)})
+    groups: dict = {}
+    for m, gs in sens.items():
+        for g, names in gs.items():
+            e = groups.setdefault(g, {"n": 0, "callers": [], "apis": []})
+            e["n"] += len(names)
+            if len(e["callers"]) < 4:
+                e["callers"].append(meth_full(m))
+            for x in sorted(names):
+                if x not in e["apis"] and len(e["apis"]) < 6:
+                    e["apis"].append(x)
+    # rantai panggilan: dari titik masuk / Main / konstruktor modul ke metode pemanggil API sensitif
+    roots: list = []
+    if etok >> 24 == 0x06 and 1 <= (etok & 0xFFFFFF) <= nmeth:
+        roots.append(etok & 0xFFFFFF)
+    for m in range(1, nmeth + 1):
+        nm = sname(methoddef[m - 1][3])
+        if nm == "Main" or (nm == ".cctor" and owner[m] == 1):
+            if m not in roots:
+                roots.append(m)
+        if len(roots) >= 8:
+            break
+    chains: list = []
+    for r in roots:
+        par = {r: 0}
+        queue = [(r, 0)]
+        qi = 0
+        while qi < len(queue) and len(chains) < 8:
+            cur, dep = queue[qi]
+            qi += 1
+            if cur in sens:
+                path, x = [], cur
+                while x:
+                    path.append(meth_full(x))
+                    x = par[x]
+                names = sorted({a for v in sens[cur].values() for a in v})[:3]
+                ch = " -> ".join(reversed(path)) + "  [%s]" % ", ".join(names)
+                if ch not in chains:
+                    chains.append(ch)
+            if dep >= 5:
+                continue
+            for nx in sorted(adj.get(cur, ())):
+                if nx not in par:
+                    par[nx] = cur
+                    queue.append((nx, dep + 1))
+    notes: list = []
+    for g in sorted(_NETIL_WARN_GROUPS):
+        if g in groups:
+            notes.append("%s: %s (di %s)" % (g, ", ".join(groups[g]["apis"][:3]), ", ".join(groups[g]["callers"][:2])))
+    inj = [p for p in pinv.values() if p[1] in ("VirtualAllocEx", "WriteProcessMemory", "CreateRemoteThread", "NtUnmapViewOfSection", "SetThreadContext", "QueueUserAPC")]
+    if inj:
+        notes.append("P/Invoke injeksi proses: " + ", ".join(sorted({"%s!%s" % x for x in inj})[:4]))
+    if bad and nmeth and bad / max(1, bad + bodies) > 0.2 and bad >= 5:
+        notes.append("%d metode berbadan IL tidak valid / tak terbaca (dugaan IL dienkripsi atau obfuskasi anti-dekompiler)" % bad)
+    if partial:
+        notes.append("TERPOTONG (batas waktu / ukuran)")
+    resources = []
+    for off_, _fl, n_, impl in mres[:40]:
+        itab, _ii = coded("Implementation", impl)
+        resources.append("%s%s" % (sname(n_), "" if impl == 0 else " (di %s)" % ("berkas lain" if itab == 38 else "assembly lain")))
+    top_fan = sorted(fan.items(), key=lambda kv: -kv[1])[:3]
+    return {
+        "types": len(typedef), "methods": nmeth, "bodies": bodies, "bad_bodies": bad, "partial": partial, "notes": notes,
+        "entry": meth_full(etok & 0xFFFFFF) if etok >> 24 == 0x06 and 1 <= (etok & 0xFFFFFF) <= nmeth else "",
+        "refs": len(memberref), "typerefs": len(typeref),
+        "assemblies": _uniq((sname(r[6]) for r in asmref), 40),
+        "pinvoke": [{"dll": dll, "func": fn, "method": meth_full(m)} for m, (dll, fn) in sorted(pinv.items())[:60]],
+        "n_pinvoke": len(pinv), "groups": groups, "calls": calls, "chains": chains, "decoders": decoders, "resources": resources,
+        "fanin": ["%s (dipanggil %dx)" % (meth_full(m), n) for m, n in top_fan if n >= 20],
+    }
+
+
+def _netil_enrich(rep: dict, d: bytes) -> None:
+    """Dipanggil dari triage(): rep["dotnet_il"] (kunci baru, aditif) untuk PE .NET."""
+    pe, dn = rep.get("pe"), rep.get("dotnet")
+    if not dn or not pe or pe.get("broken"):
+        return
+    try:
+        r = _netil_analyze(d, pe, dn)
+    except Exception as e:
+        rep["warn"].append("analisis IL .NET gagal: %s" % type(e).__name__)
+        return
+    if r and (r["types"] or r["notes"]):
+        rep["dotnet_il"] = r
+        for x in r["notes"][:6]:
+            rep["warn"].append("IL .NET: " + x)
+
+
+def _render_netil(il, a, compact: bool, defang: bool = True) -> None:
+    if not il or not il.get("types"):
+        return
+    a(".NET IL: %d tipe / %d metode (%d badan IL diurai), %d MemberRef, %d P/Invoke%s" % (
+        il["types"], il["methods"], il["bodies"], il["refs"], il.get("n_pinvoke", 0), " | TERPOTONG" if il.get("partial") else ""))
+    if il.get("entry"):
+        a("   titik masuk: " + _clean(il["entry"]))
+    for x in il["notes"][: (3 if compact else 10)]:
+        a("   ! " + _clean(x))
+    for g, e in list(il["groups"].items())[: (4 if compact else 12)]:
+        a("   - %s x%d: %s | dari %s" % (g, e["n"], _clean(", ".join(e["apis"][:3])), ", ".join(_clean(c) for c in e["callers"][:2])))
+    if compact:
+        return
+    for p in il["pinvoke"][:14]:
+        a("   P/Invoke: %s!%s <- %s" % (_df(_clean(p["dll"]), defang), _clean(p["func"]), _clean(p["method"])))
+    for x in il["chains"][:6]:
+        a("   rantai: " + _clean(x))
+    for x in il["decoders"][:5]:
+        a("   kandidat dekoder: " + _clean(x))
+    for x in il.get("fanin", [])[:3]:
+        a("   fan-in tinggi (pembantu string / dekripsi?): " + _clean(x))
+    if il["resources"]:
+        a("   resource terkelola: " + ", ".join(_clean(x) for x in il["resources"][:8]))
+    if il["assemblies"]:
+        a("   AssemblyRef: " + ", ".join(_clean(x) for x in il["assemblies"][:10]))
+
+
+def net_text(path, defang: bool = True, compact: bool = False) -> str:
+    """Laporan tabel metadata + IL untuk PE .NET (CLI --net, API action 'dotnet')."""
+    try:
+        f_, size = _open_regular(path)
+        with f_:
+            d = f_.read(min(size, MAX_SCAN))
+        pe = _parse_pe(d, size)
+        if not pe or pe.get("broken") or not pe.get("dotnet"):
+            return ".NET: bukan PE .NET (tidak ada header CLR)."
+        dn = _dotnet_info(d, pe)
+        il = _netil_analyze(d, pe, dn)
+    except Exception as e:
+        return ".NET IL gagal (%s: %s)." % (type(e).__name__, str(e)[:120])
+    L: list = []
+    _render_netil(il, L.append, compact, defang)
+    if not L:
+        return ".NET: tabel metadata tidak bisa dianalisis%s." % ((" (" + "; ".join(il["notes"]) + ")") if il and il.get("notes") else "")
+    return "\n".join(L)
+
+
 def _apk_deep(z, names: list[str], low: list[str], out: dict) -> None:
     """Dipanggil dari _parse_zip untuk APK: manifest biner dan DEX."""
+    man = None
     try:
         mf = _zread(z, names[low.index("androidmanifest.xml")], 2 * 1024 * 1024)
         man = _axml_summary(mf)
@@ -4655,15 +9051,25 @@ def _apk_deep(z, names: list[str], low: list[str], out: dict) -> None:
     except Exception:
         pass
     dex = {"strings": 0, "types": 0, "methods": 0, "classes": 0, "hits": {}, "obf": False, "files": 0}
+    dcode: dict = {}                     # v99.11 [S1]: bytecode Dalvik (kunci baru dex_info["code"], aditif)
+    dentries = _dex_entry_classes(man)
+    ddeadline = time.monotonic() + DEX_CODE_TIME
     for i, n in enumerate(low):
         if not re.fullmatch(r"classes\d*\.dex", n) or dex["files"] >= 4:
             continue
         try:
-            r = _dex_scan(_zread(z, names[i], 40 * 1024 * 1024))
+            raw = _zread(z, names[i], 40 * 1024 * 1024)
+            r = _dex_scan(raw)
         except Exception:
-            r = None
+            r, raw = None, b""
         if not r:
             continue
+        try:
+            cr = _dex_code(raw, dentries, ddeadline)
+            if cr:
+                _dex_code_merge(dcode, cr)
+        except Exception as e_:
+            out["warn"].append("analisis bytecode DEX gagal: %s" % type(e_).__name__)
         dex["files"] += 1
         for k in ("strings", "types", "methods", "classes"):
             dex[k] += r[k]
@@ -4671,11 +9077,15 @@ def _apk_deep(z, names: list[str], low: list[str], out: dict) -> None:
         for g, lst in r["hits"].items():
             cur = dex["hits"].setdefault(g, [])
             cur.extend(x for x in lst if x not in cur and len(cur) < 6)
+    if dcode.get("methods"):
+        dex["code"] = dcode
+        for x_ in dcode["notes"][:6]:
+            out["warn"].append("DEX bytecode: " + x_)
     if dex["files"]:
         out["dex_info"] = dex
 
 
-def _render_apk(zp: dict, a, compact: bool) -> None:
+def _render_apk(zp: dict, a, compact: bool, defang: bool = True) -> None:
     m = zp.get("manifest")
     if m:
         a("Manifest: paket %s | versi %s | SDK min %s / target %s%s%s%s" % (
@@ -4699,6 +9109,7 @@ def _render_apk(zp: dict, a, compact: bool) -> None:
         a("DEX    : %d berkas, %d kelas, %d metode, %d string%s" % (di["files"], di["classes"], di["methods"], di["strings"], " | nama kelas pendek (dugaan obfuskasi ProGuard/R8 atau lain)" if di["obf"] else ""))
         for g, lst in list(di["hits"].items())[: (4 if compact else 20)]:
             a("   - %s: %s" % (g, ", ".join(_clean(x).replace("Landroid/", "") for x in lst[:3])))
+        _render_dexcode(di.get("code"), a, compact, defang)
 
 
 # ----------------------- dekoder skrip / string tersandi -----------------------
@@ -4779,6 +9190,1066 @@ def _script_enrich(rep: dict, strs: list[str]) -> None:
 def _render_decoded(rep: dict, a, compact: bool, defang: bool) -> None:
     for x in (rep.get("decoded") or [])[: (2 if compact else 8)]:
         a("Hasil dekode (%s): %s" % (x["kind"], _df(_clean(x["text"])[:240 if compact else 400], defang)))
+
+
+# ----------------------- v99.9 [C2]: dekoder multi-layer otomatis -----------------------
+# Pipeline statis: (hex | base64) -> (gzip | zlib | deflate mentah) -> XOR satu-byte, maksimal CHAIN_MAX_LAYERS lapis, pada blok
+# mencurigakan di string skrip (PowerShell / VBScript / JS), resource PE, dan resource terkelola .NET. Tidak ada yang dijalankan.
+# Rantai hanya dilaporkan bila ujungnya dikenali (PE / ELF / ZIP / dokumen / teks nyata), jadi data acak tidak menghasilkan laporan palsu.
+
+CHAIN_MAX_LAYERS = 3
+CHAIN_MAX_OUT = 8 * 1024 * 1024      # batas hasil dekompresi per lapis (anti zip-bomb)
+CHAIN_TIME = 2.0                     # detik untuk seluruh pemindaian lapisan
+CHAIN_MAX_SRC = 24                   # jumlah blok sumber yang dicoba
+_CHAIN_B64 = re.compile(r"[A-Za-z0-9+/]{24,}={0,2}\Z")
+_CHAIN_HEX = re.compile(r"(?:[0-9A-Fa-f]{2}){16,}\Z")
+_CHAIN_SKIP_RES = frozenset({"ICON", "CURSOR", "BITMAP", "MENU", "DIALOG", "STRING", "ACCELERATOR", "MESSAGETABLE", "GROUP_CURSOR", "GROUP_ICON", "VERSION", "MANIFEST"})
+_CHAIN_MAGIC = ((b"\x7fELF", "ELF"), (b"PK\x03\x04", "ZIP"), (b"7z\xbc\xaf\x27\x1c", "7z"), (b"Rar!", "RAR"), (b"MSCF", "CAB"),
+                (b"%PDF-", "PDF"), (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", "OLE2"), (b"{\\rtf", "RTF"))
+
+
+def _chain_label(b: bytes) -> str | None:
+    """Jenis data bila diawali tanda tangan format yang dikenal (PE harus punya penunjuk 'PE\\0\\0' yang sah)."""
+    h = bytes(b[:8])
+    if h[:2] == b"MZ":
+        if len(b) >= 0x40:
+            o = struct.unpack_from("<I", b, 0x3C)[0]
+            if o < len(b) - 4 and bytes(b[o:o + 4]) == b"PE\x00\x00":
+                return "PE/MZ"
+        return None
+    for magic, name in _CHAIN_MAGIC:
+        if h.startswith(magic):
+            return name
+    return None
+
+
+def _chain_text(b: bytes) -> str | None:
+    """Teks bila isinya terbaca (UTF-8 atau UTF-16LE); None untuk data biner / acak / hampir konstan (mis. nol yang di-XOR)."""
+    s = bytes(b[:4096])
+    if len(s) < 8:
+        return None
+    u16 = s[1::2].count(0) > 0.9 * (len(s) // 2)
+    t = s.decode("utf-16le" if u16 else "utf-8", "ignore").lstrip("\ufeff")
+    if not u16 and len(t.encode("utf-8")) < 0.97 * len(s) - 4:
+        return None
+    if len(t) < 6 or len(set(t)) < 8 or max(collections.Counter(t).values()) > 0.45 * len(t):
+        return None
+    if sum(1 for c in t if c.isprintable() or c in "\r\n\t") / len(t) < 0.95 or sum(c.isalpha() for c in t) < 6:
+        return None
+    return bytes(b[:CHAIN_MAX_OUT]).decode("utf-16le" if u16 else "utf-8", "ignore").lstrip("\ufeff")
+
+
+def _chain_known(b: bytes) -> bool:
+    return bool(_chain_label(b)) or _chain_text(b) is not None
+
+
+def _t_decode_text(b: bytes):
+    """Lapis hex / base64 dari teks (ASCII atau UTF-16LE). Mengembalikan (nama, byte) atau None."""
+    t = _chain_text(b)
+    if t is None:
+        return None
+    c = re.sub(r"\s+", "", t)
+    if len(c) > CHAIN_MAX_OUT * 2:
+        return None
+    if _CHAIN_HEX.match(c):
+        try:
+            return "hex", bytes.fromhex(c)
+        except ValueError:
+            return None
+    if _CHAIN_B64.match(c) and len(c) % 4 != 1:
+        try:
+            raw = base64.b64decode(c + "=" * (-len(c) % 4))
+        except Exception:
+            return None
+        return ("base64", raw) if len(raw) >= 16 else None
+    return None
+
+
+def _t_inflate(b: bytes):
+    """Lapis gzip / zlib / deflate mentah, dengan batas ukuran hasil. Deflate mentah hanya diterima bila hasilnya dikenali."""
+    if len(b) < 12:
+        return None
+    if b[:2] == b"\x1f\x8b":
+        cand = (("gzip", 31),)
+    elif b[0] == 0x78 and b[1] in (0x01, 0x5E, 0x9C, 0xDA):
+        cand = (("zlib", 15),)
+    else:
+        cand = (("deflate", -15),)
+    for name, wb in cand:
+        try:
+            out = zlib.decompressobj(wb).decompress(bytes(b[:CHAIN_MAX_OUT]), CHAIN_MAX_OUT)
+        except Exception:
+            continue
+        if len(out) >= 8 and (name != "deflate" or _chain_known(out)):
+            return name, out
+    return None
+
+
+def _t_xor1(b: bytes):
+    """Lapis XOR satu-byte: kunci dipilih bila hasilnya dikenali (format / teks nyata). Data yang sudah dikenali tidak di-XOR lagi."""
+    if len(b) < 32 or _chain_known(b):
+        return None
+    head = bytes(b[:512])
+    if len(set(head)) < 4:
+        return None
+    for k in range(1, 256):
+        t = head.translate(_xor_table("XOR", k))
+        if _chain_label(t) or t[:2] == b"\x1f\x8b" or (t[0] == 0x78 and t[1] in (0x01, 0x5E, 0x9C, 0xDA)) or _chain_text(t) is not None:
+            return "XOR 0x%02X" % k, bytes(b[:CHAIN_MAX_OUT]).translate(_xor_table("XOR", k))
+    return None
+
+
+def _chain_walk(data: bytes, src: str, deadline: float, min_steps: int) -> list[dict]:
+    """Cari rantai dekode terpanjang dari `data`. Hasil: daftar {src, steps, kind, size, sha256, preview, urls}."""
+    found: list[dict] = []
+
+    def rec(b: bytes, steps: list[str], depth: int) -> None:
+        if time.monotonic() > deadline or len(found) >= 3 or depth >= CHAIN_MAX_LAYERS:
+            return
+        for tf in (_t_decode_text, _t_inflate, _t_xor1):
+            r = tf(b)
+            if not r:
+                continue
+            name, nb = r
+            st = steps + [name]
+            lab = _chain_label(nb)
+            txt = None if lab else _chain_text(nb)
+            before = len(found)
+            if depth + 1 < CHAIN_MAX_LAYERS:
+                if txt:   # blob base64 / hex di dalam teks hasil dekode (mis. skrip PowerShell berlapis)
+                    blobs = [m_ for m_ in _B64_CALL.findall(txt)[:2]] + [m_ for m_ in _B64.findall(txt)[:2]]
+                    for bl in blobs:
+                        rec(bl.encode("ascii", "ignore"), st, depth + 1)
+                else:
+                    rec(nb, st, depth + 1)
+            if len(found) > before:
+                return                       # rantai yang lebih dalam menang
+            if (lab or txt) and len(st) >= min_steps:
+                urls = [u.rstrip(".,;)") for u in _URL.findall(txt or "")][:5] if txt else []
+                found.append({"src": src, "steps": st, "kind": lab or "teks", "size": len(nb), "sha256": hashlib.sha256(bytes(nb)).hexdigest(),
+                              "preview": _clean((txt or "")[:160]) if txt else "", "urls": urls})
+                return
+
+    rec(bytes(data), [], 0)
+    return found
+
+
+def _layers_scan(d: bytes, strs: list[str], pe: dict | None, dn: dict | None) -> list[dict]:
+    deadline = time.monotonic() + CHAIN_TIME
+    out: list[dict] = []
+    seen: set[str] = set()
+    n_src = 0
+
+    def take(res):
+        for x in res:
+            key = x["sha256"] + "|".join(x["steps"])
+            if key not in seen and len(out) < 8:
+                seen.add(key)
+                out.append(x)
+
+    # 1) resource PE dan resource terkelola .NET: satu lapis saja sudah janggal (resource sah tidak di-XOR / di-deflate mentah)
+    leaves = []
+    for x in (pe.get("res", []) if pe else []):
+        if x["type"] not in _CHAIN_SKIP_RES and not (x.get("fmt") and x.get("fmt_ok")) and x["size"] >= 32:
+            leaves.append(("resource %s/%s" % (x["type"], x["name"]), x["off"], x["size"]))
+    for x in (dn.get("mres", []) if dn else []):
+        if x["size"] >= 32 and not (x.get("fmt") and x.get("fmt_ok")):
+            leaves.append(("resource .NET @0x%X" % x["off"], x["off"], x["size"]))
+    for src, off, size in leaves:
+        if n_src >= CHAIN_MAX_SRC or time.monotonic() > deadline:
+            break
+        n_src += 1
+        take(_chain_walk(d[off:off + min(size, CHAIN_MAX_OUT)], src, deadline, 1))
+    # 2) blob base64 / argumen FromBase64String / -EncodedCommand di string: satu base64 polos sudah dilaporkan _decode_b64, jadi minimal dua lapis
+    cands: list[str] = []
+    full = "\n".join(s[:200000] for s in strs[:4000])[:8 * 1024 * 1024]
+    for rx in (_PS_ENC, _B64_CALL):
+        cands += [m.group(1) for m in itertools.islice(rx.finditer(full), 6)]
+    cands += [m.group(0) for m in itertools.islice(_B64.finditer(full), 12)]
+    for c in _uniq(cands, CHAIN_MAX_SRC):
+        if n_src >= CHAIN_MAX_SRC or time.monotonic() > deadline:
+            break
+        n_src += 1
+        take(_chain_walk(c.encode("ascii", "ignore"), "string base64", deadline, 2))
+    return out
+
+
+def _layers_enrich(rep: dict, d: bytes, strs: list[str]) -> None:
+    try:
+        lay = _layers_scan(d, strs, rep.get("pe"), rep.get("dotnet"))
+    except Exception as e:
+        lay = []
+        rep["warn"].append("dekoder berlapis gagal: %s" % type(e).__name__)
+    rep["layers"] = lay
+    if lay:
+        ind = rep["ind"]
+        for x in lay:
+            for u in x["urls"]:
+                if u not in ind["urls"] and len(ind["urls"]) < 40:
+                    ind["urls"].append(u)
+        x = next((y for y in lay if y["kind"] not in ("teks",)), lay[0])
+        rep["warn"].append("data berlapis berhasil dibuka (%d): %s -> %s (%s)" % (len(lay), " -> ".join(x["steps"]), x["kind"], x["src"]))
+
+
+def _score_layers(rep: dict, add) -> None:
+    lay = rep.get("layers") or []
+    if any(x["kind"] in ("PE/MZ", "ELF") for x in lay):
+        add(3, "executable tersembunyi di balik lapisan dekode (%s)" % " -> ".join(next(x for x in lay if x["kind"] in ("PE/MZ", "ELF"))["steps"]))
+    elif any(x["kind"] in ("ZIP", "7z", "RAR", "CAB", "OLE2") for x in lay):
+        add(2, "arsip / dokumen tersembunyi di balik lapisan dekode")
+    elif any(len(x["steps"]) >= 2 for x in lay):
+        add(1, "teks tersembunyi di balik beberapa lapis dekode")
+
+
+def _render_layers(rep: dict, a, compact: bool, defang: bool) -> None:
+    for x in (rep.get("layers") or [])[: (2 if compact else 6)]:
+        a("Dekode berlapis (%s): %s => %s %s, sha256 %s...%s" % (x["src"], " -> ".join(x["steps"]), x["kind"], _human(x["size"]), x["sha256"][:16],
+                                                               (" | " + _df(x["preview"][:100 if compact else 160], defang)) if x["preview"] else ""))
+
+
+# ----------------------- v99.20 [A2]: deobfuscation skrip berlapis (PowerShell / VBScript / JavaScript), statis -----------------------
+# Teks skrip TIDAK PERNAH dijalankan: hanya ditulis ulang oleh transformasi string murni (regex + aritmetika bilangan bulat kecil).
+# Tahap 1 (inline, diulang sampai stabil): sambung string ('a'+'b', "a" & "b", .concat), format -f, .Replace / -replace / Replace() / .split().join(),
+#   -join / .join / [string]::Join, balik string ('..'[-1..-n], .split('').reverse().join('')), [char]N / Chr() / fromCharCode (juga aritmetika + / -),
+#   daftar |%{[char]$_} / -bxor, indeks string ($env:ComSpec[4,15,25], $ShellId[1], $pshome[4]), FromBase64String(..) dalam GetString / atob / unescape,
+#   escape \xNN / \uNNNN, tanda backtick PowerShell, variabel konstanta yang hanya diisi sekali (termasuk di dalam "string $var").
+# Tahap 2 (bongkar pembungkus, tiap hasil menjadi lapisan baru): -EncodedCommand, FromBase64String + Deflate/Gzip(/XOR -bxor), iex / Invoke-Expression /
+#   [scriptblock]::Create dengan string literal, eval / new Function / Execute / ExecuteGlobal, JS packer (Dean Edwards).
+# Tahap 3: lapisan dibatasi (DSO_MAX_LAYERS dalam, DSO_MAX_NODES total), waktu (DSO_TIME), ukuran teks (DSO_MAX_TEXT). Kunci baru rep["deobf"] (None bila tidak ada
+#   yang terbuka), baris "Deobfuscation skrip" di laporan, skor kecil bila isi terbuka memuat pola unduh / eksekusi; CLI `--deobf FILE [--json] [--raw] [--full]`;
+#   aksi API {"action": "deobf", "path": ...}; fungsi deobfuscate(data), deobf_text(path).
+# Batasan: bukan interpreter. Variabel yang diubah di banyak tempat / lewat loop, fungsi dekode buatan sendiri (string-array + rotasi gaya obfuscator.io),
+#   Microsoft Script Encoder (#@~^ .vbe / .jse), AES / RC4 di skrip, dan nilai yang hanya diketahui saat jalan TIDAK dibongkar. Hasil adalah petunjuk.
+
+DSO_TIME = 3.0
+DSO_MAX_TEXT = 2 * 1024 * 1024
+DSO_MAX_LAYERS = 6
+DSO_MAX_NODES = 12
+DSO_MAX_PASS = 24
+_DSO_RX: dict = {}
+
+
+def _dso_rx(p: str, flags: int = 0):
+    k = (p, flags)
+    r = _DSO_RX.get(k)
+    if r is None:
+        r = _DSO_RX[k] = re.compile(p, flags)
+    return r
+
+
+def _dso_S(lang: str) -> str:
+    """Regex satu string literal 'aman' (tanpa interpolasi $ pada "..." PowerShell). Tanpa grup penangkap."""
+    if lang == "powershell":
+        return r"""(?:'(?:[^'\r\n]|'')*'|"(?:[^"\r\n`$]|`[^\r\n]|"")*")"""
+    if lang == "vbscript":
+        return r'"(?:[^"\r\n]|"")*"'
+    return r"""(?:'(?:[^'\\\r\n]|\\.)*'|"(?:[^"\\\r\n]|\\.)*")"""
+
+
+def _dso_Sfull(lang: str) -> str:
+    if lang == "powershell":
+        return r"""'(?:[^'\r\n]|'')*'|"(?:[^"\r\n`]|`[^\r\n]|"")*\""""
+    return _dso_S(lang)
+
+
+_DSO_PSESC = {"n": "\n", "r": "\r", "t": "\t", "0": "\0", "a": "\a", "b": "\b", "f": "\f", "v": "\v"}
+_DSO_JSESC = {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f", "v": "\v"}
+
+
+def _dso_unq(tok: str, lang: str) -> str:
+    q, b = tok[0], tok[1:-1]
+    if lang == "powershell":
+        if q == "'":
+            return b.replace("''", "'")
+        return re.sub(r"`(.)", lambda m: _DSO_PSESC.get(m.group(1), m.group(1)), b.replace('""', '"'))
+    if lang == "vbscript":
+        return b.replace('""', '"')
+
+    def esc(m):
+        g = m.group(1)
+        try:
+            if g[0] == "x" and len(g) == 3:
+                return chr(int(g[1:], 16))
+            if g[0] == "u":
+                return chr(int(g[1:].strip("{}"), 16))
+            if g.isdigit() and all(c in "01234567" for c in g):
+                return chr(int(g, 8))
+        except (ValueError, OverflowError):
+            return m.group(0)
+        return _DSO_JSESC.get(g, g)
+    return re.sub(r"\\(x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]{1,6}\}|u[0-9a-fA-F]{4}|[0-3]?[0-7]{1,2}|.)", esc, b)
+
+
+def _dso_q(s: str, lang: str):
+    """Bungkus teks sebagai literal; None bila tidak bisa direpresentasikan (dibiarkan apa adanya oleh pemanggil)."""
+    if len(s) > 400000 or any(0xD800 <= ord(c) <= 0xDFFF for c in s):
+        return None
+    if lang == "javascript":
+        out = []
+        for c in s:
+            o = ord(c)
+            out.append("\\\\" if c == "\\" else '\\"' if c == '"' else "\\n" if c == "\n" else "\\r" if c == "\r" else "\\t" if c == "\t"
+                       else "\\x%02x" % o if o < 32 or o == 127 else c)
+        return '"' + "".join(out) + '"'
+    if lang == "vbscript":
+        if "\r" in s or "\n" in s or "\0" in s:
+            return None
+        return '"' + s.replace('"', '""') + '"'
+    if any(ord(c) < 32 and c != "\t" for c in s):
+        t = s.replace("`", "``").replace('"', '`"').replace("$", "`$").replace("\n", "`n").replace("\r", "`r").replace("\t", "`t").replace("\0", "`0")
+        return None if any(ord(c) < 32 for c in t) else '"' + t + '"'
+    return "'" + s.replace("'", "''") + "'"
+
+
+_DSO_NUM = r"(?:0[xX][0-9a-fA-F]+|&[hH][0-9a-fA-F]+|\d{1,7})"
+
+
+def _dso_num(s: str) -> int:
+    s = s.strip()
+    return int(s[2:], 16) if s[:2].lower() in ("0x", "&h") else int(s)
+
+
+def _dso_arith(s: str):
+    """Hanya bilangan bulat dengan + dan -; None bila bentuknya lain."""
+    m = _dso_rx(r"(%s)((?:\s*[+\-]\s*%s)*)" % (_DSO_NUM, _DSO_NUM)).fullmatch(s.strip())
+    if not m:
+        return None
+    v = _dso_num(m.group(1))
+    for op, n in _dso_rx(r"([+\-])\s*(%s)" % _DSO_NUM).findall(m.group(2)):
+        v = v + _dso_num(n) if op == "+" else v - _dso_num(n)
+    return v
+
+
+def _dso_chr(code, lang: str):
+    if code is None or not 0 <= code < 0x110000 or 0xD800 <= code <= 0xDFFF:
+        return None
+    return _dso_q(chr(code), lang)
+
+
+def _dso_lits(s: str, lang: str) -> list[str]:
+    return [_dso_unq(t, lang) for t in _dso_rx(_dso_S(lang)).findall(s)]
+
+
+def _dso_sub_outside(text: str, lang: str, rx, fn) -> str:
+    """Seperti rx.sub, tetapi hanya di luar string literal; fn(m) -> pengganti atau None (lewati)."""
+    spans = [(m.start(), m.end()) for m in _dso_rx(_dso_Sfull(lang)).finditer(text)]
+    starts = [a for a, _ in spans]
+    out, last = [], 0
+    for m in rx.finditer(text):
+        i = bisect.bisect_right(starts, m.start()) - 1
+        if i >= 0 and spans[i][0] <= m.start() < spans[i][1]:
+            continue
+        r = fn(m)
+        if r is None or m.start() < last:
+            continue
+        out.append(text[last:m.start()])
+        out.append(r)
+        last = m.end()
+    out.append(text[last:])
+    return "".join(out)
+
+
+# --- transformasi inline: tiap fungsi (text, lang) -> text (sama bila tidak ada perubahan) ---
+
+def _dso_t_jsesc(text: str, lang: str) -> str:
+    if lang != "javascript" or "\\" not in text:
+        return text
+
+    def f(m):
+        tok = m.group(0)
+        if not _dso_rx(r"\\(?:x[0-9a-fA-F]{2}|u[0-9a-fA-F{])").search(tok):
+            return tok
+        q = _dso_q(_dso_unq(tok, lang), lang)
+        return q if q is not None else tok
+    return _dso_rx(_dso_S(lang)).sub(f, text)
+
+
+def _dso_t_ticks(text: str, lang: str) -> str:
+    if lang != "powershell" or "`" not in text:
+        return text
+    return _dso_sub_outside(text, lang, _dso_rx(r"`(?=[^\s`])"), lambda m: "")
+
+
+def _dso_t_chars(text: str, lang: str) -> str:
+    low = text.lower()
+    if lang == "powershell" and "[char" in low:
+        LIST = r"(%s(?:\s*,\s*%s)*)" % (_DSO_NUM, _DSO_NUM)
+        text = _dso_rx(r"(?i)\[char\[\]\]\s*\(\s*%s\s*\)" % LIST).sub(
+            lambda m: _dso_q("".join(chr(_dso_num(x)) for x in m.group(1).split(",") if 0 <= _dso_num(x) < 0x110000 and not 0xD800 <= _dso_num(x) <= 0xDFFF), lang) or m.group(0), text)
+        core = r"%s\s*\|\s*(?:%%|foreach(?:-object)?)\s*\{\s*\[char\]\s*\(?\s*\$_\s*(?:-bxor\s*(%s)\s*)?\)?\s*\}" % (LIST, _DSO_NUM)
+
+        def piped(m):
+            x = _dso_num(m.group(2)) if m.group(2) else 0
+            try:
+                return _dso_q("".join(chr(_dso_num(v) ^ x) for v in m.group(1).split(",")), lang) or m.group(0)
+            except (ValueError, OverflowError):
+                return m.group(0)
+        text = _dso_rx("(?i)" + core).sub(piped, text)
+        text = _dso_rx(r"(?i)\[char\]\s*(?:\(\s*([0-9a-fx+\-\s]{1,40}?)\s*\)|(%s)(?![\w.]))" % _DSO_NUM).sub(
+            lambda m: _dso_chr(_dso_arith(m.group(1) or m.group(2)), lang) or m.group(0), text)
+    elif lang == "vbscript" and "chr" in low:
+        text = _dso_rx(r"(?i)\bchrw?\$?\(\s*([^()]{1,40}?)\s*\)").sub(lambda m: _dso_chr(_dso_arith(m.group(1)), lang) or m.group(0), text)
+    elif lang == "javascript" and "fromc" in low:
+        def f(m):
+            codes = [_dso_arith(x) for x in m.group(1).split(",")]
+            if not codes or any(c is None or not 0 <= c < 0x110000 or 0xD800 <= c <= 0xDFFF for c in codes):
+                return m.group(0)
+            return _dso_q("".join(chr(c) for c in codes), lang) or m.group(0)
+        text = _dso_rx(r"(?i)String\s*\.\s*fromCharCode\s*\(\s*([^()]{1,8000}?)\s*\)").sub(f, text)
+    return text
+
+
+_DSO_ENVSTR = {"env:comspec": "C:\\Windows\\system32\\cmd.exe", "shellid": "Microsoft.PowerShell", "pshome": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0"}
+
+
+def _dso_t_psenv(text: str, lang: str) -> str:
+    """$env:ComSpec[4,15,25], $ShellId[1], $pshome[4]: indeks ke nilai baku (asumsi jalur Windows standar)."""
+    if lang != "powershell" or "[" not in text:
+        return text
+
+    def f(m):
+        base = _DSO_ENVSTR[m.group(1).lower()]
+        idx = [int(x) for x in m.group(2).split(",")]
+        if any(i >= len(base) for i in idx):
+            return m.group(0)
+        return _dso_q("".join(base[i] for i in idx), lang) or m.group(0)
+    return _dso_rx(r"(?i)\$(env:comspec|shellid|pshome)\s*\[\s*(\d{1,3}(?:\s*,\s*\d{1,3})*)\s*\]").sub(f, text)
+
+
+def _dso_t_concat(text: str, lang: str) -> str:
+    S = _dso_S(lang)
+    op = r"[ \t]*(?:&|\+)[ \t]*(?:_?\r?\n[ \t]*)?" if lang == "vbscript" else r"[ \t]*\+[ \t]*(?:\r?\n[ \t]*)?"
+    rx = _dso_rx(r"(?:%s)(?:%s(?:%s))+(?![ \t]*[.\[(\w$])" % (S, op, S))
+    bad_pre = _dso_rx(r"(?i)-(?:f|[ci]?replace|join|split|[ci]?(?:eq|ne|like|match|contains|notlike|notmatch))$")
+
+    def f(m):
+        if lang == "powershell":
+            pre = text[max(0, m.start() - 16):m.start()].rstrip()
+            if pre.endswith(",") or bad_pre.search(pre) or text[m.end():m.end() + 4].lstrip(" \t").startswith(","):
+                return m.group(0)
+        q = _dso_q("".join(_dso_lits(m.group(0), lang)), lang)
+        return q if q is not None else m.group(0)
+    return rx.sub(f, text)
+
+
+def _dso_t_fmt(text: str, lang: str) -> str:
+    if lang != "powershell" or "-f" not in text.lower():
+        return text
+    S = _dso_S(lang)
+    ARG = r"(?:%s|[+-]?\d{1,9})" % S
+    rx = _dso_rx(r"(?i)(%s)\s*-f\s*(%s(?:\s*,\s*%s)*)(?![\w$(\[.])" % (S, ARG, ARG))
+
+    def f(m):
+        fmt = _dso_unq(m.group(1), lang)
+        args = [_dso_unq(a, lang) if a[0] in "'\"" else a for a in _dso_rx(ARG).findall(m.group(2))]
+        bad = []
+
+        def sub(mm):
+            if mm.group(0) == "{{":
+                return "{"
+            if mm.group(0) == "}}":
+                return "}"
+            i = int(mm.group(1))
+            if i >= len(args):
+                bad.append(1)
+                return ""
+            return args[i]
+        try:
+            out = _dso_rx(r"\{\{|\}\}|\{(\d+)\}").sub(sub, fmt)
+        except Exception:
+            return m.group(0)
+        if bad or _dso_rx(r"\{\d+[,:][^{}]*\}").search(fmt):
+            return m.group(0)
+        return _dso_q(out, lang) or m.group(0)
+    return rx.sub(f, text)
+
+
+def _dso_t_replace(text: str, lang: str) -> str:
+    low = text.lower()
+    if "replace" not in low and "split" not in low:
+        return text
+    S = _dso_S(lang)
+    if lang == "powershell":
+        text = _dso_rx(r"(?i)(%s)\s*\.\s*replace\s*\(\s*(%s)\s*,\s*(%s)\s*\)" % (S, S, S)).sub(
+            lambda m: (_dso_q(_dso_unq(m.group(1), lang).replace(_dso_unq(m.group(2), lang), _dso_unq(m.group(3), lang)), lang) or m.group(0)) if _dso_unq(m.group(2), lang) else m.group(0), text)
+
+        def rr(m):
+            pre = text[max(0, m.start() - 4):m.start()].rstrip()
+            if pre.endswith("+") or pre.endswith(","):
+                return m.group(0)
+            rep = _dso_unq(m.group(3), lang) if m.group(3) else ""
+            if "$" in rep or text[m.end():m.end() + 4].lstrip().startswith(","):
+                return m.group(0)
+            try:
+                out = _dso_rx(_dso_unq(m.group(2), lang), re.I if m.group(0).lower().find("-creplace") < 0 else 0).sub(lambda _m: rep, _dso_unq(m.group(1), lang))
+            except re.error:
+                return m.group(0)
+            return _dso_q(out, lang) or m.group(0)
+        text = _dso_rx(r"(?i)(%s)\s*-[ci]?replace\s*(%s)(?:\s*,\s*(%s))?" % (S, S, S)).sub(rr, text)
+    elif lang == "vbscript":
+        text = _dso_rx(r"(?i)\bReplace\(\s*(%s)\s*,\s*(%s)\s*,\s*(%s)\s*\)" % (S, S, S)).sub(
+            lambda m: (_dso_q(_dso_unq(m.group(1), lang).replace(_dso_unq(m.group(2), lang), _dso_unq(m.group(3), lang)), lang) or m.group(0)) if _dso_unq(m.group(2), lang) else m.group(0), text)
+    else:
+        text = _dso_rx(r"(%s)\s*\.\s*replace\s*\(\s*(%s)\s*,\s*(%s)\s*\)" % (S, S, S)).sub(
+            lambda m: m.group(0) if "$" in m.group(3) or not _dso_unq(m.group(2), lang) else
+            (_dso_q(_dso_unq(m.group(1), lang).replace(_dso_unq(m.group(2), lang), _dso_unq(m.group(3), lang), 1), lang) or m.group(0)), text)
+
+        def rl(m):
+            rep = _dso_unq(m.group(4), lang)
+            if "$" in rep:
+                return m.group(0)
+            try:
+                pat = _dso_rx(m.group(2), re.I if "i" in m.group(3) else 0)
+            except re.error:
+                return m.group(0)
+            return _dso_q(pat.sub(lambda _m: rep, _dso_unq(m.group(1), lang), count=0 if "g" in m.group(3) else 1), lang) or m.group(0)
+        text = _dso_rx(r"(%s)\s*\.\s*replace\s*\(\s*/((?:[^/\\\r\n]|\\.){1,200})/([gimsuy]*)\s*,\s*(%s)\s*\)" % (S, S)).sub(rl, text)
+        text = _dso_rx(r"(%s)\s*\.\s*split\(\s*(%s)\s*\)\s*\.\s*join\(\s*(%s)\s*\)" % (S, S, S)).sub(
+            lambda m: (_dso_q(_dso_unq(m.group(3), lang).join(_dso_unq(m.group(1), lang).split(_dso_unq(m.group(2), lang))), lang) or m.group(0)) if _dso_unq(m.group(2), lang) else m.group(0), text)
+    return text
+
+
+def _dso_t_join(text: str, lang: str) -> str:
+    low = text.lower()
+    if "join" not in low and "concat" not in low and "[-1" not in low and "][" not in low and "[" not in low:
+        return text
+    S = _dso_S(lang)
+    LS = r"%s(?:\s*,\s*%s)*" % (S, S)
+    EMPTY = r"""(?:''|"")"""
+
+    def jn(items, sep, ln=lang):
+        return _dso_q(sep.join(items), ln)
+
+    if lang == "powershell":
+        text = _dso_rx(r"(?i)(%s)\s*\[\s*-1\s*\.\.\s*-[^\]]{1,40}\]" % S).sub(lambda m: _dso_q(_dso_unq(m.group(1), lang)[::-1], lang) or m.group(0), text)
+
+        def idx(m):
+            s = _dso_unq(m.group(1), lang)
+            ix = [int(x) for x in m.group(2).split(",")]
+            return _dso_q("".join(s[i] for i in ix), lang) or m.group(0) if all(0 <= i < len(s) for i in ix) else m.group(0)
+        text = _dso_rx(r"(?<![,\w$])(%s)\s*\[\s*(\d{1,4}(?:\s*,\s*\d{1,4})*)\s*\]" % S).sub(idx, text)
+        text = _dso_rx(r"(?i)@?\(\s*(%s)\s*\)\s*-join\s*(%s)" % (LS, S)).sub(lambda m: jn(_dso_lits(m.group(1), lang), _dso_unq(m.group(2), lang)) or m.group(0), text)
+        text = _dso_rx(r"(?i)-join\s*@?\(\s*(%s)\s*\)" % LS).sub(lambda m: jn(_dso_lits(m.group(1), lang), "") or m.group(0), text)
+        text = _dso_rx(r"(?i)(%s)\s*-join\s*%s" % (S, EMPTY)).sub(lambda m: m.group(1), text)
+        text = _dso_rx(r"(?i)-join\s*(%s)(?!\s*,)" % S).sub(lambda m: m.group(1), text)
+        text = _dso_rx(r"(?i)\[string\]\s*::\s*join\s*\(\s*(%s)\s*,\s*@?\(?\s*(%s)\s*\)?\s*\)" % (S, LS)).sub(
+            lambda m: jn(_dso_lits(m.group(2), lang), _dso_unq(m.group(1), lang)) or m.group(0), text)
+    elif lang == "javascript":
+        text = _dso_rx(r"(%s)\s*\.\s*split\(\s*(%s)\s*\)\s*\.\s*reverse\(\s*\)\s*\.\s*join\(\s*(%s)\s*\)" % (S, S, S)).sub(
+            lambda m: jn(_dso_unq(m.group(1), lang).split(_dso_unq(m.group(2), lang))[::-1] if _dso_unq(m.group(2), lang) else list(_dso_unq(m.group(1), lang))[::-1], _dso_unq(m.group(3), lang)) or m.group(0), text)
+        text = _dso_rx(r"\[\s*(%s)\s*\]\s*\.\s*join\(\s*(%s)?\s*\)" % (LS, S)).sub(
+            lambda m: jn(_dso_lits(m.group(1), lang), _dso_unq(m.group(2), lang) if m.group(2) else ",") or m.group(0), text)
+        text = _dso_rx(r"(%s)\s*\.\s*concat\(\s*(%s)\s*\)" % (S, LS)).sub(
+            lambda m: jn([_dso_unq(m.group(1), lang)] + _dso_lits(m.group(2), lang), "") or m.group(0), text)
+    else:
+        text = _dso_rx(r"(?i)\bJoin\(\s*Array\(\s*(%s)\s*\)\s*,\s*(%s)\s*\)" % (LS, S)).sub(
+            lambda m: jn(_dso_lits(m.group(1), lang), _dso_unq(m.group(2), lang)) or m.group(0), text)
+    return text
+
+
+def _dso_t_b64(text: str, lang: str) -> str:
+    low = text.lower()
+    S = _dso_S(lang)
+
+    def dec(b64: str):
+        try:
+            raw = base64.b64decode(re.sub(r"\s+", "", b64) + "=" * (-len(re.sub(r"\s+", "", b64)) % 4), validate=False)
+        except Exception:
+            return None
+        return raw
+
+    def okt(t: str) -> bool:
+        return len(t) >= 1 and sum(1 for c in t if c.isprintable() or c in "\r\n\t") / len(t) >= 0.9
+
+    if lang == "powershell" and "getstring" in low:
+        encs = {"utf8": "utf-8", "unicode": "utf-16le", "ascii": "ascii", "bigendianunicode": "utf-16be", "utf32": "utf-32le", "utf7": "utf-7", "default": "utf-8"}
+
+        def f(m):
+            raw = dec(_dso_unq(m.group(2), lang))
+            if raw is None:
+                return m.group(0)
+            try:
+                t = raw.decode(encs[m.group(1).lower()], "strict")
+            except Exception:
+                return m.group(0)
+            return (_dso_q(t, lang) or m.group(0)) if okt(t) else m.group(0)
+        text = _dso_rx(r"(?i)\[\s*(?:System\.)?Text\.Encoding\s*\]\s*::\s*(utf8|unicode|ascii|bigendianunicode|utf32|utf7|default)\s*\.\s*GetString\s*\(\s*"
+                       r"\[\s*(?:System\.)?Convert\s*\]\s*::\s*FromBase64String\s*\(\s*(%s)\s*\)\s*\)" % S).sub(f, text)
+    if lang == "javascript" and "atob" in low:
+        def g(m):
+            raw = dec(_dso_unq(m.group(1), lang))
+            if raw is None:
+                return m.group(0)
+            t = raw.decode("latin-1")
+            return (_dso_q(t, lang) or m.group(0)) if okt(t) else m.group(0)
+        text = _dso_rx(r"(?:window\s*\.\s*)?atob\s*\(\s*(%s)\s*\)" % S).sub(g, text)
+    if lang == "javascript" and ("unescape" in low or "decodeuri" in low):
+        def h(m):
+            s = _dso_unq(m.group(1), lang)
+            try:
+                s2 = _dso_rx(r"%u([0-9a-fA-F]{4})|%([0-9a-fA-F]{2})").sub(lambda mm: chr(int(mm.group(1) or mm.group(2), 16)), s)
+            except (ValueError, OverflowError):
+                return m.group(0)
+            return _dso_q(s2, lang) or m.group(0)
+        text = _dso_rx(r"(?:unescape|decodeURIComponent|decodeURI)\s*\(\s*(%s)\s*\)" % S).sub(h, text)
+    return text
+
+
+def _dso_t_alias(text: str, lang: str) -> str:
+    if lang != "powershell":
+        return text
+    return _dso_rx(r"""(?i)[.&]\s*\(\s*(['"])(iex|invoke-expression)\1\s*\)""").sub(lambda m: m.group(2), text)
+
+
+def _dso_vars_n(text: str, name: str, lang: str) -> int:
+    if lang == "powershell":
+        return len(_dso_rx(r"(?i)\$(?:script:|global:|local:)?%s\b\s*[-+*/%%]?=(?!=)" % re.escape(name)).findall(text))
+    if lang == "vbscript":
+        return len(_dso_rx(r"(?im)^[ \t]*(?:(?:Dim|Const|Set)[ \t]+)?%s[ \t]*=" % re.escape(name)).findall(text))
+    return len(_dso_rx(r"(?<![\w$.])%s\s*(?:[-+*/%%&|^]|<<|>>>?)?=(?![=>])" % re.escape(name)).findall(text))
+
+
+def _dso_ps_expand(body: str, defs: dict):
+    out, i, n = [], 0, len(body)
+    var = _dso_rx(r"\$(?:\{(\w+)\}|\(\s*\$(\w+)\s*\)|(?:script:|global:)?(\w+))")
+    while i < n:
+        c = body[i]
+        if c == "`" and i + 1 < n:
+            out.append(_DSO_PSESC.get(body[i + 1], body[i + 1]))
+            i += 2
+        elif c == '"' and body[i + 1:i + 2] == '"':
+            out.append('"')
+            i += 2
+        elif c == "$":
+            m = var.match(body, i)
+            nm = (m.group(1) or m.group(2) or m.group(3)) if m else None
+            if not nm or nm.lower() not in defs:
+                return None
+            out.append(defs[nm.lower()])
+            i = m.end()
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def _dso_t_vars(text: str, lang: str) -> str:
+    S = _dso_S(lang)
+    if lang == "powershell":
+        asg = _dso_rx(r"(?im)\$(?:script:|global:|local:)?([A-Za-z_]\w*)[ \t]*=[ \t]*(%s)[ \t]*(?=;|\r?$)" % S)
+    elif lang == "vbscript":
+        asg = _dso_rx(r"""(?im)^[ \t]*(?:(?:Dim|Const)[ \t]+)?([A-Za-z_]\w*)[ \t]*=[ \t]*(%s)[ \t]*(?:'[^\r\n]*)?\r?$""" % S)
+    else:
+        asg = _dso_rx(r"""(?m)\b(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*(%s)\s*(?=[;,\r\n]|$)""" % S)
+    defs: dict = {}
+    for m in itertools.islice(asg.finditer(text), 400):
+        nm = m.group(1)
+        key = nm if lang == "javascript" else nm.lower()
+        if key in defs or len(defs) >= 64:
+            defs[key] = None
+            continue
+        bad = (lang == "powershell" and _dso_rx(r"(?i)(?:\$%s\s+in\b|\$%s(?:\+\+|--)|\[ref\]\s*\$%s|-(?:out)?variable\s+%s\b|param\s*\([^)]*\$%s\b)" % ((re.escape(nm),) * 5)).search(text)) or \
+              (lang == "javascript" and _dso_rx(r"(?:function\s*[\w$]*\s*\([^)]*\b%s\b|(?<![\w$.])%s(?:\+\+|--))" % ((re.escape(nm),) * 2)).search(text))
+        if bad or _dso_vars_n(text, nm, lang) != 1:
+            defs[key] = None
+            continue
+        defs[key] = m.group(2)
+    defs = {k: v for k, v in defs.items() if v}
+    if not defs:
+        return text
+    if lang == "powershell":
+        names = "|".join(re.escape(k) for k in sorted(defs, key=len, reverse=True))
+        use = _dso_rx(r"(?i)(?<![\w$])\$(?:script:|global:|local:)?(%s)(?![\w:])(?!\s*[-+*/%%]?=(?!=))" % names)
+        text = _dso_sub_outside(text, lang, use, lambda m: defs[m.group(1).lower()])
+        vals = {k: _dso_unq(v, lang) for k, v in defs.items()}
+
+        def dq(m):
+            tok = m.group(0)
+            if tok[0] != '"' or "$" not in tok:
+                return tok
+            e = _dso_ps_expand(tok[1:-1], vals)
+            q = _dso_q(e, lang) if e is not None else None
+            return q if q is not None else tok
+        return _dso_rx(_dso_Sfull(lang)).sub(dq, text)
+    names = "|".join(re.escape(k) for k in sorted(defs, key=len, reverse=True))
+    if lang == "vbscript":
+        use = _dso_rx(r"(?i)(?<![\w.])(%s)(?!\w)" % names)
+
+        def fv(m):
+            ls = text.rfind("\n", 0, m.start()) + 1
+            pre = text[ls:m.start()]
+            if _dso_rx(r"(?i)\s*(?:dim|redim|const|private|public|for|function|sub|next|set)\b").match(pre) or (not pre.strip() and _dso_rx(r"\s*=(?!=)").match(text, m.end())):
+                return None
+            return defs[m.group(1).lower()]
+        return _dso_sub_outside(text, lang, use, fv)
+    use = _dso_rx(r"(?<![\w$.])(%s)(?![\w$])(?!\s*(?:[-+*/%%&|^]|<<|>>>?)?=(?![=>]))(?!\s*:)" % names)
+
+    def fj(m):
+        if _dso_rx(r"(?:var|let|const|function)\s+$").search(text[max(0, m.start() - 12):m.start()]):
+            return None
+        return defs[m.group(1)]
+    return _dso_sub_outside(text, lang, use, fj)
+
+
+_DSO_TRANSFORMS = (("kunci / escape", _dso_t_jsesc), ("backtick", _dso_t_ticks), ("variabel", _dso_t_vars), ("karakter", _dso_t_chars), ("indeks env", _dso_t_psenv),
+                   ("base64 inline", _dso_t_b64), ("sambung string", _dso_t_concat), ("format -f", _dso_t_fmt), ("replace / split", _dso_t_replace),
+                   ("join / balik / indeks", _dso_t_join), ("alias iex", _dso_t_alias))
+
+
+def _dso_inline(text: str, lang: str, deadline: float):
+    names: list[str] = []
+    for _ in range(DSO_MAX_PASS):
+        before = text
+        for nm, fn in _DSO_TRANSFORMS:
+            if time.monotonic() > deadline:
+                return text, names
+            try:
+                t2 = fn(text, lang)
+            except (RecursionError, MemoryError):
+                continue
+            if t2 != text and len(t2) <= DSO_MAX_TEXT * 2:
+                text = t2
+                if nm not in names:
+                    names.append(nm)
+        if text == before:
+            break
+    return text, names
+
+
+def _dso_lang(text: str, hint: str | None = None) -> str:
+    if hint in ("powershell", "vbscript", "javascript"):
+        return hint
+    return max(_dso_lang_scores(text), key=lambda x: x[0])[1]
+
+
+def _dso_lang_scores(text: str) -> list:
+    h = text[:200000]
+    ps = len(re.findall(r"(?i)\$\w+\s*=|-join\b|\[char\]|\biex\b|invoke-expression|frombase64string|\bnew-object\b|-bxor|\bwrite-host\b|\[convert\]|\[system\.", h))
+    js = len(re.findall(r"(?i)\bvar\s+\w+|\bfunction\s*\w*\s*\(|fromcharcode|unescape\(|\beval\(|\batob\(|document\.|=>|\.split\(|\.join\(", h))
+    vb = len(re.findall(r"(?i)\bdim\s+\w+|\bchrw?\(|wscript\.|createobject|\bexecute(?:global)?\b|^\s*set\s+\w+\s*=|\bend\s+(?:sub|function|if)\b", h, re.M))
+    if re.search(r"(?i)\bpowershell(?:\.exe)?\b[^\r\n]{0,200}\s-(?:e|ec|enc|encodedcommand|nop|noprofile|w|windowstyle|command|c)\b", h):
+        ps += 3
+    return [(ps, "powershell"), (js, "javascript"), (vb, "vbscript")]
+
+
+def _dso_to_text(data) -> str:
+    b = bytes(data[:DSO_MAX_TEXT * 2])
+    if b[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return b.decode("utf-16", "ignore")
+    if len(b) >= 8 and b[1::2].count(0) > 0.9 * (len(b) // 2):
+        return b.decode("utf-16le", "ignore")
+    return b.decode("utf-8", "replace").lstrip("\ufeff")
+
+
+def _dso_text_ok(t: str, minlen: int = 4) -> bool:
+    return len(t) >= minlen and sum(1 for c in t if c.isprintable() or c in "\r\n\t") / len(t) >= 0.9
+
+
+def _dso_b64raw(b64: str):
+    c = re.sub(r"\s+", "", b64)
+    if len(c) < 16 or len(c) % 4 == 1:
+        return None
+    try:
+        return base64.b64decode(c + "=" * (-len(c) % 4))
+    except Exception:
+        return None
+
+
+def _dso_blob(raw: bytes, keys: list, deadline: float):
+    """base64 -> [gzip / zlib / deflate / XOR] sampai dikenali. -> (langkah, teks | None, label | None, byte) atau None."""
+    steps = ["base64"]
+    b = bytes(raw)
+    for _ in range(3):
+        if time.monotonic() > deadline:
+            return None
+        lab = _chain_label(b)
+        if lab or _chain_text(b) is not None:
+            return steps, (None if lab else _chain_text(b)), lab, b
+        r = _t_inflate(b)
+        if r:
+            steps.append(r[0])
+            b = r[1]
+            continue
+        hit = None
+        for k in keys:
+            t = b[:512].translate(_xor_table("XOR", k))
+            if _chain_label(t) or t[:2] == b"\x1f\x8b" or (t[0] == 0x78 and t[1] in (0x01, 0x5E, 0x9C, 0xDA)) or _chain_text(t) is not None:
+                hit = k
+                break
+        if hit is None:
+            return None
+        steps.append("XOR 0x%02X" % hit)
+        b = bytes(b[:CHAIN_MAX_OUT]).translate(_xor_table("XOR", hit))
+    lab = _chain_label(b)
+    if lab or _chain_text(b) is not None:
+        return steps, (None if lab else _chain_text(b)), lab, b
+    return None
+
+
+def _dso_js_packer(text: str):
+    S = _dso_S("javascript")
+    m = _dso_rx(r"(?s)eval\s*\(\s*function\s*\(\s*p\s*,\s*a\s*,\s*c\s*,\s*k\s*,\s*e\s*,\s*[dr]\s*\)\s*\{.{0,3000}?\}\s*\(\s*(%s)\s*,\s*(\d{1,3})\s*,\s*(\d{1,6})\s*,\s*(%s)\s*\.\s*split\(\s*(%s)\s*\)" % (S, S, S)).search(text)
+    if not m:
+        return None
+    p, a, c = _dso_unq(m.group(1), "javascript"), int(m.group(2)), int(m.group(3))
+    k = _dso_unq(m.group(4), "javascript").split(_dso_unq(m.group(5), "javascript"))
+    if not 2 <= a <= 62 or c > 200000:
+        return None
+    digs = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+    def enc(n: int) -> str:
+        r = "" if n < a else enc(n // a)
+        n %= a
+        return r + (chr(n + 29) if n > 35 else digs[n])
+    d = {}
+    for i in range(min(c, len(k))):
+        d[enc(i)] = k[i] or enc(i)
+    out = _dso_rx(r"\b\w+\b").sub(lambda mm: d.get(mm.group(0), mm.group(0)), p)
+    return out if _dso_text_ok(out, 8) else None
+
+
+def _dso_payloads(text: str, lang: str, deadline: float) -> list:
+    """Pembungkus yang bisa dibuka dari `text` (sudah melewati tahap inline). -> [(via, payload str | bytes, binary, lang)]."""
+    out: list = []
+
+    def add(via, pay, binary=False, plang=None):
+        if len(out) < 8:
+            out.append((via, pay, binary, plang or lang))
+
+    def code_like(t: str) -> bool:
+        return _dso_text_ok(t, 4) and bool(re.search(r"[\s;(|$=]", t)) and bool(re.search(r"[A-Za-z]{3}", t)) and sum(c.isalnum() for c in t) >= 0.4 * len(t)
+
+    S = _dso_S(lang)
+    for m in itertools.islice(_PS_ENC.finditer(text), 4):
+        raw = _dso_b64raw(m.group(1))
+        if raw is None:
+            continue
+        for enc in ("utf-16le", "utf-8"):
+            t = raw.decode(enc, "ignore")
+            if _dso_text_ok(t, 6):
+                add("-EncodedCommand", t, False, "powershell")
+                break
+    if lang == "powershell":
+        pat = (r"(?is)(?:\b(?:iex|invoke-expression)\b|\[\s*scriptblock\s*\]\s*::\s*create|\.\s*invokecommand\s*\.\s*invokescript)\s*\(?\s*(%s)" % S,
+               r"(?is)(%s)\s*\)?\s*\|\s*(?:iex|invoke-expression)\b" % S)
+        for rx in pat:
+            for m in itertools.islice(_dso_rx(rx).finditer(text), 4):
+                t = _dso_unq(m.group(1), lang)
+                if code_like(t):
+                    add("iex / Invoke-Expression (string literal)", t, False, "powershell")
+        if _dso_rx(r"(?i)deflatestream|gzipstream|io\.compression|-bxor|assembly\s*\]\s*::\s*load").search(text):
+            keys = [_dso_num(x) & 0xFF for x in _dso_rx(r"(?i)-bxor\s*(%s)" % _DSO_NUM).findall(text)]
+            nums = {n.lower(): _dso_num(v) & 0xFF for n, v in _dso_rx(r"(?i)\$(\w+)\s*=\s*(%s)\s*(?=[;\r\n]|$)" % _DSO_NUM).findall(text)}
+            for n in _dso_rx(r"(?i)-bxor\s*\$(\w+)").findall(text):
+                if n.lower() in nums:
+                    keys.append(nums[n.lower()])
+            keys = [k for k in dict.fromkeys(keys) if 1 <= k < 256]
+            for m in itertools.islice(_dso_rx(r"(?i)FromBase64String\s*\(\s*(%s)\s*\)" % S).finditer(text), 4):
+                raw = _dso_b64raw(_dso_unq(m.group(1), lang))
+                r = _dso_blob(raw, keys, deadline) if raw is not None and len(raw) >= 16 else None
+                if r and len(r[0]) >= 2:
+                    steps, t, lab, b = r
+                    via = " > ".join(steps)
+                    if lab:
+                        add(via + " (%s)" % lab, bytes(b), True)
+                    elif t:
+                        add(via, t[:DSO_MAX_TEXT], False, _dso_lang(t))
+    elif lang == "javascript":
+        for rx in (r"\beval\s*\(\s*(%s)" % S, r"\bnew\s+Function\s*\(\s*(?:%s\s*,\s*)*(%s)\s*\)" % (S, S), r"\bset(?:Timeout|Interval)\s*\(\s*(%s)" % S, r"document\s*\.\s*write(?:ln)?\s*\(\s*(%s)" % S):
+            for m in itertools.islice(_dso_rx(rx).finditer(text), 4):
+                t = _dso_unq(m.group(1), lang)
+                if code_like(t) and len(t) >= 8 and (not rx.startswith("document") or "<script" in t.lower()):
+                    add("eval / Function / setTimeout (string literal)" if not rx.startswith("document") else "document.write (HTML / script)", t, False, "javascript")
+        pk = _dso_js_packer(text)
+        if pk:
+            add("JS packer (Dean Edwards)", pk, False, "javascript")
+    else:
+        for m in itertools.islice(_dso_rx(r"(?i)\b(?:Execute|ExecuteGlobal|Eval)\b\s*\(?\s*(%s)" % S).finditer(text), 4):
+            t = _dso_unq(m.group(1), lang)
+            if code_like(t):
+                add("Execute / ExecuteGlobal / Eval (string literal)", t, False, "vbscript")
+    return out
+
+
+_DSO_CALLS = _dso_rx(r"(?i)\b(DownloadString|DownloadFile|DownloadData|Invoke-WebRequest|Invoke-RestMethod|Net\.WebClient|Start-BitsTransfer|bitsadmin|certutil|"
+                     r"Invoke-Expression|IEX|Start-Process|Add-Type|VirtualAlloc|Reflection\.Assembly|AssemblyLoad|WScript\.Shell|Shell\.Application|ADODB\.Stream|"
+                     r"XMLHTTP|ServerXMLHTTP|WinHttp\.WinHttpRequest|MSXML2|ActiveXObject|Scripting\.FileSystemObject|regsvr32|mshta|rundll32|schtasks|wmic|"
+                     r"amsiInitFailed|AmsiUtils|-WindowStyle\s+Hidden|-ExecutionPolicy\s+Bypass|-NoProfile|powershell(?:\.exe)?|cmd(?:\.exe)?\s+/c)\b")
+_DSO_STRONG = frozenset({"downloadstring", "downloadfile", "downloaddata", "invoke-webrequest", "invoke-restmethod", "net.webclient", "start-bitstransfer", "bitsadmin", "certutil",
+                         "virtualalloc", "reflection.assembly", "assemblyload", "adodb.stream", "xmlhttp", "serverxmlhttp", "winhttp.winhttprequest", "amsiinitfailed", "amsiutils",
+                         "regsvr32", "mshta", "rundll32", "wscript.shell", "shell.application"})
+
+
+def _dso_looks_text(b: bytes) -> bool:
+    if b[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return True
+    s = bytes(b[:8192])
+    if len(s) >= 8 and s[1::2].count(0) > 0.9 * (len(s) // 2):
+        return True
+    if not s or s.count(0):
+        return False
+    t = s.decode("utf-8", "ignore")
+    ctl = sum(1 for c in t if ord(c) < 32 and c not in "\r\n\t")
+    return len(t.encode("utf-8")) >= 0.97 * len(s) and ctl <= 0.02 * len(t)
+
+
+def deobfuscate(data, lang: str | None = None) -> dict | None:
+    """Deobfuscation statis satu skrip (bytes / str). -> dict {lang, layers, leaves, changed, calls, urls, truncated} atau None bila kosong.
+    Tiap lapisan: {n, parent, via, lang, steps, kind, size, sha256, preview, text}. Tidak pernah menjalankan skrip."""
+    deadline = time.monotonic() + DSO_TIME
+    text = (data if isinstance(data, str) else _dso_to_text(data))[:DSO_MAX_TEXT]
+    if not text.strip():
+        return None
+    nodes = [{"n": 0, "parent": -1, "via": "asli", "lang": _dso_lang(text, lang), "raw": text, "depth": 0, "binary": False, "kind": "teks"}]
+    seen = {hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()}
+    trunc, qi = False, 0
+    while qi < len(nodes):
+        nd = nodes[qi]
+        qi += 1
+        if nd["binary"]:
+            continue
+        if time.monotonic() > deadline:
+            trunc = True
+            nd["text"], nd["steps"] = nd["raw"], []
+            continue
+        nd["text"], nd["steps"] = _dso_inline(nd["raw"], nd["lang"], deadline)
+        if nd["depth"] >= DSO_MAX_LAYERS:
+            continue
+        try:
+            pays = _dso_payloads(nd["text"], nd["lang"], deadline)
+        except (RecursionError, MemoryError):
+            pays = []
+        for via, pay, binary, plang in pays:
+            if len(nodes) >= DSO_MAX_NODES:
+                trunc = True
+                break
+            key = hashlib.sha256(pay if binary else pay.encode("utf-8", "ignore")).hexdigest()
+            if key in seen:
+                continue
+            seen.add(key)
+            ch = {"n": len(nodes), "parent": nd["n"], "via": via, "lang": plang, "depth": nd["depth"] + 1, "binary": binary}
+            if binary:
+                ch.update({"kind": _chain_label(pay) or "biner", "text": "", "steps": [], "size": len(pay), "sha": key})
+            else:
+                ch.update({"kind": "teks", "raw": pay[:DSO_MAX_TEXT]})
+            nodes.append(ch)
+    kids = {n["parent"] for n in nodes}
+    layers = []
+    for nd in nodes:
+        t = nd.get("text", "")
+        layers.append({"n": nd["n"], "parent": nd["parent"], "via": nd["via"], "lang": nd["lang"], "steps": nd.get("steps", []), "kind": nd["kind"],
+                       "size": nd.get("size", len(t)), "sha256": nd.get("sha") or hashlib.sha256(t.encode("utf-8", "ignore")).hexdigest(), "preview": _clean(t[:200]), "text": t})
+    leaves = [n["n"] for n in nodes if n["n"] not in kids]
+    changed = len(nodes) > 1 or bool(nodes[0].get("steps")) and nodes[0]["text"] != nodes[0]["raw"]
+    blob = "\n".join(n.get("text", "") for n in nodes)[:DSO_MAX_TEXT]
+    calls = _uniq((m.group(1) for m in _DSO_CALLS.finditer(blob)), 12)
+    urls = _uniq((u.rstrip(".,;)'\"") for u in _URL.findall(blob)), 10)
+    return {"lang": nodes[0]["lang"], "layers": layers, "leaves": leaves, "changed": changed, "calls": calls, "urls": urls, "truncated": trunc}
+
+
+def _dso_summary(r: dict) -> dict:
+    """Bentuk ringkas untuk rep["deobf"] (JSON-aman, kecil)."""
+    lv = [l for l in r["layers"] if l["n"] in r["leaves"]]
+    return {"lang": r["lang"], "truncated": r["truncated"], "calls": r["calls"], "urls": r["urls"],
+            "layers": [{k: l[k] for k in ("n", "parent", "via", "lang", "steps", "kind", "size", "sha256", "preview")} for l in r["layers"]],
+            "leaves": r["leaves"], "final": [l["text"][:1500] for l in lv if l["text"]][:2]}
+
+
+_DSO_OBF = frozenset({"backtick", "karakter", "indeks env", "base64 inline", "format -f", "replace / split", "join / balik / indeks", "alias iex"})
+_DSO_TRIG = _dso_rx(r"(?i)frombase64string|\s-e(?:nc|ncodedcommand)?\s+[A-Za-z0-9+/]{16}|\biex\b|invoke-expression|fromcharcode|\beval\s*\(|unescape\s*\(|atob\s*\(|\[char\]|\bchrw?\s*\(|"
+                    r"\bexecute(?:global)?\b|-join|\s-f\s*['\"]|\.replace\s*\(|`[A-Za-z]|-bxor|getstring|function\s*\(\s*p\s*,\s*a\s*,\s*c|\.split\s*\(")
+
+
+def _dso_enrich(rep: dict, d, strs: list[str]) -> None:
+    """Dipanggil dari _triage_open: kunci baru rep["deobf"] (None bila tidak ada hasil bermakna). Aditif; tidak pernah melempar."""
+    rep["deobf"] = None
+    try:
+        srcs: list = []
+        if len(d) <= DSO_MAX_TEXT * 2 and _dso_looks_text(d):
+            srcs.append(d)
+        else:
+            srcs = [s for s in strs if len(s) >= 200 and _DSO_TRIG.search(s)][:3]
+        for src in srcs:
+            probe = src if isinstance(src, str) else _dso_to_text(src)
+            if not _DSO_TRIG.search(probe[:DSO_MAX_TEXT]):
+                continue
+            head = probe[:200]
+            if head.startswith("#!") and not re.search(r"(?i)pwsh|powershell|node|cscript|wscript", head.split("\n", 1)[0]):
+                continue   # skrip shell / perl / python / ruby: bukan sasaran modul ini
+            if max(_dso_lang_scores(probe[:200000]), key=lambda x: x[0])[0] < 2:
+                continue
+            if len(re.findall(r"(?m)^(?:import [\w.]+|from [\w.]+ import |def \w+\(.*\):|class \w+.*:)", probe[:60000])) >= 2:
+                continue   # sumber Python
+            r = deobfuscate(probe)
+            if not r or not r["changed"]:
+                continue
+            obf = {s_ for l in r["layers"] for s_ in l["steps"]} & _DSO_OBF   # sambung string / variabel saja lazim di skrip sah
+            strong = any(c.lower() in _DSO_STRONG for c in r["calls"])
+            if len(r["layers"]) < 2 and not (len(obf) >= 2 or (obf and strong)):
+                continue
+            rep["deobf"] = _dso_summary(r)
+            ind = rep["ind"]
+            for u in r["urls"]:
+                if u not in ind["urls"] and len(ind["urls"]) < 40:
+                    ind["urls"].append(u)
+            rep["warn"].append("skrip tersamar berhasil dibuka (%d lapisan, %s): %s" % (len(r["layers"]), r["lang"], " -> ".join(l["via"] for l in r["layers"][1:4]) or ", ".join(r["layers"][0]["steps"][:4])))
+            return
+    except Exception as e:
+        rep["warn"].append("deobfuscation skrip gagal: %s" % type(e).__name__)
+
+
+def _score_dso(rep: dict, add) -> None:
+    x = rep.get("deobf")
+    if not x:
+        return
+    strong = [c for c in x["calls"] if c.lower() in _DSO_STRONG]
+    if strong:
+        add(2, "isi skrip yang terbuka memuat pola unduh / eksekusi (%s)" % ", ".join(strong[:3]))
+    elif len(x["layers"]) >= 3:
+        add(1, "skrip dibungkus beberapa lapis (%d)" % len(x["layers"]))
+
+
+def _render_dso(rep: dict, a, compact: bool, defang: bool) -> None:
+    x = rep.get("deobf")
+    if not x:
+        return
+    a("Deobfuscation skrip (%s, %d lapisan%s): %s" % (x["lang"], len(x["layers"]), ", TERPOTONG" if x["truncated"] else "",
+                                                    " -> ".join(l["via"] + (" [%s]" % ", ".join(l["steps"][:3]) if l["steps"] else "") for l in x["layers"][:5])))
+    if x["calls"]:
+        a("   alat / pola di isi yang terbuka: %s" % ", ".join(_clean(c) for c in x["calls"][:(5 if compact else 12)]))
+    for t in x["final"][:(1 if compact else 2)]:
+        a("   hasil akhir: %s" % _df(_clean(t)[:(160 if compact else 360)], defang))
+
+
+def deobf_text(path, defang: bool = True, full: bool = False) -> str:
+    """Teks deobfuscation satu skrip. CLI --deobf, API action 'deobf'."""
+    try:
+        f, size = _open_regular(path)
+        with f:
+            data = f.read(DSO_MAX_TEXT * 2)
+    except Exception as e:
+        return "Deobfuscation gagal (%s: %s)." % (type(e).__name__, str(e)[:100])
+    r = deobfuscate(data)
+    if not r:
+        return "Deobfuscation: berkas kosong."
+    L_ = ["Deobfuscation skrip: %s | bahasa %s | %d lapisan%s" % (_clean(os.path.basename(os.fspath(path))), r["lang"], len(r["layers"]), " | TERPOTONG (batas waktu / lapisan)" if r["truncated"] else "")]
+    if not r["changed"]:
+        L_.append("Tidak ada lapisan penyamaran yang berhasil dibuka (bukan berarti bersih: pola di luar jangkauan, mis. string-array obfuscator.io, Script Encoder #@~^, AES / RC4).")
+    for l in r["layers"]:
+        if l["kind"] != "teks":
+            L_.append(" [%d] <- [%d] %s: %s %s, sha256 %s..." % (l["n"], l["parent"], l["via"], l["kind"], _human(l["size"]), l["sha256"][:16]))
+            continue
+        L_.append(" [%d]%s %s (%s, %s)%s" % (l["n"], (" <- [%d]" % l["parent"]) if l["parent"] >= 0 else "", l["via"], l["lang"], _human(l["size"]),
+                                            (" | transformasi: " + ", ".join(l["steps"])) if l["steps"] else ""))
+        if l["n"] in r["leaves"] or full:
+            body = l["text"] if full else l["text"][:1500]
+            L_.append("     " + _df("\n     ".join(_clean(x) for x in body.splitlines()[:60]), defang) + ("   ..." if not full and len(l["text"]) > 1500 else ""))
+    if r["calls"]:
+        L_.append("Alat / pola: " + ", ".join(_clean(c) for c in r["calls"]))
+    if r["urls"]:
+        L_.append("URL: " + ", ".join(_df(_clean(u), defang) for u in r["urls"]))
+    return "\n".join(L_)
+
 
 
 # ----------------------- hash ikon PE -----------------------
@@ -5023,16 +10494,972 @@ def _relab_any(d: bytes, size: int):
 
 # ----------------------------- API JSON untuk Iris / Hermes -----------------
 
-_API_ACTIONS = ("capabilities", "triage", "json", "ioc", "yara", "md", "similar", "hex", "compare", "list", "extract", "dir", "ctph", "re", "xref", "disasm", "unpack", "yarascan", "assets", "assets_extract", "assets_carve", "formats")
+# ---------------------------------------------------------------------------
+# v99.14 (OPSIONAL dan ADITIF; triase, skor, dan keluaran di atas TIDAK berubah). Tiga kemampuan yang sebelumnya tidak ada:
+#   1. sig_check(path, online=False): pemeriksaan tanda tangan Authenticode PENUH: tanda tangan PKCS#7 diverifikasi dengan kunci sertifikat
+#      penanda, messageDigest, hash isi berkas, rantai sertifikat (tiap tautan diverifikasi kriptografis), akar di penyimpanan tepercaya,
+#      masa berlaku, EKU code signing, dan (hanya bila online=True) pencabutan lewat CRL. Butuh paket `cryptography`; tanpa itu hanya
+#      pemeriksaan integritas hash yang berjalan.
+#      Penyimpanan akar: env REA_CA_BUNDLE (berkas PEM) > penyimpanan ROOT Windows (ssl.enum_certificates) > tidak ada. Sengaja TIDAK memakai
+#      certifi: itu akar TLS Mozilla, bukan akar code signing Microsoft, jadi hasilnya menyesatkan.
+#      Cap waktu (countersignature) hanya dideteksi keberadaannya, TIDAK diverifikasi.
+#   2. reputation(target, online=False): reputasi hash di VirusTotal (env REA_VT_KEY). Yang dikirim HANYA hash SHA-256, tidak pernah berkas.
+#   3. unpack_7z(path, outdir): membongkar kemasan yang dipahami 7-Zip (NSIS, SFX 7-Zip, dan lain-lain) lewat alat `7zz` / `7z` / `7za` / `7zr`
+#      dengan pembatasan sumber daya; hanya berkas biasa yang disalin keluar (tautan simbolik dan berkas khusus dibuang).
+# Akses jaringan (CRL, VirusTotal) selalu opt-in: CLI butuh --online; lewat API butuh "online": true DAN env REA_ONLINE=1 yang diatur operator,
+# supaya agen tidak bisa menyalakannya sendiri. URL CRL berasal dari berkas yang dianalisis (tidak tepercaya): hanya http, alamat harus publik,
+# tanpa pengalihan, ukuran dibatasi.
+# ---------------------------------------------------------------------------
+
+_OID_NAMES = {"1.2.840.113549.1.7.2": "signedData", "1.2.840.113549.1.9.4": "messageDigest", "1.2.840.113549.1.9.6": "counterSignature",
+              "1.3.6.1.4.1.311.3.3.1": "msTimestamp", "1.3.6.1.5.5.7.3.3": "codeSigning"}
+_SIG_HASH = {"1.2.840.113549.2.5": "md5", "1.3.14.3.2.26": "sha1", "2.16.840.1.101.3.4.2.1": "sha256", "2.16.840.1.101.3.4.2.2": "sha384",
+             "2.16.840.1.101.3.4.2.3": "sha512"}
+_SIG_RSA = {"1.2.840.113549.1.1.1": None, "1.2.840.113549.1.1.5": "sha1", "1.2.840.113549.1.1.11": "sha256", "1.2.840.113549.1.1.12": "sha384",
+            "1.2.840.113549.1.1.13": "sha512"}
+_SIG_EC = {"1.2.840.10045.4.1": "sha1", "1.2.840.10045.4.3.2": "sha256", "1.2.840.10045.4.3.3": "sha384", "1.2.840.10045.4.3.4": "sha512"}
+SIG_MAX_FILE = 256 * 1024 * 1024
+_REV_MAX_FETCH = 4
+
+
+def _der_tlv(b: bytes, pos: int) -> tuple[int, int, int]:
+    """(tag, awal_isi, akhir) elemen DER di pos. ValueError bila tak sah / keluar batas."""
+    if pos < 0 or pos + 2 > len(b):
+        raise ValueError("DER terpotong")
+    tag, ln, p = b[pos], b[pos + 1], pos + 2
+    if ln & 0x80:
+        n = ln & 0x7F
+        if n == 0 or n > 4 or p + n > len(b):
+            raise ValueError("panjang DER tidak sah")
+        ln, p = int.from_bytes(b[p:p + n], "big"), p + n
+    if p + ln > len(b):
+        raise ValueError("elemen DER keluar batas")
+    return tag, p, p + ln
+
+
+def _der_kids(b: bytes, start: int, end: int) -> list[tuple[int, int, int, int]]:
+    """Anak-anak elemen: [(tag, awal_elemen, awal_isi, akhir)]."""
+    out, pos = [], start
+    while pos < end:
+        tag, vs, ve = _der_tlv(b, pos)
+        if ve > end:
+            raise ValueError("anak DER keluar batas")
+        out.append((tag, pos, vs, ve))
+        pos = ve
+        if len(out) > 1024:
+            raise ValueError("terlalu banyak elemen DER")
+    return out
+
+
+def _der_oid(b: bytes, vs: int, ve: int) -> str:
+    raw = b[vs:ve]
+    if not raw:
+        return ""
+    parts = [str(raw[0] // 40), str(raw[0] % 40)]
+    v = 0
+    for x in raw[1:]:
+        v = (v << 7) | (x & 0x7F)
+        if not x & 0x80:
+            parts.append(str(v))
+            v = 0
+    return ".".join(parts)
+
+
+def _p7_parse(blob: bytes) -> dict:
+    """Urai PKCS#7 / CMS SignedData: sertifikat (DER mentah), konten, dan SignerInfo. ValueError bila bukan SignedData yang utuh."""
+    tag, vs, ve = _der_tlv(blob, 0)
+    if tag != 0x30:
+        raise ValueError("bukan SEQUENCE")
+    top = _der_kids(blob, vs, ve)
+    if len(top) < 2 or top[0][0] != 0x06 or _der_oid(blob, top[0][2], top[0][3]) != "1.2.840.113549.1.7.2" or top[1][0] != 0xA0:
+        raise ValueError("bukan ContentInfo signedData")
+    sd = _der_kids(blob, top[1][2], top[1][3])
+    if not sd or sd[0][0] != 0x30:
+        raise ValueError("SignedData tidak ada")
+    parts = _der_kids(blob, sd[0][2], sd[0][3])
+    if len(parts) < 4:
+        raise ValueError("SignedData terlalu pendek")
+    out: dict = {"certs": [], "content": None, "signers": []}
+    enc = _der_kids(blob, parts[2][2], parts[2][3])          # EncapsulatedContentInfo
+    if len(enc) > 1 and enc[1][0] == 0xA0:
+        inner = _der_kids(blob, enc[1][2], enc[1][3])
+        if inner:
+            out["content"] = bytes(blob[inner[0][2]:inner[0][3]])   # NILAI elemen (tanpa tag + panjang), dasar messageDigest
+    for t, off, vs2, ve2 in parts[3:]:
+        if t == 0xA0:
+            for ct, coff, _cvs, cve in _der_kids(blob, vs2, ve2):
+                if ct == 0x30 and len(out["certs"]) < 32:
+                    out["certs"].append(bytes(blob[coff:cve]))
+    si_set = parts[-1]
+    if si_set[0] != 0x31:
+        raise ValueError("SignerInfos tidak ada")
+    for st, soff, svs, sve in _der_kids(blob, si_set[2], si_set[3])[:4]:
+        if st != 0x30:
+            continue
+        k = _der_kids(blob, svs, sve)
+        if len(k) < 5:
+            continue
+        si: dict = {"issuer": None, "serial": None, "digest_oid": "", "attrs": None, "attrs_raw": None, "sig_oid": "", "sig": b"", "unsigned": False}
+        sid = k[1]
+        if sid[0] == 0x30:
+            sk = _der_kids(blob, sid[2], sid[3])
+            if len(sk) >= 2:
+                si["issuer"] = bytes(blob[sk[0][1]:sk[0][3]])
+                si["serial"] = int.from_bytes(blob[sk[1][2]:sk[1][3]], "big", signed=True)
+        dk = _der_kids(blob, k[2][2], k[2][3])
+        si["digest_oid"] = _der_oid(blob, dk[0][2], dk[0][3]) if dk else ""
+        i = 3
+        if k[i][0] == 0xA0:
+            si["attrs_raw"] = bytes([0x31]) + bytes(blob[k[i][1] + 1:k[i][3]])     # SET OF: tag 0xA0 diganti 0x31 untuk verifikasi
+            si["attrs"] = _der_kids(blob, k[i][2], k[i][3])
+            si["_blob"] = blob
+            i += 1
+        sk2 = _der_kids(blob, k[i][2], k[i][3])
+        si["sig_oid"] = _der_oid(blob, sk2[0][2], sk2[0][3]) if sk2 else ""
+        if i + 1 < len(k) and k[i + 1][0] == 0x04:
+            si["sig"] = bytes(blob[k[i + 1][2]:k[i + 1][3]])
+        si["unsigned"] = any(x[0] == 0xA1 for x in k[i + 2:])
+        out["signers"].append(si)
+    return out
+
+
+def _si_message_digest(si: dict) -> bytes | None:
+    blob = si.get("_blob")
+    for _t, off, vs, ve in si.get("attrs") or []:
+        kids = _der_kids(blob, vs, ve)
+        if len(kids) >= 2 and _der_oid(blob, kids[0][2], kids[0][3]) == "1.2.840.113549.1.9.4":
+            vals = _der_kids(blob, kids[1][2], kids[1][3])
+            if vals and vals[0][0] == 0x04:
+                return bytes(blob[vals[0][2]:vals[0][3]])
+    return None
+
+
+def _si_has_timestamp(si: dict) -> bool:
+    return bool(si.get("unsigned"))
+
+
+def _trust_store() -> tuple[list, str]:
+    """(daftar sertifikat akar, sumber). REA_CA_BUNDLE (PEM) > ROOT Windows > kosong. Tidak pernah memakai certifi (akar TLS, bukan code signing)."""
+    from cryptography import x509
+    p = os.environ.get("REA_CA_BUNDLE", "").strip()
+    if p:
+        try:
+            with open(p, "rb") as fh:
+                pem = fh.read(8 * 1024 * 1024)
+            return list(x509.load_pem_x509_certificates(pem)), "REA_CA_BUNDLE"
+        except Exception as e:
+            return [], "REA_CA_BUNDLE gagal dibaca (%s)" % type(e).__name__
+    try:
+        import ssl
+        out = []
+        for der, enc, trust in ssl.enum_certificates("ROOT"):     # hanya ada di Windows
+            if enc != "x509_asn" or (trust is not True and "1.3.6.1.5.5.7.3.3" not in (trust or ())):
+                continue
+            try:
+                out.append(x509.load_der_x509_certificate(der))
+            except Exception:
+                continue
+        return out, "penyimpanan ROOT Windows"
+    except (AttributeError, ImportError, OSError):
+        return [], "tidak ada"
+
+
+def _cert_dates(c):
+    nb = getattr(c, "not_valid_before_utc", None) or c.not_valid_before.replace(tzinfo=_dt.timezone.utc)
+    na = getattr(c, "not_valid_after_utc", None) or c.not_valid_after.replace(tzinfo=_dt.timezone.utc)
+    return nb, na
+
+
+def _cn(name) -> str:
+    try:
+        from cryptography.x509.oid import NameOID
+        v = name.get_attributes_for_oid(NameOID.COMMON_NAME)
+        if v:
+            return _clean(str(v[0].value))[:80]
+        v = name.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)
+        return _clean(str(v[0].value))[:80] if v else _clean(name.rfc4514_string())[:80]
+    except Exception:
+        return "?"
+
+
+def _issued_by(cert, issuer) -> bool:
+    try:
+        cert.verify_directly_issued_by(issuer)
+        return True
+    except Exception:
+        return False
+
+
+def _rev_fetch(url: str, timeout: int = 8, cap: int = 8 * 1024 * 1024) -> bytes:
+    """Ambil CRL. URL berasal dari berkas yang dianalisis (TIDAK tepercaya): hanya http, semua alamat hasil DNS harus publik (anti-SSRF),
+    koneksi langsung ke IP itu (anti DNS-rebinding), tanpa pengalihan, ukuran dibatasi."""
+    import http.client
+    import ipaddress
+    import socket
+    from urllib.parse import urlsplit
+    u = urlsplit(url)
+    if u.scheme != "http" or not u.hostname:
+        raise ValueError("hanya URL http")
+    port = u.port or 80
+    addrs = [i[4][0] for i in socket.getaddrinfo(u.hostname, port, type=socket.SOCK_STREAM)]
+    if not addrs or not all(ipaddress.ip_address(a.split("%")[0]).is_global for a in addrs):
+        raise ValueError("alamat tujuan bukan alamat publik")
+    conn = http.client.HTTPConnection(addrs[0], port, timeout=timeout)
+    try:
+        conn.request("GET", (u.path or "/") + (("?" + u.query) if u.query else ""), headers={"Host": u.netloc, "User-Agent": "rea-triage", "Accept": "*/*"})
+        r = conn.getresponse()
+        if r.status != 200:
+            raise ValueError("HTTP %d" % r.status)
+        data = r.read(cap + 1)
+    finally:
+        conn.close()
+    if len(data) > cap:
+        raise ValueError("CRL terlalu besar")
+    return data
+
+
+def _revocation(chain: list) -> dict:
+    """Cek pencabutan tiap sertifikat non-akar lewat CRL penerbitnya. Hasil per sertifikat: 'dicabut' / 'tidak dicabut' / 'tidak diketahui'."""
+    from cryptography import x509
+    res: list[dict] = []
+    fetched = 0
+    for i, c in enumerate(chain[:-1] if len(chain) > 1 else chain):
+        item = {"subject": _cn(c.subject), "status": "tidak diketahui", "why": ""}
+        res.append(item)
+        issuer = chain[i + 1] if i + 1 < len(chain) else None
+        try:
+            dps = c.extensions.get_extension_for_class(x509.CRLDistributionPoints).value
+        except Exception:
+            item["why"] = "tidak ada CRL distribution point"
+            continue
+        urls = [g.value for dp in dps for g in (dp.full_name or []) if isinstance(g, x509.UniformResourceIdentifier) and g.value.lower().startswith("http://")]
+        if not urls or issuer is None:
+            item["why"] = "tidak ada URL CRL http" if not urls else "penerbit tidak ada di rantai"
+            continue
+        if fetched >= _REV_MAX_FETCH:
+            item["why"] = "batas jumlah pengambilan CRL tercapai"
+            continue
+        fetched += 1
+        try:
+            data = _rev_fetch(urls[0])
+            crl = x509.load_pem_x509_crl(data) if data.lstrip()[:5] == b"-----" else x509.load_der_x509_crl(data)
+            if not crl.is_signature_valid(issuer.public_key()):
+                item["why"] = "tanda tangan CRL tidak cocok dengan penerbit"
+                continue
+            nu = getattr(crl, "next_update_utc", None) or (crl.next_update.replace(tzinfo=_dt.timezone.utc) if crl.next_update else None)
+            hit = crl.get_revoked_certificate_by_serial_number(c.serial_number)
+            if hit is not None:
+                item["status"], item["why"] = "dicabut", "ada di CRL"
+            else:
+                item["status"] = "tidak dicabut"
+                item["why"] = "tidak ada di CRL" + (" (CRL sudah kedaluwarsa)" if nu and nu < _dt.datetime.now(_dt.timezone.utc) else "")
+        except Exception as e:
+            item["why"] = "CRL gagal diambil / dibaca: %s" % _clean(str(e))[:80]
+    return {"checked": res, "revoked": any(x["status"] == "dicabut" for x in res), "all_known": bool(res) and all(x["status"] != "tidak diketahui" for x in res)}
+
+
+def _verify_signer(si: dict, content: bytes | None, certs: list) -> dict:
+    """Verifikasi satu SignerInfo: cocokkan sertifikat penanda, messageDigest vs hash konten, lalu tanda tangan atas signedAttrs."""
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
+    r: dict = {"cert": None, "sig_ok": None, "digest_ok": None, "alg": "", "weak": False, "error": ""}
+    cert = None
+    for c in certs:
+        if si.get("serial") is not None and c.serial_number == si["serial"] and (si.get("issuer") is None or c.issuer.public_bytes() == si["issuer"]):
+            cert = c
+            break
+    if cert is None:
+        cert = next((c for c in certs if si.get("serial") is not None and c.serial_number == si["serial"]), None)
+    if cert is None:
+        r["error"] = "sertifikat penanda tidak ada di tanda tangan"
+        return r
+    r["cert"] = cert
+    hname = _SIG_HASH.get(si["digest_oid"]) or _SIG_RSA.get(si["sig_oid"]) or _SIG_EC.get(si["sig_oid"])
+    if hname not in ("md5", "sha1", "sha256", "sha384", "sha512"):
+        r["error"] = "algoritma hash tidak dikenal (%s)" % (si["digest_oid"] or "?")
+        return r
+    r["alg"], r["weak"] = hname, hname in ("md5", "sha1")
+    hobj = {"md5": hashes.MD5, "sha1": hashes.SHA1, "sha256": hashes.SHA256, "sha384": hashes.SHA384, "sha512": hashes.SHA512}[hname]()
+    if si.get("attrs_raw") is not None:
+        md = _si_message_digest(si)
+        if content is not None and md is not None:
+            r["digest_ok"] = hashlib.new(hname, content).digest() == md
+        signed = si["attrs_raw"]
+    else:
+        signed = content
+        if signed is None:
+            r["error"] = "tidak ada signedAttrs dan konten tidak tertanam"
+            return r
+    try:
+        pub = cert.public_key()
+        if isinstance(pub, rsa.RSAPublicKey) and si["sig_oid"] in _SIG_RSA:
+            pub.verify(si["sig"], signed, padding.PKCS1v15(), hobj)
+            r["sig_ok"] = True
+        elif isinstance(pub, ec.EllipticCurvePublicKey) and si["sig_oid"] in _SIG_EC:
+            pub.verify(si["sig"], signed, ec.ECDSA(hobj))
+            r["sig_ok"] = True
+        else:
+            r["error"] = "jenis tanda tangan tidak didukung (%s)" % (si["sig_oid"] or "?")
+    except Exception as e:
+        r["sig_ok"] = False
+        r["error"] = "tanda tangan tidak cocok (%s)" % type(e).__name__
+    return r
+
+
+def sig_check(path, online: bool = False) -> dict:
+    """Pemeriksaan tanda tangan Authenticode penuh. Tidak pernah melempar. Lihat komentar v99.14 untuk cakupan dan batasannya."""
+    try:
+        f, size = _open_regular(path)
+        with f:
+            d = f.read(min(size, SIG_MAX_FILE))
+        pe = _parse_pe(d, size) if d[:2] == b"MZ" else None
+        if not pe or pe.get("broken"):
+            return {"ok": False, "error": "bukan PE yang bisa diurai"}
+        if not pe.get("signed"):
+            return {"ok": False, "error": "berkas tidak memiliki tanda tangan Authenticode"}
+        out: dict = {"ok": True, "name": Path(str(path)).name, "notes": [], "signatures": [], "online": bool(online), "crypto": True}
+        integ = _authenticode_check(d, size, pe) if len(d) == size else None
+        out["file_hash"] = integ
+        if len(d) != size:
+            out["notes"].append("berkas lebih besar dari %d MB: hash isi tidak dihitung ulang" % (SIG_MAX_FILE >> 20))
+        try:
+            import cryptography  # noqa: F401
+            from cryptography import x509
+        except ImportError:
+            out["crypto"] = False
+            out["verdict"] = "TIDAK LENGKAP: paket 'cryptography' tidak terpasang (pip install cryptography); hanya integritas hash isi berkas yang diperiksa"
+            return out
+        pe_off = struct.unpack_from("<I", d, 0x3C)[0]
+        o = pe_off + 24
+        is64 = struct.unpack_from("<H", d, o)[0] == 0x20B
+        c_off, c_sz = struct.unpack_from("<II", d, o + (112 if is64 else 96) + 32)
+        end, pos, blobs = min(c_off + c_sz, len(d)), c_off, []
+        while pos + 8 <= end and len(blobs) < 4:
+            dw, _rev, typ = struct.unpack_from("<IHH", d, pos)
+            if dw < 8 or pos + dw > end:
+                break
+            if typ == 2:
+                blobs.append(bytes(d[pos + 8:pos + dw]))
+            pos += (dw + 7) & ~7
+        if not blobs:
+            out["ok"] = False
+            out["error"] = "tabel sertifikat tidak berisi blob PKCS#7"
+            return out
+        store, src = _trust_store()
+        out["trust_source"] = src
+        now = _dt.datetime.now(_dt.timezone.utc)
+        for blob in blobs:
+            try:
+                p7 = _p7_parse(blob)
+            except ValueError as e:
+                out["signatures"].append({"error": "PKCS#7 tidak terbaca: %s" % _clean(str(e))[:80]})
+                continue
+            certs = []
+            for raw in p7["certs"]:
+                try:
+                    certs.append(x509.load_der_x509_certificate(raw))
+                except Exception:
+                    continue
+            for si in p7["signers"]:
+                v = _verify_signer(si, p7["content"], certs)
+                sig: dict = {"alg": v["alg"], "weak_hash": v["weak"], "sig_ok": v["sig_ok"], "digest_ok": v["digest_ok"], "error": v["error"],
+                             "timestamp": _si_has_timestamp(si), "chain": [], "links_ok": None, "trusted": None, "root": "", "eku_code_signing": None,
+                             "expired": None, "revocation": None}
+                leaf = v["cert"]
+                if leaf is not None:
+                    chain, seen = [leaf], {leaf.fingerprint(hashes_sha256())}
+                    cur = leaf
+                    for _ in range(8):
+                        if _issued_by(cur, cur):
+                            break
+                        nxt = next((c for c in certs if c.fingerprint(hashes_sha256()) not in seen and _issued_by(cur, c)), None)
+                        if nxt is None:
+                            nxt = next((c for c in store if c.fingerprint(hashes_sha256()) not in seen and _issued_by(cur, c)), None)
+                        if nxt is None:
+                            break
+                        chain.append(nxt)
+                        seen.add(nxt.fingerprint(hashes_sha256()))
+                        cur = nxt
+                    top = chain[-1]
+                    self_issued = _issued_by(top, top)
+                    sig["links_ok"] = self_issued or len(chain) > 1
+                    sig["complete"] = self_issued
+                    fp = top.fingerprint(hashes_sha256())
+                    if store:
+                        sig["trusted"] = bool(self_issued and any(c.fingerprint(hashes_sha256()) == fp for c in store)) or bool(
+                            not self_issued and any(_issued_by(top, c) for c in store))
+                    sig["root"] = _cn(top.subject)
+                    for c in chain:
+                        nb, na = _cert_dates(c)
+                        sig["chain"].append({"subject": _cn(c.subject), "issuer": _cn(c.issuer), "not_before": nb.strftime("%Y-%m-%d"),
+                                             "not_after": na.strftime("%Y-%m-%d"), "alg": getattr(getattr(c, "signature_hash_algorithm", None), "name", "?")})
+                    nb, na = _cert_dates(leaf)
+                    sig["expired"] = not (nb <= now <= na)
+                    try:
+                        from cryptography.x509.oid import ExtendedKeyUsageOID
+                        eku = leaf.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+                        sig["eku_code_signing"] = ExtendedKeyUsageOID.CODE_SIGNING in eku
+                    except Exception:
+                        sig["eku_code_signing"] = False
+                    if online:
+                        sig["revocation"] = _revocation(chain)
+                out["signatures"].append(sig)
+        out["verdict"] = _sig_verdict(out, bool(store))
+        return out
+    except Exception as e:
+        return {"ok": False, "error": "%s: %s" % (type(e).__name__, _clean(str(e))[:120])}
+
+
+def hashes_sha256():
+    from cryptography.hazmat.primitives import hashes
+    return hashes.SHA256()
+
+
+def _sig_verdict(out: dict, have_store: bool) -> str:
+    sigs = [s for s in out["signatures"] if "alg" in s]
+    if not sigs:
+        return "TIDAK VALID: tanda tangan tidak bisa diurai"
+    fh = out.get("file_hash")
+    bad: list[str] = []
+    soft: list[str] = []
+    incomplete: list[str] = []      # hal yang HARUS terbukti agar boleh disebut VALID, tetapi tidak bisa dipastikan
+    s = sigs[0]
+    if s.get("sig_ok") is not True:
+        bad.append("tanda tangan PKCS#7 tidak terverifikasi (%s)" % (s.get("error") or "gagal"))
+    if s.get("digest_ok") is False:
+        bad.append("messageDigest tidak cocok dengan konten yang ditandatangani")
+    elif s.get("digest_ok") is None:
+        incomplete.append("messageDigest tidak bisa diperiksa")
+    if fh is None:
+        incomplete.append("hash isi berkas tidak bisa dibandingkan dengan digest yang ditandatangani (berkas terlalu besar, tabel section janggal, atau digest tidak terbaca)")
+    elif not fh.get("match"):
+        bad.append("isi berkas berubah setelah ditandatangani (hash tidak cocok)")
+    if s.get("links_ok") is False:
+        bad.append("rantai sertifikat tidak tersambung")
+    elif s.get("links_ok") and not s.get("complete"):
+        soft.append("rantai tidak sampai akar (penerbit tidak ditemukan di tanda tangan maupun penyimpanan)")
+    if not have_store:
+        incomplete.append("akar tepercaya tidak bisa diverifikasi (set REA_CA_BUNDLE, atau jalankan di Windows); tanpa itu sertifikat buatan sendiri juga tampak sah")
+    elif s.get("trusted") is False:
+        bad.append("akar rantai TIDAK ada di penyimpanan tepercaya")
+    if s.get("eku_code_signing") is False:
+        bad.append("sertifikat penanda tidak punya EKU code signing")
+    if s.get("expired"):
+        (soft if s.get("timestamp") else bad).append("sertifikat penanda di luar masa berlaku" + (" (ada cap waktu; cap waktu tidak diverifikasi)" if s.get("timestamp") else ""))
+    if s.get("weak_hash"):
+        soft.append("hash lemah (%s)" % s.get("alg"))
+    rv = s.get("revocation")
+    if rv is None:
+        soft.append("pencabutan tidak diperiksa (butuh --online)")
+    elif rv.get("revoked"):
+        bad.append("sertifikat DICABUT menurut CRL")
+    elif not rv.get("all_known"):
+        soft.append("status pencabutan sebagian tidak diketahui")
+    if bad:
+        return "TIDAK VALID: " + "; ".join(bad)
+    if incomplete:
+        return "TIDAK LENGKAP (belum bisa disebut valid): " + "; ".join(incomplete + soft)
+    return "VALID secara kriptografis" + (" (dengan catatan: " + "; ".join(soft) + ")" if soft else "")
+
+
+def sig_text(path, online: bool = False) -> str:
+    r = sig_check(path, online=online)
+    if not r.get("ok"):
+        return "TANDA TANGAN: " + r.get("error", "gagal")
+    L = ["TANDA TANGAN (v99.14) %s" % r["name"], "Putusan: %s" % r["verdict"]]
+    fh = r.get("file_hash")
+    if fh:
+        L.append("Hash isi berkas: %s (%s)" % ("COCOK" if fh["match"] else "TIDAK COCOK", fh["alg"]))
+    L.append("Akar tepercaya: %s" % r.get("trust_source", "?"))
+    for i, s in enumerate(r["signatures"], 1):
+        if "alg" not in s:
+            L.append("Tanda tangan %d: %s" % (i, s.get("error", "?")))
+            continue
+        L.append("Tanda tangan %d: PKCS#7 %s | messageDigest %s | hash %s%s | cap waktu: %s" % (
+            i, {True: "sah", False: "GAGAL", None: "tak diperiksa"}[s["sig_ok"]], {True: "cocok", False: "TIDAK cocok", None: "tak diperiksa"}[s["digest_ok"]],
+            s["alg"] or "?", " (lemah)" if s["weak_hash"] else "", "ada (tidak diverifikasi)" if s["timestamp"] else "tidak ada"))
+        for j, c in enumerate(s["chain"]):
+            L.append("   %s%s  <- %s  [%s s/d %s]" % ("  " * j, c["subject"], c["issuer"], c["not_before"], c["not_after"]))
+        if s["chain"]:
+            L.append("   Akar: %s | tersambung: %s | di penyimpanan: %s | EKU code signing: %s" % (
+                s["root"], {True: "ya", False: "TIDAK", None: "?"}[s["links_ok"]], {True: "ya", False: "TIDAK", None: "tak diperiksa"}[s["trusted"]],
+                {True: "ya", False: "TIDAK", None: "?"}[s["eku_code_signing"]]))
+        if s.get("revocation"):
+            for x in s["revocation"]["checked"]:
+                L.append("   Pencabutan %s: %s (%s)" % (x["subject"], x["status"], x["why"]))
+    for n in r.get("notes", []):
+        L.append("Catatan: " + n)
+    L.append("Batas: cap waktu tidak diverifikasi; kebijakan Windows (WinVerifyTrust, kebijakan penerbit, daftar cabut khusus) tidak ditiru.")
+    return "\n".join(L)
+
+
+# --- reputasi hash (VirusTotal) ---------------------------------------------------------------------------------------------------------
+
+def _http_get(url: str, headers: dict, timeout: int = 10, cap: int = 1024 * 1024) -> tuple[int, bytes]:
+    """GET HTTPS tanpa mengikuti pengalihan. (status, isi). Dipisah supaya bisa diganti saat uji."""
+    from urllib.error import HTTPError
+    from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+    class _NoRedirect(HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):
+            return None
+    try:
+        with build_opener(_NoRedirect).open(Request(url, headers=headers), timeout=timeout) as r:
+            return r.status, r.read(cap + 1)[:cap]
+    except HTTPError as e:
+        return e.code, b""
+
+
+def reputation(target, online: bool = False) -> dict:
+    """Reputasi SHA-256 di VirusTotal. target: hash 64 hex atau path berkas. Hanya hash yang dikirim. 'tidak dikenal' BUKAN bukti aman."""
+    try:
+        t = str(target).strip()
+        h = t.lower() if re.fullmatch(r"[0-9a-fA-F]{64}", t) else triage(t)["sha256"]
+        if not online:
+            return {"ok": False, "sha256": h, "error": "mode online belum diaktifkan (CLI: --online; API: \"online\": true dan env REA_ONLINE=1)"}
+        key = os.environ.get("REA_VT_KEY", "").strip()
+        if not key:
+            return {"ok": False, "sha256": h, "error": "env REA_VT_KEY belum diisi"}
+        code, body = _http_get("https://www.virustotal.com/api/v3/files/" + h, {"x-apikey": key, "accept": "application/json"})
+        if code == 404:
+            return {"ok": True, "sha256": h, "known": False}
+        if code != 200:
+            return {"ok": False, "sha256": h, "error": "VirusTotal membalas HTTP %d" % code}
+        a = (json.loads(body.decode("utf-8", "replace")).get("data") or {}).get("attributes") or {}
+        st = a.get("last_analysis_stats") or {}
+        ptc = (a.get("popular_threat_classification") or {}).get("suggested_threat_label")
+        return {"ok": True, "sha256": h, "known": True, "malicious": int(st.get("malicious", 0)), "suspicious": int(st.get("suspicious", 0)),
+                "harmless": int(st.get("harmless", 0)), "undetected": int(st.get("undetected", 0)),
+                "name": _clean(str(a.get("meaningful_name") or ""))[:80], "label": _clean(str(ptc or ""))[:60],
+                "last_analysis": a.get("last_analysis_date") if isinstance(a.get("last_analysis_date"), int) else None}
+    except Exception as e:
+        return {"ok": False, "error": "%s: %s" % (type(e).__name__, _clean(str(e))[:100])}
+
+
+def reputation_text(target, online: bool = False) -> str:
+    r = reputation(target, online=online)
+    if not r.get("ok"):
+        return "REPUTASI: %s%s" % (r.get("error", "gagal"), (" (sha256 %s)" % r["sha256"]) if r.get("sha256") else "")
+    if not r["known"]:
+        return "REPUTASI VirusTotal: hash %s tidak dikenal. Ini BUKAN bukti berkas aman (bisa sampel baru / tidak pernah diunggah)." % r["sha256"]
+    tot = r["malicious"] + r["suspicious"] + r["harmless"] + r["undetected"]
+    when = _dt.datetime.fromtimestamp(r["last_analysis"], _dt.timezone.utc).strftime("%Y-%m-%d") if r.get("last_analysis") else "?"
+    return ("REPUTASI VirusTotal (sha256 %s): %d jahat, %d mencurigakan, %d tidak terdeteksi / %d bersih dari %d mesin (analisis terakhir %s)%s%s\n"
+            "Catatan: hasil layanan luar, TIDAK ikut skor REA; hanya hash yang dikirim." % (
+                r["sha256"], r["malicious"], r["suspicious"], r["undetected"], r["harmless"], tot, when,
+                (" | nama: " + r["name"]) if r["name"] else "", (" | label: " + r["label"]) if r["label"] else ""))
+
+
+# --- unpack lewat 7-Zip -------------------------------------------------------------------------------------------------------------------
+
+UNPACK7_MAX_FILES = 5000
+UNPACK7_MAX_TOTAL = 1024 * 1024 * 1024
+UNPACK7_MEM = 3 * 1024 * 1024 * 1024
+
+
+def unpack_7z(path, outdir) -> dict:
+    """Bongkar kemasan yang dipahami 7-Zip (NSIS, SFX 7-Zip, 7z, dan lain-lain) ke folder sementara dengan batas sumber daya, lalu salin keluar
+    HANYA berkas biasa (tautan simbolik / berkas khusus dibuang) beserta manifest SHA-256. Tidak menjalankan isi apa pun."""
+    import shutil
+    import subprocess
+    import tempfile
+    try:
+        tool = next((shutil.which(x) for x in ("7zz", "7z", "7za", "7zr") if shutil.which(x)), None)
+        if not tool:
+            return {"ok": False, "error": "alat 7-Zip (7zz / 7z / 7za / 7zr) tidak ditemukan di PATH"}
+        f, size = _open_regular(path)
+        if size > UNPACK_MAX:
+            f.close()
+            return {"ok": False, "error": "berkas lebih besar dari batas %d MB" % (UNPACK_MAX >> 20)}
+        out = Path(outdir).expanduser().resolve()
+        with tempfile.TemporaryDirectory() as td:
+            src, work = Path(td) / "in.bin", Path(td) / "x"
+            work.mkdir()
+            with f, open(src, "wb") as sf:
+                shutil.copyfileobj(f, sf, 1 << 20)
+            def _lim7():
+                import resource
+                for lim, val in ((resource.RLIMIT_AS, UNPACK7_MEM), (resource.RLIMIT_CPU, UNPACK_TIMEOUT * 3),
+                                 (resource.RLIMIT_FSIZE, UNPACK7_MAX_TOTAL), (resource.RLIMIT_CORE, 0)):
+                    try:
+                        resource.setrlimit(lim, (val, val))
+                    except (ValueError, OSError):
+                        pass
+            pre = _lim7 if os.name == "posix" else None
+            r = subprocess.run([tool, "x", "-y", "-bd", "-o" + str(work), str(src)], capture_output=True, timeout=UNPACK_TIMEOUT * 3,
+                               stdin=subprocess.DEVNULL, cwd=td, env={"PATH": os.environ.get("PATH", ""), "LANG": "C"}, preexec_fn=pre)
+            if r.returncode not in (0, 1) and not any(work.iterdir()):
+                return {"ok": False, "error": "7-Zip gagal (kode %d): %s" % (r.returncode, _clean((r.stderr or r.stdout).decode("utf-8", "replace"))[:160])}
+            files, total, skipped = [], 0, 0
+            out.mkdir(parents=True, exist_ok=True)
+            for root, dirs, names in os.walk(work, followlinks=False):
+                dirs[:] = [x for x in dirs if not os.path.islink(os.path.join(root, x))]
+                for n in sorted(names):
+                    p = Path(root) / n
+                    try:
+                        st = os.lstat(p)
+                    except OSError:
+                        skipped += 1
+                        continue
+                    if not stat.S_ISREG(st.st_mode):
+                        skipped += 1
+                        continue
+                    if len(files) >= UNPACK7_MAX_FILES or total + st.st_size > UNPACK7_MAX_TOTAL:
+                        return {"ok": False, "error": "hasil melebihi batas (%d berkas / %d MB); dibatalkan" % (UNPACK7_MAX_FILES, UNPACK7_MAX_TOTAL >> 20)}
+                    rel = p.relative_to(work).as_posix()
+                    safe = "/".join(re.sub(r"[^\w.\- ]", "_", c)[:100] or "_" for c in rel.split("/") if c not in ("", ".", ".."))
+                    dst = (out / safe).resolve()
+                    if out != dst and out not in dst.parents:
+                        skipped += 1
+                        continue
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    h = hashlib.sha256()
+                    with open(p, "rb") as sf, open(dst, "wb") as df:
+                        for chunk in iter(lambda: sf.read(1 << 20), b""):
+                            h.update(chunk)
+                            df.write(chunk)
+                    total += st.st_size
+                    files.append({"name": safe, "size": st.st_size, "sha256": h.hexdigest()})
+            man = out / "manifest_7z.json"
+            man.write_text(json.dumps({"source": Path(str(path)).name, "files": files, "skipped": skipped}, ensure_ascii=False, indent=1), encoding="utf-8")
+        return {"ok": True, "files": files, "total": total, "skipped": skipped, "manifest": str(man), "partial": r.returncode != 0}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "7-Zip melewati batas waktu"}
+    except Exception as e:
+        return {"ok": False, "error": "%s: %s" % (type(e).__name__, _clean(str(e))[:120])}
+
+
+def unpack_7z_text(path, outdir) -> str:
+    r = unpack_7z(path, outdir)
+    if not r["ok"]:
+        return "UNPACK 7-Zip gagal: " + r["error"]
+    L = ["UNPACK 7-Zip: %d berkas, %s, %d dilewati (tautan / berkas khusus)%s | manifest: %s" % (
+        len(r["files"]), _human(r["total"]), r["skipped"], " | SEBAGIAN (7-Zip melaporkan peringatan)" if r["partial"] else "", r["manifest"])]
+    for x in r["files"][:40]:
+        L.append("  %s  %s  %s" % (x["sha256"][:16], _human(x["size"]).rjust(9), x["name"]))
+    if len(r["files"]) > 40:
+        L.append("  ... +%d berkas lain di manifest" % (len(r["files"]) - 40))
+    L.append("Berkas hasil BELUM ditriase; jalankan triase per berkas.")
+    return "\n".join(L)
+
+
+def _api_online(req: dict, notes: list | None = None) -> bool:
+    """Online lewat API hanya bila diminta DAN operator menyalakan REA_ONLINE=1."""
+    want = bool(req.get("online"))
+    ok = want and os.environ.get("REA_ONLINE", "").strip() == "1"
+    if want and not ok and notes is not None:
+        notes.append("online diminta, tetapi REA_ONLINE=1 belum diatur operator: akses jaringan dilewati")
+    return ok
+
+
+# ---------------------------------------------------------------------------
+# v99.15 (roadmap v2, Tier B: ekspor anotasi + diff fungsi; OPSIONAL dan ADITIF; keluaran triase lain TIDAK berubah):
+#   1. export_annotations(path, fmt): skrip anotasi dari RE Lab (nama fungsi sub_*, komentar string yang dirujuk kode, komentar panggilan API,
+#      teknik anti-analisis, kandidat loop dekripsi) untuk Ghidra (.py), IDA (.py), atau x64dbg (database .json). Berkas dibuat TANPA menjalankan
+#      sampel; skrip Ghidra / IDA menggeser alamat otomatis bila image base di alat berbeda. Teks dari sampel disisipkan hanya sebagai literal JSON
+#      yang di-escape (tidak pernah sebagai kode). Batas: ANN_MAX_FUNCS / ANN_MAX_CMTS.
+#   2. func_diff(a, b): perbandingan fungsi antar-dua biner (nama bukan sub_*, set API, string, ukuran, jumlah callee) -> sama / berubah / baru / hilang.
+#      Pencocokan: nama ekspor / simbol, lalu kemiripan fitur (Jaccard + rasio ukuran), lalu (ukuran, callee) unik. Batas waktu FDIFF_TIME.
+#   CLI: --export FILE ghidra|ida|x64dbg [OUT], --funcdiff A B. API: export (butuh outdir), funcdiff.
+#   Batasan: kemiripan hanya statis dari fitur RE Lab (bukan perbandingan instruksi); fungsi tanpa API / string dicocokkan hanya lewat ukuran.
+# ---------------------------------------------------------------------------
+
+ANN_MAX_FUNCS = 20000
+ANN_MAX_CMTS = 30000
+FDIFF_TIME = 6.0
+FDIFF_MAX_FUNCS = 4000
+
+
+def _ann_txt(s, n: int = 110) -> str:
+    return re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(s))[:n]
+
+
+def _relab_ctx(path):
+    f, size = _open_regular(path)
+    with f:
+        d = f.read(MAX_SCAN)
+    info, ctx, err = _relab_any(d, size)
+    return info, ctx, err
+
+
+def _ann_collect(path) -> dict:
+    info, ctx, err = _relab_ctx(path)
+    if not ctx:
+        return {"error": (err or "tidak bisa dianalisis") + "; RE Lab mendukung PE dan ELF x86 / x64"}
+    F = ctx["F"]
+    funcs = [(va, fo["name"]) for va, fo in sorted(F.items())][:ANN_MAX_FUNCS]
+    cm: dict[int, list[str]] = {}
+
+    def add(va, t):
+        if len(cm) < ANN_MAX_CMTS or va in cm:
+            lst = cm.setdefault(int(va), [])
+            if t not in lst and len(lst) < 3:
+                lst.append(t)
+    for api, vs in ctx["sites"].items():
+        for va, _fs in vs:
+            add(va, "API: " + _ann_txt(api, 60))
+    for e in ctx["sref"].values():
+        if e["funcs"]:
+            add(e["va"], "string(%s): %s" % (e["kind"], _ann_txt(e["text"])))
+    for a in info.get("anti", []):
+        try:
+            add(int(a["first"], 16), "anti-analisis: " + _ann_txt(a["technique"], 60))
+        except (ValueError, KeyError):
+            pass
+    for x in (info.get("cfg") or {}).get("decrypt_loops", []):
+        try:
+            add(int(x["head"], 16), "kandidat loop dekripsi (%s)" % "/".join(x["ops"]))
+        except (ValueError, KeyError):
+            pass
+    return {"base": int(info["image_base"], 16), "arch": info["arch"], "funcs": funcs, "cmts": sorted((va, " | ".join(t)) for va, t in cm.items())}
+
+
+_ANN_GHIDRA = '''# Dibuat oleh rea_triage.py v%(ver)s (analisis statis; sampel tidak dijalankan). Jalankan dari Script Manager Ghidra (Jython / PyGhidra).
+# Sumber: %(src)s | %(arch)s
+from ghidra.program.model.symbol import SourceType
+from ghidra.program.model.listing import CodeUnit
+IMAGE_BASE = %(base)s
+FUNCS = %(funcs)s
+CMTS = %(cmts)s
+delta = currentProgram.getImageBase().getOffset() - IMAGE_BASE
+fm = currentProgram.getFunctionManager()
+lst = currentProgram.getListing()
+nf = nc = 0
+for va, name in FUNCS:
+    a = toAddr(va + delta)
+    try:
+        f = fm.getFunctionAt(a)
+        if f is None:
+            f = createFunction(a, name)
+        elif f.getName().startswith("FUN_"):
+            f.setName(name, SourceType.USER_DEFINED)
+        nf += 1
+    except Exception as e:
+        pass
+for va, text in CMTS:
+    try:
+        lst.setComment(toAddr(va + delta), CodeUnit.EOL_COMMENT, text)
+        nc += 1
+    except Exception as e:
+        pass
+print("rea_triage: %%d fungsi, %%d komentar" %% (nf, nc))
+'''
+_ANN_IDA = '''# Dibuat oleh rea_triage.py v%(ver)s (analisis statis; sampel tidak dijalankan). Jalankan lewat File > Script file di IDA (IDAPython 7+).
+# Sumber: %(src)s | %(arch)s
+import idc, idaapi, ida_funcs
+IMAGE_BASE = %(base)s
+FUNCS = %(funcs)s
+CMTS = %(cmts)s
+delta = idaapi.get_imagebase() - IMAGE_BASE
+nf = nc = 0
+for va, name in FUNCS:
+    ea = va + delta
+    try:
+        if ida_funcs.get_func(ea) is None:
+            ida_funcs.add_func(ea)
+        if idc.set_name(ea, name, idc.SN_NOWARN | idc.SN_NOCHECK):
+            nf += 1
+    except Exception:
+        pass
+for va, text in CMTS:
+    try:
+        if idc.set_cmt(va + delta, text, 0):
+            nc += 1
+    except Exception:
+        pass
+print("rea_triage: %%d fungsi, %%d komentar" %% (nf, nc))
+'''
+
+
+def export_annotations(path, fmt: str = "ghidra", out=None) -> dict:
+    """Skrip anotasi Ghidra / IDA / x64dbg dari RE Lab. Mengembalikan {"ok", "fmt", "content", "functions", "comments", "path"?}. Tidak pernah melempar."""
+    try:
+        fmt = str(fmt).lower()
+        if fmt not in ("ghidra", "ida", "x64dbg"):
+            return {"ok": False, "error": "format harus ghidra, ida, atau x64dbg"}
+        a = _ann_collect(path)
+        if "error" in a:
+            return {"ok": False, "error": a["error"]}
+        name = os.path.basename(str(path))
+        if fmt == "x64dbg":
+            mod = name.lower()
+            rva = lambda va: "0x%X" % max(0, va - a["base"])
+            content = json.dumps({"labels": [{"module": mod, "address": rva(v), "manual": True, "text": n} for v, n in a["funcs"]],
+                                  "comments": [{"module": mod, "address": rva(v), "manual": True, "text": t} for v, t in a["cmts"]]}, indent=1)
+        else:
+            tpl = _ANN_GHIDRA if fmt == "ghidra" else _ANN_IDA
+            lit = lambda o: json.dumps(o, ensure_ascii=True, separators=(",", ":"))
+            content = tpl % {"ver": VERSION, "src": _ann_txt(name, 80), "arch": _ann_txt(a["arch"], 60), "base": "0x%X" % a["base"],
+                             "funcs": lit([[v, n] for v, n in a["funcs"]]), "cmts": lit([[v, t] for v, t in a["cmts"]])}
+        r = {"ok": True, "fmt": fmt, "content": content, "functions": len(a["funcs"]), "comments": len(a["cmts"])}
+        if out:
+            p = Path(out)
+            if p.is_dir() or str(out).endswith(("/", "\\")):
+                p = Path(out) / (name + ".rea." + ("json" if fmt == "x64dbg" else "py"))
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content, encoding="utf-8", newline="\n")
+            r["path"] = str(p)
+        return r
+    except Exception as e:
+        return {"ok": False, "error": "%s: %s" % (type(e).__name__, str(e)[:120])}
+
+
+def export_text(path, fmt: str = "ghidra", out=None) -> str:
+    r = export_annotations(path, fmt, out)
+    if not r["ok"]:
+        return "EKSPOR gagal: " + r["error"]
+    return "EKSPOR %s: %d fungsi, %d komentar%s" % (r["fmt"], r["functions"], r["comments"], (" -> " + r["path"]) if r.get("path") else
+                                                  "\n(tambahkan OUT untuk menyimpan; tanpa itu isi berkas tidak ditulis)")
+
+
+def _fd_sigs(path) -> dict:
+    info, ctx, err = _relab_ctx(path)
+    if not ctx:
+        raise ValueError((err or "tidak bisa dianalisis") + "; RE Lab mendukung PE dan ELF x86 / x64")
+    out = {}
+    for va, fo in list(ctx["F"].items())[:FDIFF_MAX_FUNCS * 4]:
+        if va in ctx["thunks"]:
+            continue
+        feats = frozenset(["a:" + k for k in fo["apis"]] + ["s:" + _ann_txt(x, 60).lower() for x in fo["strings"]])
+        out[va] = {"va": va, "name": fo["name"], "size": fo["size"], "nc": len(fo["callees"]), "feats": feats}
+        if len(out) >= FDIFF_MAX_FUNCS:
+            break
+    return out
+
+
+def _fd_score(x: dict, y: dict) -> float:
+    u = len(x["feats"] | y["feats"])
+    j = len(x["feats"] & y["feats"]) / u if u else (1.0 if x["nc"] == y["nc"] else 0.0)
+    sz = min(x["size"], y["size"]) / max(x["size"], y["size"], 1)
+    return round(0.7 * j + 0.3 * sz, 3)
+
+
+def func_diff(path_a, path_b) -> dict:
+    """Diff fungsi antar-dua biner (statis). Tidak pernah melempar. Lihat komentar v99.15 untuk metode dan batasan."""
+    try:
+        A, B = _fd_sigs(path_a), _fd_sigs(path_b)
+    except Exception as e:
+        return {"ok": False, "error": "%s: %s" % (type(e).__name__, str(e)[:140])}
+    t0 = time.monotonic()
+    pairs: list[tuple[int, int, float, str]] = []
+    ua, ub = set(A), set(B)
+    named = {}
+    for vb, y in B.items():
+        if not y["name"].startswith("sub_"):
+            named.setdefault(y["name"], vb)
+    for va, x in A.items():
+        if not x["name"].startswith("sub_") and x["name"] in named and named[x["name"]] in ub:
+            vb = named[x["name"]]
+            pairs.append((va, vb, _fd_score(x, B[vb]), "nama"))
+            ua.discard(va)
+            ub.discard(vb)
+    ea: dict[tuple, list] = {}
+    eb: dict[tuple, list] = {}
+    for va in ua:
+        if A[va]["feats"]:
+            ea.setdefault((A[va]["feats"], A[va]["size"], A[va]["nc"]), []).append(va)
+    for vb in ub:
+        if B[vb]["feats"]:
+            eb.setdefault((B[vb]["feats"], B[vb]["size"], B[vb]["nc"]), []).append(vb)
+    for k, la in ea.items():   # tanda tangan persis sama (fitur + ukuran + callee): pasangkan menurut urutan alamat
+        for va, vb in zip(sorted(la), sorted(eb.get(k, []))):
+            pairs.append((va, vb, 1.0, "fitur"))
+            ua.discard(va)
+            ub.discard(vb)
+    inv: dict[str, list[int]] = {}
+    for vb in ub:
+        for ft in B[vb]["feats"]:
+            inv.setdefault(ft, []).append(vb)
+    cand = []
+    partial = False
+    for va in ua:
+        if time.monotonic() - t0 > FDIFF_TIME:
+            partial = True
+            break
+        seen: dict[int, int] = {}
+        for ft in A[va]["feats"]:
+            lst = inv.get(ft, ())
+            if len(lst) <= 60:
+                for vb in lst:
+                    seen[vb] = seen.get(vb, 0) + 1
+        for vb in sorted(seen, key=lambda k: -seen[k])[:8]:
+            cand.append((_fd_score(A[va], B[vb]), va, vb))
+    for sc, va, vb in sorted(cand, key=lambda c: (-c[0], c[1], c[2])):
+        if sc >= 0.6 and va in ua and vb in ub:
+            pairs.append((va, vb, sc, "fitur"))
+            ua.discard(va)
+            ub.discard(vb)
+    ga: dict[tuple, list] = {}
+    gb: dict[tuple, list] = {}
+    for va in ua:
+        if not A[va]["feats"]:
+            ga.setdefault((A[va]["size"], A[va]["nc"]), []).append(va)
+    for vb in ub:
+        if not B[vb]["feats"]:
+            gb.setdefault((B[vb]["size"], B[vb]["nc"]), []).append(vb)
+    for k, la in ga.items():   # fungsi tanpa API / string: cocok hanya bila jumlah per (ukuran, callee) sama; urut menurut alamat
+        lb = gb.get(k, [])
+        if len(la) == len(lb):
+            for va, vb in zip(sorted(la), sorted(lb)):
+                pairs.append((va, vb, _fd_score(A[va], B[vb]), "ukuran"))
+                ua.discard(va)
+                ub.discard(vb)
+    same = [p for p in pairs if p[2] >= 0.999 and A[p[0]]["size"] == B[p[1]]["size"]]
+    chg = sorted([p for p in pairs if p not in same], key=lambda p: (p[2], p[0]))
+    row = lambda S, v: {"va": "0x%X" % v, "name": _clean(S[v]["name"]), "size": S[v]["size"]}
+    return {"ok": True, "partial": partial, "a": {"funcs": len(A)}, "b": {"funcs": len(B)}, "identical": len(same), "weak": sum(1 for p in same if p[3] == "ukuran"),
+            "changed": [{"a": row(A, p[0]), "b": row(B, p[1]), "sim": p[2], "by": p[3]} for p in chg],
+            "removed": [row(A, v) for v in sorted(ua)], "added": [row(B, v) for v in sorted(ub)]}
+
+
+def func_diff_text(path_a, path_b, max_items: int = 15) -> str:
+    r = func_diff(path_a, path_b)
+    if not r["ok"]:
+        return "FUNCDIFF gagal: " + r["error"]
+    L = ["FUNCDIFF: A %d fungsi, B %d fungsi | sama %d (%d hanya dari ukuran), berubah %d, hilang di B %d, baru di B %d%s" % (
+        r["a"]["funcs"], r["b"]["funcs"], r["identical"], r["weak"], len(r["changed"]), len(r["removed"]), len(r["added"]),
+        " | TERPOTONG (batas waktu)" if r["partial"] else "")]
+    for c in r["changed"][:max_items]:
+        L.append("   berubah (%.2f, %s): %s %s (%dB) -> %s %s (%dB)" % (c["sim"], c["by"], c["a"]["name"], c["a"]["va"], c["a"]["size"], c["b"]["name"], c["b"]["va"], c["b"]["size"]))
+    for k, lab in (("removed", "hilang"), ("added", "baru")):
+        for x in r[k][:max_items // 3 or 1]:
+            L.append("   %s: %s %s (%dB)" % (lab, x["name"], x["va"], x["size"]))
+    return "\n".join(L)
+
+
+_API_ACTIONS = ("export", "funcdiff", "sigcheck", "reputation", "unpack7z", "capabilities", "cache", "triage", "json", "ioc", "yara", "md", "similar", "hex", "compare", "list", "extract", "dir", "ctph", "re", "xref", "disasm", "unpack", "yarascan", "assets", "assets_extract", "assets_carve", "formats", "dex", "dotnet", "cfg", "emu", "config", "deobf")
+
+
+_DEFAULT_ROOTS: list = []     # diisi pemanggil tepercaya (server.py) lewat set_default_roots(); dipakai bila env REA_ROOTS kosong
+
+
+def set_default_roots(roots) -> list:
+    """Akar bawaan untuk rea_api bila env REA_ROOTS kosong. Dipanggil server.py saat start supaya pembatas aktif tanpa bergantung pada .env.
+    Env REA_ROOTS yang diisi manual tetap menang. Daftar kosong / None = tanpa batas bawaan. Mengembalikan daftar akar yang berlaku."""
+    _DEFAULT_ROOTS[:] = [str(x) for x in (roots or []) if str(x).strip()]
+    return _roots()
+
+
+def _roots() -> list:
+    """Akar yang berlaku: env REA_ROOTS (dipisah os.pathsep) kalau diisi, kalau tidak akar bawaan dari set_default_roots()."""
+    env = [x for x in os.environ.get("REA_ROOTS", "").split(os.pathsep) if x.strip()]
+    return env or list(_DEFAULT_ROOTS)
 
 
 def _api_path(p) -> Path:
-    """Jika REA_ROOTS (dipisah os.pathsep) diisi, hanya path di bawah akar itu yang boleh dibaca / ditulis."""
+    """Jika REA_ROOTS / akar bawaan ada, hanya path di bawah akar itu yang boleh dibaca / ditulis. Pesan galat seragam untuk semua aksi."""
     pp = Path(str(p)).expanduser().resolve()
-    roots = [x for x in os.environ.get("REA_ROOTS", "").split(os.pathsep) if x]
+    roots = _roots()
     if roots and not any(pp == Path(r).resolve() or Path(r).resolve() in pp.parents for r in roots):
-        raise PermissionError("path di luar REA_ROOTS: %s" % pp.name)
+        raise PermissionError("path di luar REA_ROOTS: %s (hanya boleh di bawah: %s)" % (pp.name[:80], "; ".join(Path(r).name or str(r) for r in roots)[:160]))
     return pp
+
+
+def _api_outdir(p) -> Path:
+    """Seperti _api_path, tetapi untuk TUJUAN TULIS (outdir). Fail-closed: tanpa REA_ROOTS / akar bawaan, agen tidak boleh menulis ke mana pun."""
+    if not _roots():
+        raise PermissionError("penulisan lewat API ditolak: REA_ROOTS / set_default_roots() belum diatur (outdir harus berada di bawah akar yang diizinkan)")
+    return _api_path(p)
 
 
 def rea_api(request) -> dict:
@@ -5045,13 +11472,18 @@ def rea_api(request) -> dict:
         trim = lambda t: t if not mc or len(t) <= mc else t[:mc - 30] + "\n[...dipangkas supaya muat...]"
         if act == "capabilities":
             return {"ok": True, "version": VERSION, "actions": list(_API_ACTIONS), "rea_extract": _extract_mod() is not None,
-                    "rea_binary": _has_binary(), "rea_assets": _assets_mod() is not None, "roots_restricted": bool(os.environ.get("REA_ROOTS"))}
+                    "rea_binary": _has_binary(), "rea_assets": _assets_mod() is not None, "roots_restricted": bool(_roots()),
+                    "cache": _cache_dir() is not None, "sigcheck_crypto": importlib.util.find_spec("cryptography") is not None,
+                    "online_enabled": os.environ.get("REA_ONLINE", "").strip() == "1", "vt_key_set": bool(os.environ.get("REA_VT_KEY", "").strip()),
+                    "sevenzip": any(__import__("shutil").which(x) for x in ("7zz", "7z", "7za", "7zr"))}
+        if act == "cache":
+            return {"ok": True, "action": act, "info": cache_info()}
         if act == "triage":
             p = _api_path(req["path"])
             if p.is_dir():
                 return {"ok": True, "action": act, "text": trim(triage_dir_text(str(p), defang=bool(req.get("defang", True))))}
-            rep = triage(p)
-            return {"ok": True, "action": act, "score": rep["score"], "level": rep["level"], "sha256": rep["sha256"], "kind": rep["kind"],
+            rep = triage(p, use_cache=not req.get("nocache"))
+            return {"ok": True, "action": act, "cached": bool(rep.get("cached")), "score": rep["score"], "level": rep["level"], "sha256": rep["sha256"], "kind": rep["kind"],
                     "text": trim(render(rep, compact=bool(req.get("compact", False)), defang=bool(req.get("defang", True)), max_chars=mc, card=bool(req.get("card", False))))}
         if act in ("json", "ioc"):
             return {"ok": True, "action": act, "data": json.loads(triage_json(_api_path(req["path"]), ioc_only=act == "ioc"))}
@@ -5071,7 +11503,7 @@ def rea_api(request) -> dict:
         if act == "list":
             return {"ok": True, "action": act, "text": trim(container_text(_api_path(req["path"]), max_chars=mc))}
         if act == "extract":
-            m = container_extract(_api_path(req["path"]), _api_path(req["outdir"]), pattern=req.get("pattern"), scan=bool(req.get("scan", False)))
+            m = container_extract(_api_path(req["path"]), _api_outdir(req["outdir"]), pattern=req.get("pattern"), scan=bool(req.get("scan", False)))
             return {"ok": m.get("status") == "success", "action": act, "manifest": m}
         if act == "re":
             p = _api_path(req["path"])
@@ -5081,24 +11513,62 @@ def rea_api(request) -> dict:
         if act == "disasm":
             return {"ok": True, "action": act, "text": trim(disasm_text(_api_path(req["path"]), req.get("at", "entry"), int(req.get("count", 40)), req.get("arch")))}
         if act == "unpack":
-            return {"ok": True, "action": act, "text": trim(unpack_text(_api_path(req["path"]), _api_path(req["outdir"])))}
+            return {"ok": True, "action": act, "text": trim(unpack_text(_api_path(req["path"]), _api_outdir(req["outdir"])))}
         if act == "yarascan":
             return {"ok": True, "action": act, "text": trim(yara_text(_api_path(req["path"]), _api_path(req["rules"])))}
         if act == "dir":
             return {"ok": True, "action": act, "text": trim(triage_dir_text(str(_api_path(req["path"])), defang=bool(req.get("defang", True))))}
+        if act == "emu":
+            return {"ok": True, "action": act, "text": trim(emu_text(_api_path(req["path"]), req.get("at"), defang=bool(req.get("defang", True))))}
+        if act == "deobf":
+            return {"ok": True, "action": act, "text": trim(deobf_text(_api_path(req["path"]), defang=bool(req.get("defang", True)), full=bool(req.get("full", False))))}
+        if act == "config":
+            if req.get("json"):
+                return {"ok": True, "action": act, **extract_config(_api_path(req["path"]), keys=req.get("keys"), reveal=bool(req.get("reveal", False)))}
+            return {"ok": True, "action": act, "text": trim(config_text(_api_path(req["path"]), defang=bool(req.get("defang", True)), keys=req.get("keys")))}
+        if act == "cfg":
+            return {"ok": True, "action": act, "text": trim(cfg_text(_api_path(req["path"]), req.get("at")))}
+        if act == "dotnet":
+            return {"ok": True, "action": act, "text": trim(net_text(_api_path(req["path"]), defang=bool(req.get("defang", True)), compact=bool(req.get("compact", False))))}
+        if act == "dex":
+            return {"ok": True, "action": act, "text": trim(dex_text(_api_path(req["path"]), defang=bool(req.get("defang", True)), compact=bool(req.get("compact", False))))}
         if act == "assets":
             return {"ok": True, "action": act, "text": trim(assets_text(_api_path(req["path"]), max_chars=mc))}
         if act == "assets_extract":
-            m = assets_extract(_api_path(req["path"]), _api_path(req["outdir"]), pattern=req.get("pattern"), convert=bool(req.get("convert", True)))
+            m = assets_extract(_api_path(req["path"]), _api_outdir(req["outdir"]), pattern=req.get("pattern"), convert=bool(req.get("convert", True)))
             return {"ok": m.get("status") in ("success", "partial"), "action": act, "manifest": m}
         if act == "assets_carve":
-            od = _api_path(req["outdir"]) if req.get("outdir") else None
+            od = _api_outdir(req["outdir"]) if req.get("outdir") else None
             m = assets_carve(_api_path(req["path"]), od)
             return {"ok": m.get("status") == "success", "action": act, "result": m}
+        if act == "export":
+            r = export_annotations(_api_path(req["path"]), req.get("fmt", "ghidra"), _api_outdir(req["outdir"]) if req.get("outdir") else None)
+            r.pop("content", None)
+            return {"ok": bool(r.get("ok")), "action": act, "result": r}
+        if act == "funcdiff":
+            return {"ok": True, "action": act, "text": trim(func_diff_text(_api_path(req["path"]), _api_path(req["path2"]))), "data": func_diff(_api_path(req["path"]), _api_path(req["path2"]))}
+        if act == "sigcheck":
+            notes: list = []
+            r = sig_check(_api_path(req["path"]), online=_api_online(req, notes))
+            if isinstance(r.get("notes"), list):
+                r["notes"].extend(notes)
+            txt = sig_text(_api_path(req["path"]), online=_api_online(req)) if r.get("ok") else "TANDA TANGAN: " + r.get("error", "gagal")
+            return {"ok": bool(r.get("ok")), "action": act, "data": r, "text": trim(txt + ("".join("\nCatatan: " + n for n in notes)))}
+        if act == "reputation":
+            notes = []
+            tgt = str(req["target"]).strip()
+            tgt = tgt if re.fullmatch(r"[0-9a-fA-F]{64}", tgt) else str(_api_path(tgt))
+            on = _api_online(req, notes)
+            r = reputation(tgt, online=on)
+            return {"ok": bool(r.get("ok")), "action": act, "data": r, "text": trim(reputation_text(tgt, online=on) + ("".join("\nCatatan: " + n for n in notes)))}
+        if act == "unpack7z":
+            return {"ok": True, "action": act, "text": trim(unpack_7z_text(_api_path(req["path"]), _api_outdir(req["outdir"])))}
         if act == "formats":
             mod = _assets_mod()
             return {"ok": mod is not None, "action": act, "formats": mod.formats() if mod else []}
         return {"ok": False, "error": "aksi tidak dikenal: %s" % act[:40], "actions": list(_API_ACTIONS)}
+    except PermissionError as e:
+        return {"ok": False, "error": str(e)[:200]}
     except Exception as e:
         return {"ok": False, "error": "%s: %s" % (type(e).__name__, str(e)[:160])}
 
@@ -5173,14 +11643,14 @@ def container_extract(path, outdir, pattern=None, scan: bool = False) -> dict:
 #
 # Format bawaan:
 #   3D / animasi : glTF / GLB, OBJ, STL, PLY, FBX (biner; ASCII hanya ringkasan), COLLADA (.dae), BVH
-#   gambar       : PNG / APNG, JPEG, GIF, BMP, TGA, DDS (DXT1/3/5 + RGBA tak terkompresi), WebP, ICO
+#   gambar       : PNG / APNG, JPEG, GIF, BMP, TGA, DDS (DXT1/3/5, BC4, BC5 + RGBA tak terkompresi), WebP, ICO
 #   audio        : WAV, OGG (Vorbis / Opus), FLAC, MP3, MIDI
-#   arsip / game : Quake PAK, WAD (Doom / Quake / Half-Life), Unreal .pak (v1-v9, tanpa enkripsi), ZIP (APK / JAR / OOXML ...), TAR, GZIP,
-#                  header UnityFS / 7z / RAR (deteksi saja)
+#   arsip / game : Quake PAK, WAD (Doom / Quake / Half-Life), Unreal .pak (v1-v11, tanpa enkripsi), ZIP (APK / JAR / OOXML ...), TAR, GZIP,
+#                  UnityFS (ekstraksi node), 7z / RAR (deteksi saja)
 #   data         : SQLite
 #
 # Yang BELUM / tidak bisa dibuka langsung (dilaporkan jelas, bukan ditebak): paket terenkripsi / dikompres format sendiri, aset Unity /
-# Unreal yang terserialisasi (butuh parser per versi mesin), tekstur BC4-BC7 / ASTC. Untuk itu tulis plugin (di bawah).
+# Unreal yang terserialisasi (butuh parser per versi mesin), tekstur BC6H / BC7 / ASTC. Untuk itu tulis plugin (di bawah).
 #
 # PLUGIN (parser buatan sendiri, ala QuickBMS): buat folder berisi berkas .py, masing-masing memuat
 #     def register_formats(reg):
@@ -6250,7 +12720,7 @@ def _dae_inspect(d, p):
     imgs = [(e.text or "").strip() for e in r.iter() if _tag(e) == "init_from" and (e.text or "").strip()][:8]
     if imgs:
         L.append("gambar dirujuk: " + ", ".join(_as_clean(i, 50) for i in imgs))
-    return {"lines": L, "extract": "geometri (triangles / polylist) -> .obj; animasi belum diekspor (hanya dihitung)"}
+    return {"lines": L, "extract": "geometri (triangles / polylist) -> .obj; kurva animasi (sampler / channel) -> animations/*.csv + animations.json"}
 
 
 def _dae_extract(d, p, out, opts):
@@ -6318,6 +12788,74 @@ def _dae_extract(d, p, out, opts):
                                "model3d", "%d vertex, %d face" % (len(pos), len(faces)))
         except Exception as e:
             out.errors.append("geometri %s: %s" % (_as_clean(geom.get("id"), 40), _as_clean(e, 100)))
+    try:
+        _dae_anim_export(r, out)
+    except Exception as e:
+        out.errors.append("animasi: %s" % _as_clean(e, 100))
+
+
+DAE_ANIM_MAX_VALUES = 2_000_000   # total angka kurva animasi yang diekspor per berkas
+DAE_ANIM_MAX_CHANNELS = 2000
+
+
+def _dae_anim_export(r, out) -> None:
+    """v99.16: kurva animasi COLLADA (sampler / channel) -> animations/NNN_<target>.csv (satu per channel) + animations/animations.json (semua channel).
+    Hanya kunci waktu + nilai mentah (stride 1 = skalar, 16 = matriks 4x4); interpolasi ikut jika ada. Tidak ada evaluasi / retargeting."""
+    srcs = {}
+    for e in r.iter():
+        if _tag(e) != "source" or not e.get("id"):
+            continue
+        fa = next((x for x in e.iter() if _tag(x) in ("float_array", "Name_array", "IDREF_array")), None)
+        if fa is None:
+            continue
+        ac = next((x for x in e.iter() if _tag(x) == "accessor"), None)
+        try:
+            st = max(1, int(ac.get("stride", 1))) if ac is not None else 1
+        except ValueError:
+            st = 1
+        srcs[e.get("id")] = (_tag(fa), (fa.text or "").split(), st)
+    chans = []
+    for an in [e for e in r.iter() if _tag(e) == "animation"]:
+        samp = {}
+        for sm in [e for e in an if _tag(e) == "sampler"]:
+            samp[sm.get("id")] = {i.get("semantic"): (i.get("source") or "")[1:] for i in sm if _tag(i) == "input"}
+        for ch in [e for e in an if _tag(e) == "channel"]:
+            sid = (ch.get("source") or "")[1:]
+            if sid in samp:
+                chans.append((ch.get("target") or "?", samp[sid], an.get("name") or an.get("id") or "anim"))
+    if not chans:
+        return
+    total = 0
+    js = []
+    for i, (target, inp, an_name) in enumerate(chans[:DAE_ANIM_MAX_CHANNELS]):
+        try:
+            ti, vo = srcs.get(inp.get("INPUT")), srcs.get(inp.get("OUTPUT"))
+            if not ti or not vo or ti[0] != "float_array" or vo[0] != "float_array":
+                raise ValueError("sampler tanpa INPUT / OUTPUT float_array")
+            times = [float(x) for x in ti[1]]
+            st = vo[2]
+            n = len(times)
+            vals = [float(x) for x in vo[1]]
+            if n == 0 or len(vals) < n * st:
+                raise ValueError("jumlah nilai tidak cocok (%d kunci, stride %d, %d nilai)" % (n, st, len(vals)))
+            total += n * (st + 1)
+            if total > DAE_ANIM_MAX_VALUES:
+                out.errors.append("animasi: batas %d angka tercapai; channel sisanya dilewati" % DAE_ANIM_MAX_VALUES)
+                break
+            it = srcs.get(inp.get("INTERPOLATION"))
+            interp = it[1] if it and it[0] == "Name_array" and len(it[1]) == n else None
+            cols = ["time_s"] + (["value"] if st == 1 else ["m%d" % k for k in range(st)] if st == 16 else ["v%d" % k for k in range(st)])
+            rows = [("%.6g" % times[k],) + tuple("%.6g" % x for x in vals[k * st:(k + 1) * st]) + ((_as_clean(interp[k], 16),) if interp else ()) for k in range(n)]
+            if interp:
+                cols.append("interp")
+            nm = _obj_name(target.replace("/", "_"), "channel")
+            out.write_text("animations/%03d_%s.csv" % (i, nm), _csv_text(rows, cols), "animation", "%d kunci, stride %d" % (n, st))
+            js.append({"animation": _as_clean(an_name, 60), "target": _as_clean(target, 120), "stride": st, "times": times[:n],
+                       "values": [vals[k * st:(k + 1) * st] for k in range(n)], "interpolation": interp})
+        except Exception as e:
+            out.errors.append("animasi %s: %s" % (_as_clean(target, 50), _as_clean(e, 100)))
+    if js:
+        out.write_text("animations/animations.json", json.dumps({"source": "COLLADA", "channels": js}, separators=(",", ":")), "animation", "%d channel" % len(js))
 
 
 register("COLLADA", "model3d", _is_dae, _dae_inspect, _dae_extract, 30, "COLLADA .dae (XML)")
@@ -6779,6 +13317,53 @@ def _dxt_decode(d, off, w, h, kind):
     return out
 
 
+# v99.8 [A4]: BC4 (1 kanal) dan BC5 (2 kanal, umum untuk normal map). FourCC ATI1 / BC4U / BC4S dan ATI2 / BC5U / BC5S, atau DXGI 80-84.
+_BC4_FMTS = {"ATI1": False, "BC4U": False, "BC4_UNORM": False, "BC4S": True, "BC4_SNORM": True}
+_BC5_FMTS = {"ATI2": False, "BC5U": False, "BC5_UNORM": False, "BC5S": True, "BC5_SNORM": True}
+
+
+def _bc4_block(b, signed: bool):
+    """Satu blok 8-byte -> 16 nilai 0..255 (urutan baris). UNORM: 8 / 6+{0,255} nilai; SNORM: dipetakan -1..1 -> 0..255."""
+    if signed:
+        e0, e1 = struct.unpack_from("<bb", b, 0)
+        e0, e1 = max(e0, -127), max(e1, -127)
+        pal = [e0, e1] + ([((7 - k) * e0 + k * e1) / 7.0 for k in range(1, 7)] if e0 > e1 else [((5 - k) * e0 + k * e1) / 5.0 for k in range(1, 5)] + [-127, 127])
+        pal = [max(0, min(255, int(round((v / 127.0 * 0.5 + 0.5) * 255)))) for v in pal]
+    else:
+        e0, e1 = b[0], b[1]
+        pal = [e0, e1] + ([((7 - k) * e0 + k * e1 + 3) // 7 for k in range(1, 7)] if e0 > e1 else [((5 - k) * e0 + k * e1 + 2) // 5 for k in range(1, 5)] + [0, 255])
+    bits = int.from_bytes(bytes(b[2:8]), "little")
+    return [pal[(bits >> (3 * i)) & 7] for i in range(16)]
+
+
+def _bc45_decode(d, off, w, h, two: bool, signed: bool):
+    """BC4 -> abu-abu (R=G=B, A=255). BC5 -> R,G dari dua kanal; B direkonstruksi sebagai komponen Z peta normal (sqrt(1-x^2-y^2))."""
+    bw, bh = (w + 3) // 4, (h + 3) // 4
+    bs = 16 if two else 8
+    if off + bw * bh * bs > len(d):
+        raise ValueError("data DDS terpotong")
+    out = bytearray(w * h * 4)
+    for by in range(bh):
+        for bx in range(bw):
+            o = off + (by * bw + bx) * bs
+            r = _bc4_block(d[o:o + 8], signed)
+            g = _bc4_block(d[o + 8:o + 16], signed) if two else r
+            for i in range(16):
+                x, y = bx * 4 + (i & 3), by * 4 + (i >> 2)
+                if x >= w or y >= h:
+                    continue
+                if two:
+                    nx, ny = r[i] / 127.5 - 1.0, g[i] / 127.5 - 1.0
+                    z = 1.0 - nx * nx - ny * ny
+                    bl = int(round((math.sqrt(z) if z > 0 else 0.0) * 127.5 + 127.5))
+                    px = (r[i], g[i], max(0, min(255, bl)), 255)
+                else:
+                    px = (r[i], r[i], r[i], 255)
+                q = (y * w + x) * 4
+                out[q:q + 4] = bytes(px)
+    return out
+
+
 def _dds_decode(d):
     i = _dds_info(d)
     w, h, off, fmt = i["w"], i["h"], i["off"], i["fmt"]
@@ -6788,6 +13373,10 @@ def _dds_decode(d):
         raise ValueError("cubemap / tekstur volume: hanya mip pertama bidang pertama yang bisa dibaca; belum didukung")
     if fmt in ("DXT1", "DXT3", "DXT5"):
         return w, h, _dxt_decode(d, off, w, h, fmt)
+    if fmt in _BC4_FMTS:
+        return w, h, _bc45_decode(d, off, w, h, False, _BC4_FMTS[fmt])
+    if fmt in _BC5_FMTS:
+        return w, h, _bc45_decode(d, off, w, h, True, _BC5_FMTS[fmt])
     if fmt in ("R8G8B8A8_UNORM", "B8G8R8A8_UNORM") or (not (i["pf"] & 4) and i["bits"] in (24, 32)):
         bpp = 3 if (not (i["pf"] & 4) and i["bits"] == 24) else 4
         raw = bytes(d[off:off + w * h * bpp])
@@ -6806,19 +13395,25 @@ def _dds_decode(d):
                 g = lambda m: ((v & m) >> sh(m)) if m else 255
                 out[px * 4:px * 4 + 4] = bytes((g(rm), g(gm), g(bm), g(am) if am else 255))
         return w, h, out
-    raise ValueError("format DDS %s belum didukung (BC4-BC7 / ASTC / dll butuh dekoder tambahan)" % fmt)
+    raise ValueError("format DDS %s belum didukung (BC6H / BC7 / ASTC / dll butuh dekoder tambahan)" % fmt)
 
 
 def _dds_inspect(d, p):
     i = _dds_info(d)
-    ok = i["fmt"] in ("DXT1", "DXT3", "DXT5") or i["fmt"].startswith(("RGB", "RGBA", "R8G8B8A8", "B8G8R8A8"))
+    ok = i["fmt"] in ("DXT1", "DXT3", "DXT5") or i["fmt"] in _BC4_FMTS or i["fmt"] in _BC5_FMTS or i["fmt"].startswith(("RGB", "RGBA", "R8G8B8A8", "B8G8R8A8"))
     L = ["DDS %dx%d, format %s, %d mip%s%s" % (i["w"], i["h"], i["fmt"], i["mips"], ", cubemap" if i["cube"] else "", ", volume" if i["volume"] else "")]
+    if i["fmt"] in _BC5_FMTS:
+        L.append("BC5 (2 kanal): biasanya peta normal; saat dikonversi R,G = kanal asli, B direkonstruksi dari X,Y")
+    elif i["fmt"] in _BC4_FMTS:
+        L.append("BC4 (1 kanal): dikonversi ke PNG abu-abu")
     return {"lines": L, "extract": "-> .png (mip pertama)" if ok and not (i["cube"] or i["volume"]) else "format ini belum bisa didekode ke PNG"}
 
 
 def _dds_extract(d, p, out, opts):
     w, h, px = _dds_decode(d)
-    out.write("%s.png" % _obj_name(p.stem, "texture"), _png_encode(w, h, px), "image", "%dx%d dari DDS" % (w, h))
+    f_ = _dds_info(d)["fmt"]
+    note = " (BC5: B = Z hasil rekonstruksi normal map)" if f_ in _BC5_FMTS else " (BC4: abu-abu)" if f_ in _BC4_FMTS else ""
+    out.write("%s.png" % _obj_name(p.stem, "texture"), _png_encode(w, h, px), "image", "%dx%d dari DDS%s" % (w, h, note))
 
 
 register("DDS", "image", lambda d, e: d[:4] == b"DDS " and len(d) >= 128 and _u32(d, 4) == 124, _dds_inspect, _dds_extract, 12, "tekstur DirectDraw (game)")
@@ -7045,7 +13640,65 @@ def _wad(d, p):
 _add_archive("WAD", lambda d, e: len(d) >= 12 and bytes(d[:4]) in (b"IWAD", b"PWAD", b"WAD2", b"WAD3"), _wad, "WAD (Doom / Quake / Half-Life)")
 
 
-# --- Unreal .pak (v1-v9, tanpa enkripsi) ---
+# --- LZ4 (blok mentah, tanpa pembungkus frame) ---
+def _lz4_block(src, usize: int) -> bytes:
+    """Dekompresi satu blok LZ4 mentah ke paling banyak `usize` byte (hasil harus tepat usize). Murni Python; keluaran dibatasi
+    (blok berbahaya tidak bisa mengembang melebihi usize). ValueError bila rusak / terpotong / melebihi ukuran."""
+    if usize < 0 or usize > MAX_OUT_FILE:
+        raise ValueError("ukuran keluaran LZ4 tidak wajar")
+    s = bytes(src)
+    n = len(s)
+    out = bytearray()
+    i = 0
+    try:
+        while i < n:
+            tok = s[i]
+            i += 1
+            ll = tok >> 4
+            if ll == 15:
+                while True:
+                    b = s[i]
+                    i += 1
+                    ll += b
+                    if b != 255:
+                        break
+            if len(out) + ll > usize:
+                raise ValueError("LZ4: literal melebihi ukuran")
+            out += s[i:i + ll]
+            if i + ll > n:
+                raise ValueError("LZ4: literal terpotong")
+            i += ll
+            if i >= n:
+                break
+            off = s[i] | (s[i + 1] << 8)
+            i += 2
+            if off == 0 or off > len(out):
+                raise ValueError("LZ4: offset tidak sah")
+            ml = tok & 15
+            if ml == 15:
+                while True:
+                    b = s[i]
+                    i += 1
+                    ml += b
+                    if b != 255:
+                        break
+            ml += 4
+            if len(out) + ml > usize:
+                raise ValueError("LZ4: salinan melebihi ukuran")
+            st = len(out) - off
+            if off >= ml:
+                out += out[st:st + ml]
+            else:
+                pat = bytes(out[st:])
+                out += (pat * (ml // off + 1))[:ml]
+    except IndexError:
+        raise ValueError("LZ4: data terpotong") from None
+    if len(out) != usize:
+        raise ValueError("LZ4: ukuran hasil %d, diharapkan %d" % (len(out), usize))
+    return bytes(out)
+
+
+# --- Unreal .pak (v1-v11, tanpa enkripsi) ---
 _UPAK_MAGIC = 0x5A6F12E1
 
 
@@ -7083,6 +13736,118 @@ def _upak_entry(d, pos, ver):
             "hdr": pos - st}, pos
 
 
+def _upak_decode(blob, p):
+    """Entri terenkode (indeks UE 4.26+, v10 / v11) pada blob[p:] -> (entri, posisi_berikut). Offset blok relatif terhadap awal entri."""
+    v = struct.unpack_from("<I", blob, p)[0]
+    p += 4
+    comp, enc, nb = (v >> 23) & 0x3F, bool(v & (1 << 22)), (v >> 6) & 0xFFFF
+    bs = v & 0x3F
+    if bs == 0x3F:
+        bs = struct.unpack_from("<I", blob, p)[0]
+        p += 4
+    else:
+        bs <<= 11
+
+    def rd(flag):
+        nonlocal p
+        if v & flag:
+            x = struct.unpack_from("<I", blob, p)[0]
+            p += 4
+        else:
+            x = struct.unpack_from("<Q", blob, p)[0]
+            p += 8
+        return x
+    off = rd(1 << 31)
+    usize = rd(1 << 30)
+    size = rd(1 << 29) if comp else usize
+    hdr = 48 + 5 + ((4 + 16 * nb) if comp else 0)
+    blocks = []
+    if nb:
+        if nb == 1 and not enc:
+            blocks = [(hdr, hdr + size)]
+        else:
+            cur = hdr
+            for _ in range(nb):
+                sz = struct.unpack_from("<I", blob, p)[0]
+                p += 4
+                blocks.append((cur, cur + sz))
+                cur += ((sz + 15) & ~15) if enc else sz
+    return {"off": off, "csize": size, "size": usize, "usize": usize, "comp": comp, "blocks": blocks, "enc": enc, "bsize": bs, "hdr": hdr}, p
+
+
+def _upak_v10(d, ioff, ver):
+    """Indeks utama v10 / v11: mount point, entri terenkode + tak-terenkode, nama dari indeks direktori penuh (bila ada).
+    Mengembalikan (mount, entri, catatan)."""
+    pos = ioff
+    mount, pos = _fstr(d, pos)
+    cnt = _u32(d, pos)
+    pos += 4
+    if cnt > MAX_ENTRIES:
+        raise ValueError("terlalu banyak entri PAK")
+    pos += 8   # path hash seed
+    has_ph = _u32(d, pos)
+    pos += 4
+    if has_ph:
+        pos += 8 + 8 + 20
+    has_fd = _u32(d, pos)
+    pos += 4
+    fd_off = fd_sz = 0
+    if has_fd:
+        fd_off, fd_sz = struct.unpack_from("<qq", d, pos)
+        pos += 8 + 8 + 20
+    en = _u32(d, pos)
+    pos += 4
+    if pos + en > len(d):
+        raise ValueError("blob entri terenkode melewati batas berkas")
+    blob = bytes(d[pos:pos + en])
+    pos += en
+    nn = _u32(d, pos)
+    pos += 4
+    nonenc = []
+    for _ in range(min(nn, MAX_ENTRIES)):
+        e, pos = _upak_entry(d, pos, ver)
+        nonenc.append(e)
+    pre = mount.replace("../../../", "")
+    ents, notes = [], []
+    if has_fd and 0 <= fd_off and fd_off + fd_sz <= len(d):
+        p = fd_off
+        nd = _u32(d, p)
+        p += 4
+        for _ in range(min(nd, MAX_ENTRIES)):
+            dn, p = _fstr(d, p)
+            nf = _u32(d, p)
+            p += 4
+            for _ in range(min(nf, MAX_ENTRIES)):
+                fn, p = _fstr(d, p)
+                eo = struct.unpack_from("<i", d, p)[0]
+                p += 4
+                try:
+                    e = dict(_upak_decode(blob, eo)[0]) if eo >= 0 else dict(nonenc[-(eo + 1)])
+                except (struct.error, IndexError):
+                    continue
+                e["name"] = pre + dn.lstrip("/") + fn
+                ents.append(e)
+                if len(ents) >= MAX_ENTRIES:
+                    break
+            if len(ents) >= MAX_ENTRIES:
+                break
+    else:
+        notes.append("indeks direktori penuh tidak ada: nama berkas tidak bisa dipulihkan (hanya hash path); entri diberi nama entry_NNNNNN")
+        p = 0
+        while p < len(blob) and len(ents) < MAX_ENTRIES:
+            try:
+                e, p = _upak_decode(blob, p)
+            except struct.error:
+                break
+            e["name"] = "%sentry_%06d" % (pre, len(ents))
+            ents.append(e)
+        for e in nonenc:
+            e = dict(e)
+            e["name"] = "%sentry_%06d" % (pre, len(ents))
+            ents.append(e)
+    return mount, ents, notes
+
+
 def _upak(d, p):
     n = len(d)
     tail_start = max(0, n - 512)
@@ -7101,8 +13866,6 @@ def _upak(d, p):
     if not found:
         raise ValueError("footer Unreal PAK tidak ditemukan")
     a, ver, ioff, isz = found
-    if ver >= 10:
-        raise ValueError("Unreal PAK versi %d (indeks path-hash UE 4.26+) belum didukung; versi 1-9 saja" % ver)
     if ver >= 4 and d[a - 1]:
         raise ValueError("indeks PAK terenkripsi (butuh kunci AES)")
     names = [""]
@@ -7110,18 +13873,22 @@ def _upak(d, p):
     if ver >= 8 and rem > 0:
         base = a + 44 + (1 if ver == 9 else 0)
         names += [_cstr(d[base + 32 * i:base + 32 * i + 32]) for i in range(rem // 32)]
-    pos = ioff
-    mount, pos = _fstr(d, pos)
-    cnt = _u32(d, pos)
-    pos += 4
-    if cnt > MAX_ENTRIES:
-        raise ValueError("terlalu banyak entri PAK")
-    ents = []
-    for _ in range(cnt):
-        nm, pos = _fstr(d, pos)
-        e, pos = _upak_entry(d, pos, ver)
-        e["name"] = (mount.replace("../../../", "") + nm) if mount else nm
-        ents.append(e)
+    v10notes = []
+    if ver >= 10:
+        mount, ents, v10notes = _upak_v10(d, ioff, ver)
+    else:
+        pos = ioff
+        mount, pos = _fstr(d, pos)
+        cnt = _u32(d, pos)
+        pos += 4
+        if cnt > MAX_ENTRIES:
+            raise ValueError("terlalu banyak entri PAK")
+        ents = []
+        for _ in range(cnt):
+            nm, pos = _fstr(d, pos)
+            e, pos = _upak_entry(d, pos, ver)
+            e["name"] = (mount.replace("../../../", "") + nm) if mount else nm
+            ents.append(e)
 
     def read(e):
         if e["enc"]:
@@ -7130,11 +13897,19 @@ def _upak(d, p):
         if e["comp"] == 0:
             return bytes(d[base + e["hdr"]:base + e["hdr"] + e["csize"]])
         meth = names[e["comp"]] if ver >= 8 and e["comp"] < len(names) else ("Zlib" if e["comp"] == 1 else "kode %d" % e["comp"])
-        if not meth.lower().startswith("zlib"):
-            raise ValueError("kompresi %s belum didukung (zlib saja)" % meth)
+        ml_ = meth.lower()
+        lz4 = ml_.startswith("lz4")
+        if not (lz4 or ml_.startswith("zlib")):
+            raise ValueError("kompresi %s belum didukung (zlib dan LZ4 saja)" % meth)
         out = bytearray()
         for s, en in e["blocks"]:
             lo, hi = (base + s, base + en) if ver >= 5 else (s, en)
+            if lz4:
+                chunk = _lz4_block(bytes(d[lo:hi]), min(e["bsize"] or e["usize"], e["usize"] - len(out)))
+                if len(out) + len(chunk) > MAX_OUT_FILE:
+                    raise ValueError("terlalu besar")
+                out += chunk
+                continue
             dobj = zlib.decompressobj()   # v103.2: dibatasi; zlib.decompress() tanpa batas bisa mengembang jadi GB dalam satu blok
             chunk = dobj.decompress(bytes(d[lo:hi]), MAX_OUT_FILE + 1 - len(out))
             if dobj.unconsumed_tail or len(out) + len(chunk) > MAX_OUT_FILE:
@@ -7144,7 +13919,7 @@ def _upak(d, p):
             out += chunk
         return bytes(out[:e["usize"]])
     return _Arc(ents, read, ["PERHATIAN: parser Unreal PAK ini baru diuji dengan berkas sintetis; bila hasil aneh, kirim contoh .pak kecil untuk diverifikasi.",
-                               "mount point: %s | versi PAK: %d" % (_as_clean(mount, 60), ver)], kind="Unreal PAK")
+                               "mount point: %s | versi PAK: %d" % (_as_clean(mount, 60), ver)] + v10notes, kind="Unreal PAK")
 
 
 def _upak_detect(d, e):
@@ -7152,7 +13927,7 @@ def _upak_detect(d, e):
     return n > 60 and struct.pack("<I", _UPAK_MAGIC) in bytes(d[max(0, n - 512):])
 
 
-_add_archive("Unreal-PAK", _upak_detect, _upak, "Unreal Engine .pak (v1-v9, tanpa enkripsi)", 28)
+_add_archive("Unreal-PAK", _upak_detect, _upak, "Unreal Engine .pak (v1-v11, tanpa enkripsi; zlib dan LZ4)", 28)
 
 
 # --- ZIP ---
@@ -7245,20 +14020,130 @@ def _gzip(d, p):
 _add_archive("GZIP", lambda d, e: d[:3] == b"\x1f\x8b\x08" and len(d) > 18, _gzip, "GZIP satu berkas", 35)
 
 
-# --- deteksi-saja: UnityFS, 7z, RAR ---
-def _unity_inspect(d, p):
+# --- Unity AssetBundle (UnityFS): daftar node + ekstraksi (LZMA / LZ4 / LZ4HC); isi SerializedFile TIDAK diurai ---
+def _unity_decomp(src: bytes, ctype: int, usize: int) -> bytes:
+    if usize > MAX_OUT_FILE:
+        raise ValueError("ukuran blok Unity terlalu besar")
+    if ctype == 0:
+        out = bytes(src[:usize])
+    elif ctype == 1:
+        try:
+            import lzma
+        except ImportError:
+            raise ValueError("modul lzma tidak tersedia di Python ini (blok LZMA tidak bisa dibuka)") from None
+        if len(src) < 6:
+            raise ValueError("blok LZMA terlalu pendek")
+        pr = src[0]
+        dsz = struct.unpack_from("<I", src, 1)[0]
+        if pr >= 9 * 5 * 5 or dsz > 256 * 1024 * 1024:
+            raise ValueError("properti LZMA tidak wajar")
+        flt = [{"id": lzma.FILTER_LZMA1, "dict_size": max(dsz, 4096), "lc": pr % 9, "lp": (pr // 9) % 5, "pb": pr // 45}]
+        try:
+            out = lzma.LZMADecompressor(lzma.FORMAT_RAW, filters=flt).decompress(bytes(src[5:]), max_length=usize)
+        except lzma.LZMAError as e:
+            raise ValueError("LZMA rusak: %s" % e) from None
+    elif ctype in (2, 3):
+        out = _lz4_block(src, usize)
+    else:
+        raise ValueError("jenis kompresi Unity %d tidak dikenal" % ctype)
+    if len(out) != usize:
+        raise ValueError("ukuran hasil dekompresi tidak cocok (%d, diharapkan %d)" % (len(out), usize))
+    return out
+
+
+def _unityfs(d, p):
+    if len(d) < 48:
+        raise ValueError("berkas UnityFS terlalu pendek")
     pos = 8
-    strs = []
-    for _ in range(2):
-        end = bytes(d[pos:pos + 128]).find(b"\x00")
-        strs.append(_as_clean(d[pos:pos + end], 40)); pos += end + 1
+    ver = _b32(d, pos)
+    pos += 4
+
+    def cs():
+        nonlocal pos
+        end = bytes(d[pos:pos + 256]).find(b"\x00")
+        if end < 0:
+            raise ValueError("header UnityFS rusak")
+        s = bytes(d[pos:pos + end]).decode("latin-1")
+        pos += end + 1
+        return s
+    uver, rev = cs(), cs()
     size, cbi, ubi, flags = struct.unpack_from(">qIII", d, pos)
-    comp = {0: "tanpa kompresi", 1: "LZMA", 2: "LZ4", 3: "LZ4HC"}.get(flags & 0x3F, "?")
-    return {"lines": ["Unity AssetBundle (UnityFS): versi Unity %s, revisi %s, %s, kompresi blok info: %s" % (strs[0] if strs else "?", strs[1] if len(strs) > 1 else "?", _as_human(size), comp),
-                      "Isi (SerializedFile: mesh, animasi, tekstur) butuh dekompresi %s + parser per versi Unity; belum ada di REA. Pakai plugin atau alat khusus lalu arahkan REA ke hasilnya." % comp]}
+    pos += 20
+    if cbi > 64 * 1024 * 1024 or ubi > 64 * 1024 * 1024:
+        raise ValueError("blok info UnityFS tidak wajar")
+    m = re.match(r"(\d+)\.(\d+)", uver)
+    if ver >= 7:
+        pos = (pos + 15) & ~15
+    elif m and (int(m[1]), int(m[2])) >= (2019, 4):   # format 6 pada Unity 2019.4+: padding opsional
+        pad = (16 - pos % 16) % 16
+        if not any(bytes(d[pos:pos + pad])):
+            pos += pad
+    if flags & 0x80:   # blok info di akhir berkas
+        info_off, data_off = len(d) - cbi, pos
+    else:
+        info_off, data_off = pos, pos + cbi
+    if flags & 0x200:
+        data_off = (data_off + 15) & ~15
+    if info_off < 0 or info_off + cbi > len(d):
+        raise ValueError("blok info UnityFS di luar berkas")
+    info = _unity_decomp(bytes(d[info_off:info_off + cbi]), flags & 0x3F, ubi)
+    q = 16   # hash
+    nb = struct.unpack_from(">I", info, q)[0]
+    q += 4
+    if nb > MAX_ENTRIES:
+        raise ValueError("terlalu banyak blok Unity")
+    blocks, cpos, upos = [], data_off, 0
+    for _ in range(nb):
+        us, cz, fl = struct.unpack_from(">IIH", info, q)
+        q += 10
+        if cpos + cz > len(d):
+            raise ValueError("blok data Unity melewati batas berkas")
+        blocks.append((upos, us, cpos, cz, fl & 0x3F))
+        upos += us
+        cpos += cz
+    nn = struct.unpack_from(">I", info, q)[0]
+    q += 4
+    if nn > MAX_ENTRIES:
+        raise ValueError("terlalu banyak node Unity")
+    ents = []
+    for _ in range(nn):
+        off, sz, nf = struct.unpack_from(">qqI", info, q)
+        q += 20
+        end = info.index(b"\x00", q)
+        nm = info[q:end].decode("utf-8", "replace")
+        q = end + 1
+        if off < 0 or sz < 0 or off + sz > upos:
+            continue
+        ents.append({"name": nm or "node_%d" % len(ents), "off": off, "size": sz, "nflags": nf})
+    starts = [b[0] for b in blocks]
+    cache: dict = {}
+
+    def read(e):
+        if e["size"] > MAX_OUT_FILE:
+            raise ValueError("terlalu besar")
+        buf = bytearray()
+        lo, hi = e["off"], e["off"] + e["size"]
+        i = max(0, bisect.bisect_right(starts, lo) - 1)
+        while i < len(blocks) and blocks[i][0] < hi:
+            us_, usz, cp, cz, ct = blocks[i]
+            if i not in cache:
+                if len(cache) >= 4:
+                    cache.pop(next(iter(cache)))
+                cache[i] = _unity_decomp(bytes(d[cp:cp + cz]), ct, usz)
+            blk = cache[i]
+            buf += blk[max(lo, us_) - us_:min(hi, us_ + usz) - us_]
+            i += 1
+        if len(buf) != e["size"]:
+            raise ValueError("data node tidak lengkap")
+        return bytes(buf)
+    return _Arc(ents, read, ["Unity %s (revisi %s), format UnityFS v%d; node diekstrak apa adanya (SerializedFile 'CAB-*' dan aliran .resS)." % (_as_clean(uver, 30), _as_clean(rev, 30), ver),
+                             "Isi SerializedFile (mesh, tekstur, animasi) belum diurai REA; pakai alat khusus pada hasil ekstraksi."], kind="Unity AssetBundle")
 
 
-register("UnityFS", "archive", lambda d, e: d[:8] == b"UnityFS\x00", _unity_inspect, None, 20, "Unity AssetBundle (deteksi saja)")
+_add_archive("UnityFS", lambda d, e: bytes(d[:8]) == b"UnityFS\x00", _unityfs, "Unity AssetBundle (UnityFS; LZMA / LZ4 / LZ4HC)", 20)
+
+
+# --- deteksi-saja: 7z, RAR ---
 register("7z", "archive", lambda d, e: d[:6] == b"7z\xbc\xaf\x27\x1c",
          lambda d, p: {"lines": ["7-Zip, versi %d.%d. Ekstrak dengan 7-Zip lalu arahkan REA ke folder hasil." % (d[6], d[7])]}, None, 20, "7z (deteksi saja)")
 register("RAR", "archive", lambda d, e: d[:6] == b"Rar!\x1a\x07",
@@ -7386,6 +14271,120 @@ def _len_zip(d, o):
     return k + 22 + _u16(d, o + k + 20)
 
 
+class _RX(bytes):
+    """Penanda: isinya pola regex mentah (bukan literal) untuk tabel _SIGS; byte variabel boleh dipakai."""
+
+
+def _leb_u32(d, pos, n):
+    v = sh = 0
+    for _ in range(5):
+        if pos >= n:
+            return None, pos
+        b = d[pos]
+        pos += 1
+        v |= (b & 0x7F) << sh
+        if not b & 0x80:
+            return v, pos
+        sh += 7
+    return None, pos
+
+
+_WASM_RANK = {1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 13: 6, 6: 7, 7: 8, 8: 9, 9: 10, 12: 11, 10: 12, 11: 13}   # urutan kanonik section non-custom
+
+
+def _len_wasm(d, o):
+    """Modul WebAssembly: telusuri section (id, ukuran LEB128) sampai urutan kanonik / batas berkas putus."""
+    n, pos, secs, prev = len(d), o + 8, 0, 0
+    while pos < n:
+        sid = d[pos]
+        if sid > 13:
+            break
+        sz, p2 = _leb_u32(d, pos + 1, n)
+        if sz is None or p2 + sz > n:
+            break
+        if sid:
+            if _WASM_RANK[sid] <= prev:
+                break
+            prev = _WASM_RANK[sid]
+        pos = p2 + sz
+        secs += 1
+    return pos - o if secs else None
+
+
+def _len_wal(d, o):
+    """SQLite WAL: header 32 byte + frame (24 + ukuran halaman) selama salt frame sama dengan salt header."""
+    n = len(d)
+    if o + 32 > n:
+        return None
+    ps = _b32(d, o + 8)
+    if ps < 512 or ps > 65536 or ps & (ps - 1):
+        return None
+    salt, fr, pos, k = bytes(d[o + 16:o + 24]), 24 + ps, o + 32, 0
+    while pos + fr <= n and bytes(d[pos + 8:pos + 16]) == salt and _b32(d, pos) > 0:
+        pos += fr
+        k += 1
+    return pos - o if k else None
+
+
+def _len_pem(d, o):
+    """Blok PEM: dari -----BEGIN X----- sampai -----END X----- (label harus sama), termasuk newline penutup."""
+    seg = bytes(d[o:o + 262144])
+    b = seg.find(b"-----", 11)
+    k = seg.find(b"-----END ")
+    if b < 0 or k < 0:
+        return None
+    e0 = seg.find(b"-----", k + 9)
+    if e0 < 0 or seg[11:b] != seg[k + 9:e0]:
+        return None
+    e = e0 + 5
+    if seg[e:e + 2] == b"\r\n":
+        e += 2
+    elif seg[e:e + 1] == b"\n":
+        e += 1
+    return e
+
+
+def _len_der_cert(d, o):
+    """Sertifikat X.509 DER: SEQUENCE { tbsCertificate SEQUENCE, signatureAlgorithm SEQUENCE { OID ...} ...}. Panjang dari header; strukturnya divalidasi."""
+    n = len(d)
+    if o + 12 > n:
+        return None
+    tot = 4 + ((d[o + 2] << 8) | d[o + 3])
+    tbs = 4 + ((d[o + 6] << 8) | d[o + 7])
+    alg = o + 4 + tbs
+    if tot < 200 or o + tot > n or tbs > tot - 4 or alg + 3 > o + tot or d[alg] != 0x30 or d[alg + 2] != 0x06:
+        return None
+    return tot
+
+
+def _len_zstd(d, o):
+    """Frame Zstandard: panjang persis dari header frame + header block (raw / RLE / terkompresi), plus checksum 4 byte bila ada."""
+    n, pos = len(d), o + 4
+    if pos >= n:
+        return None
+    fd = d[pos]
+    if fd & 0x08:
+        return None   # bit cadangan harus 0
+    single, dflag, csum = (fd >> 5) & 1, fd & 3, (fd >> 2) & 1
+    pos += 1 + (0 if single else 1) + (0, 1, 2, 4)[dflag] + ((1 if single else 0), 2, 4, 8)[fd >> 6]
+    for _ in range(2_000_000):
+        if pos + 3 > n:
+            return None
+        bh = d[pos] | (d[pos + 1] << 8) | (d[pos + 2] << 16)
+        typ, sz = (bh >> 1) & 3, bh >> 3
+        if typ == 3 or sz > 131072:
+            return None
+        pos += 3 + (1 if typ == 1 else sz)
+        if pos > n:
+            return None
+        if bh & 1:
+            pos += 4 if csum else 0
+            return pos - o if pos <= n else None
+    return None
+
+
+_CARVE_NEED_LEN = frozenset({"wasm", "sqlite-wal", "pem-cert", "pem-key", "der-cert", "zstd"})   # tanpa panjang yang valid = positif palsu, dibuang
+
 _SIGS = [
     ("png", b"\x89PNG\r\n\x1a\n", ".png", _len_png),
     ("jpeg", b"\xff\xd8\xff", ".jpg", lambda d, o: _jpeg_len(d, o)),
@@ -7403,14 +14402,46 @@ _SIGS = [
     ("unityfs", b"UnityFS\x00", ".unity3d", None),
     ("7z", b"7z\xbc\xaf\x27\x1c", ".7z", None),
     ("gzip", b"\x1f\x8b\x08", ".gz", None),
+    # v99.10 [Tier C]: panjang selalu bisa dipastikan (struktur divalidasi); kandidat tanpa panjang valid dibuang (_CARVE_NEED_LEN)
+    ("wasm", b"\x00asm\x01\x00\x00\x00", ".wasm", _len_wasm),
+    ("sqlite-wal", b"\x37\x7f\x06\x82\x00\x2d\xe2\x18", ".sqlite-wal", _len_wal), ("sqlite-wal", b"\x37\x7f\x06\x83\x00\x2d\xe2\x18", ".sqlite-wal", _len_wal),
+    ("pem-cert", b"-----BEGIN CERTIFICATE-----", ".pem", _len_pem), ("pem-cert", b"-----BEGIN X509 CERTIFICATE-----", ".pem", _len_pem),
+    ("pem-key", b"-----BEGIN PRIVATE KEY-----", ".key", _len_pem), ("pem-key", b"-----BEGIN RSA PRIVATE KEY-----", ".key", _len_pem),
+    ("pem-key", b"-----BEGIN EC PRIVATE KEY-----", ".key", _len_pem), ("pem-key", b"-----BEGIN OPENSSH PRIVATE KEY-----", ".key", _len_pem),
+    ("pem-key", b"-----BEGIN ENCRYPTED PRIVATE KEY-----", ".key", _len_pem),
+    ("der-cert", _RX(rb"\x30\x82[\x01-\x1f][\x00-\xff]\x30\x82[\x01-\x1f][\x00-\xff]\xa0\x03\x02\x01\x02\x02"), ".der", _len_der_cert),
+    ("zstd", b"\x28\xb5\x2f\xfd", ".zst", _len_zstd),
 ]
-_SIG_RE = re.compile(b"|".join(b"(%s)" % re.escape(s[1]) for s in _SIGS), re.S)
+_SIG_RE = re.compile(b"|".join(b"(%s)" % (s[1] if isinstance(s[1], _RX) else re.escape(s[1])) for s in _SIGS), re.S)
+_SIG_RX = {i: re.compile(s[1], re.S) for i, s in enumerate(_SIGS) if isinstance(s[1], _RX)}
+
+
+def _sig_next(d, pos: int, lim: int, cache: list):
+    """Tanda tangan terdekat di [pos, lim): (offset, indeks _SIGS) atau None. Setara dengan _SIG_RE.search (yang paling awal menang;
+    seri dimenangkan urutan tabel), tetapi memakai find() per tanda tangan dengan cache posisi berikutnya, jauh lebih cepat pada berkas besar."""
+    best, bi = lim + 1, -1
+    for i, s in enumerate(_SIGS):
+        o = cache[i]
+        if o < pos:
+            if i in _SIG_RX:
+                m = _SIG_RX[i].search(d, pos, lim)
+                o = m.start() if m else lim + 1
+            else:
+                o = d.find(s[1], pos, lim)
+                if o < 0:
+                    o = lim + 1
+            cache[i] = o
+        if o < best:
+            best, bi = o, i
+    return (best, bi) if bi >= 0 else None
+
+
 _RIFF_EXT = {b"WAVE": ".wav", b"WEBP": ".webp", b"AVI ": ".avi"}
 
 
 def _as_carve(path, outdir=None, max_items: int = 200, min_size: int = 64) -> dict:
     """Cari tanda tangan berkas di dalam berkas apa pun. Yang panjangnya bisa dipastikan (PNG, JPEG, GIF, OGG, RIFF, GLB, MIDI, SQLite, ZIP)
-    dipotong ke outdir/carved/; yang lain (DDS, FBX, FLAC, PAK ...) hanya dilaporkan offsetnya."""
+    dipotong ke outdir/carved/ (v99.10: + WebAssembly, SQLite WAL, sertifikat PEM / DER, kunci PEM, Zstandard); yang lain (DDS, FBX, FLAC, PAK ...) hanya dilaporkan offsetnya."""
     try:
         out = _Out(outdir) if outdir else None
         hits = []
@@ -7418,12 +14449,13 @@ def _as_carve(path, outdir=None, max_items: int = 200, min_size: int = 64) -> di
             n = len(d)
             lim = min(n, MAX_CARVE_SCAN)
             pos = 0
+            cache = [-1] * len(_SIGS)
             while len(hits) < max_items:
-                m = _SIG_RE.search(d, pos, lim)
-                if not m:
+                nx = _sig_next(d, pos, lim, cache)
+                if not nx:
                     break
-                o = m.start()
-                sig = _SIGS[m.lastindex - 1]
+                o = nx[0]
+                sig = _SIGS[nx[1]]
                 nm, ext, fn = sig[0], sig[2], sig[3]
                 ln = None
                 try:
@@ -7436,7 +14468,7 @@ def _as_carve(path, outdir=None, max_items: int = 200, min_size: int = 64) -> di
                 elif nm == "riff":
                     pos = o + 4
                     continue
-                if nm == "gzip" and (ln is None):
+                if (nm == "gzip" or nm in _CARVE_NEED_LEN) and ln is None:
                     pos = o + 3   # terlalu banyak positif palsu untuk dilaporkan tanpa panjang
                     continue
                 if ln is not None and ln < min_size:
@@ -7450,7 +14482,7 @@ def _as_carve(path, outdir=None, max_items: int = 200, min_size: int = 64) -> di
                     t = out.write("carved/0x%08X%s" % (o, ext), bytes(d[o:o + ln]), "carved", nm)
                     h["file"] = out.files[-1]["path"] if t else None
                 hits.append(h)
-                pos = o + (ln if ln else len(sig[1]))
+                pos = o + (ln if ln else (4 if isinstance(sig[1], _RX) else len(sig[1])))
         res = {"status": "success", "path": str(path), "hits": hits, "count": len(hits)}
         if out:
             res.update(outdir=str(out.root), skipped=out.skipped, errors=out.errors)
@@ -7735,6 +14767,15 @@ def compare_text(path_a, path_b) -> str:
 if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [--compact] [--json] [--ioc] [--raw] [--yara] [--carve DIR]
     argv = sys.argv[1:]
     cdir = None
+    if "--no-cache" in argv:   # satu kali jalan tanpa cache (sama dengan env REA_CACHE=0)
+        os.environ["REA_CACHE"] = "0"
+        argv = [x for x in argv if x != "--no-cache"]
+    if "--cache-info" in argv:
+        print(cache_text())
+        raise SystemExit(0)
+    if "--cache-clear" in argv:
+        print("cache dihapus: %d berkas" % cache_clear())
+        raise SystemExit(0)
     if "--api" in argv:      # --api '{"action": "triage", "path": "x.exe"}'  (JSON satu baris untuk agen)
         t = argv[argv.index("--api") + 1:]
         print(json.dumps(rea_api(t[0] if t else "{}"), ensure_ascii=False, indent=2, default=str))
@@ -7751,6 +14792,18 @@ if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [-
         t = argv[argv.index("--yarascan") + 1:]
         print(yara_text(t[0], t[1]) if len(t) > 1 else "pemakaian: --yarascan FILE RULES(.yar atau folder)")
         raise SystemExit(0)
+    if "--sigcheck" in argv:   # --sigcheck FILE [--online]  (v99.14: tanda tangan Authenticode penuh)
+        t = [x for x in argv[argv.index("--sigcheck") + 1:] if not x.startswith("--")]
+        print(sig_text(t[0], online="--online" in argv) if t else "pemakaian: --sigcheck FILE [--online]")
+        raise SystemExit(0)
+    if "--vt" in argv:       # --vt FILE|SHA256 --online  (v99.14: reputasi hash VirusTotal; env REA_VT_KEY)
+        t = [x for x in argv[argv.index("--vt") + 1:] if not x.startswith("--")]
+        print(reputation_text(t[0], online="--online" in argv) if t else "pemakaian: --vt FILE|SHA256 --online")
+        raise SystemExit(0)
+    if "--unpack7z" in argv:   # --unpack7z FILE OUTDIR  (v99.14: NSIS / SFX 7-Zip / 7z lewat alat 7-Zip)
+        t = [x for x in argv[argv.index("--unpack7z") + 1:] if not x.startswith("--")]
+        print(unpack_7z_text(t[0], t[1]) if len(t) > 1 else "pemakaian: --unpack7z FILE OUTDIR")
+        raise SystemExit(0)
     if "--unpack" in argv:   # --unpack FILE OUTDIR
         t = argv[argv.index("--unpack") + 1:]
         print(unpack_text(t[0], t[1]) if len(t) > 1 else "pemakaian: --unpack FILE OUTDIR")
@@ -7762,6 +14815,57 @@ if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [-
     if "--similar" in argv:  # --similar A B
         t = argv[argv.index("--similar") + 1:]
         print(similar_text(t[0], t[1]) if len(t) > 1 else "pemakaian: --similar A B")
+        raise SystemExit(0)
+    if "--export" in argv:   # --export FILE ghidra|ida|x64dbg [OUT]  -> skrip anotasi (v99.15)
+        t = [x for x in argv[argv.index("--export") + 1:] if not x.startswith("--")]
+        print(export_text(t[0], t[1], t[2] if len(t) > 2 else None) if len(t) > 1 else "pemakaian: --export FILE ghidra|ida|x64dbg [OUT]")
+        raise SystemExit(0)
+    if "--funcdiff" in argv:   # --funcdiff A B  -> diff fungsi antar-dua biner (v99.15)
+        t = [x for x in argv[argv.index("--funcdiff") + 1:] if not x.startswith("--")]
+        print(func_diff_text(t[0], t[1]) if len(t) > 1 else "pemakaian: --funcdiff A B")
+        raise SystemExit(0)
+    if "--cfg" in argv:      # --cfg FILE [entry|0xVA]  -> CFG / kompleksitas fungsi (v99.13)
+        t = [x for x in argv[argv.index("--cfg") + 1:] if not x.startswith("--")]
+        print(cfg_text(t[0], t[1] if len(t) > 1 else None) if t else "pemakaian: --cfg FILE [entry|0xVA]")
+        raise SystemExit(0)
+    if "--deobf" in argv:    # --deobf FILE [--json] [--raw] [--full]  -> deobfuscation skrip berlapis PowerShell / VBS / JS (v99.20)
+        t = [x for x in argv[argv.index("--deobf") + 1:argv.index("--deobf") + 2] if not x.startswith("--")]
+        if not t:
+            print("pemakaian: --deobf FILE [--json] [--raw] [--full]")
+        elif "--json" in argv:
+            _f, _sz = _open_regular(t[0])
+            with _f:
+                _r = deobfuscate(_f.read(DSO_MAX_TEXT * 2))
+            print(json.dumps(_r, ensure_ascii=False, indent=2))
+        else:
+            print(deobf_text(t[0], defang="--raw" not in argv, full="--full" in argv))
+        raise SystemExit(0)
+    if "--config" in argv:   # --config FILE [--key STR ...] [--json] [--raw]  -> konfigurasi malware tertanam (v99.19)
+        i_ = argv.index("--config")
+        t = [x for x in argv[i_ + 1:i_ + 2] if not x.startswith("--")]
+        ks = [argv[j + 1] for j in range(len(argv) - 1) if argv[j] == "--key"]
+        if not t:
+            print("pemakaian: --config FILE [--key STR ...] [--json] [--raw]")
+        elif "--json" in argv:
+            print(json.dumps(extract_config(t[0], keys=ks, reveal="--raw" in argv), ensure_ascii=False, indent=2))
+        else:
+            print(config_text(t[0], defang="--raw" not in argv, keys=ks))
+        raise SystemExit(0)
+    if "--emu" in argv:      # --emu FILE [entry|0xVA]  -> emulasi mikro: string / buffer tersembunyi (v99.18)
+        t = [x for x in argv[argv.index("--emu") + 1:] if not x.startswith("--")]
+        print(emu_text(t[0], t[1] if len(t) > 1 else None, defang="--raw" not in argv) if t else "pemakaian: --emu FILE [entry|0xVA] [--raw]")
+        raise SystemExit(0)
+    if "--net" in argv:      # --net FILE [--compact] [--raw]  -> tabel metadata .NET + IL (v99.12)
+        t = [x for x in argv[argv.index("--net") + 1:] if not x.startswith("--")]
+        print(net_text(t[0], defang="--raw" not in argv, compact="--compact" in argv) if t else "pemakaian: --net FILE [--compact] [--raw]")
+        raise SystemExit(0)
+    if "--dex" in argv:      # --dex FILE [--compact] [--raw]  -> bytecode Dalvik .dex / APK (v99.11)
+        t = [x for x in argv[argv.index("--dex") + 1:] if not x.startswith("--")]
+        print(dex_text(t[0], defang="--raw" not in argv, compact="--compact" in argv) if t else "pemakaian: --dex FILE [--compact] [--raw]")
+        raise SystemExit(0)
+    if "--html" in argv:     # --html FILE [OUT.html]  -> laporan HTML tunggal offline (v99.7)
+        t = argv[argv.index("--html") + 1:]
+        print(triage_html_file(t[0], t[1] if len(t) > 1 else None, defang="--raw" not in argv) if t else "pemakaian: --html FILE [OUT.html]")
         raise SystemExit(0)
     if "--md" in argv:       # --md FILE  -> laporan Markdown
         t = argv[argv.index("--md") + 1:]
@@ -7830,7 +14934,7 @@ if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [-
     args = [x for x in argv if not x.startswith("--")]
     flags = {x for x in argv if x.startswith("--")}
     if not args:
-        print("pemakaian: python rea_triage.py <file|folder> [--compact] [--card] [--json] [--ioc] [--raw (tanpa defang)] [--yara] [--carve DIR] | --hex FILE [OFFSET [LENGTH]] | --compare A B | --list <container> | --extract OUTDIR <container> [pola] [--scan] | --similar A B | --md FILE | --ctph FILE | --re FILE | --xref FILE QUERY | --disasm FILE [AT [N [ARCH]]] | --unpack FILE OUTDIR | --yarascan FILE RULES | --assets FILE | --assets-extract OUTDIR FILE [pola] [--no-convert] | --assets-carve FILE [OUTDIR] | --formats | --plugins FOLDER | --api JSON")
+        print("pemakaian: python rea_triage.py <file|folder> [--compact] [--card] [--json] [--ioc] [--raw (tanpa defang)] [--yara] [--carve DIR] | --config FILE [--key STR] | --deobf FILE [--json] [--full] | --hex FILE [OFFSET [LENGTH]] | --compare A B | --list <container> | --extract OUTDIR <container> [pola] [--scan] | --similar A B | --md FILE | --html FILE [OUT.html] | --dex FILE [--compact] | --net FILE [--compact] | --cfg FILE [entry|0xVA] | --emu FILE [entry|0xVA] | --export FILE ghidra|ida|x64dbg [OUT] | --funcdiff A B | --ctph FILE | --re FILE | --xref FILE QUERY | --disasm FILE [AT [N [ARCH]]] | --unpack FILE OUTDIR | --unpack7z FILE OUTDIR | --sigcheck FILE [--online] | --vt FILE|SHA256 --online | --yarascan FILE RULES | --assets FILE | --assets-extract OUTDIR FILE [pola] [--no-convert] | --assets-carve FILE [OUTDIR] | --formats | --plugins FOLDER | --api JSON | --no-cache | --cache-info | --cache-clear")
     elif Path(args[0]).is_dir():
         print(triage_dir_text(args[0], defang="--raw" not in flags))
     elif "--card" in flags and not ({"--json", "--ioc", "--yara"} & flags):
