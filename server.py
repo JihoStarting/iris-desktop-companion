@@ -1308,6 +1308,13 @@ try:
 except Exception as _e:        # tanpa modul: /rea tetap jalan seperti v83
     _rt = None
     print("[WARN] rea_triage.py tidak dimuat (%r); /rea berjalan tanpa triase lokal" % (_e,), flush=True)
+if _rt is not None and hasattr(_rt, "set_default_roots"):
+    # v104: pembatas path rea_api (xref / disasm) aktif otomatis di folder sandbox (SANDBOX_MOUNTS), tanpa bergantung pada .env. REA_ROOTS di .env, kalau ada, tetap menang.
+    try:
+        _rea_roots = _rt.set_default_roots([win for _mnt, win in SANDBOX_MOUNTS])
+        print("[INFO] REA_ROOTS efektif: %s%s" % ("; ".join(_rea_roots) or "(tanpa batas)", " (dari .env)" if os.getenv("REA_ROOTS", "").strip() else " (bawaan server)"), flush=True)
+    except Exception as _e:
+        print("[WARN] set_default_roots gagal (%r); rea_api tanpa pembatas bawaan" % (_e,), flush=True)
 _REA_TASK_RE = re.compile(r"(?m)^(?P<head>(?:/agen[ \t]+)?Analisis file ini dengan skill reverse-engineer-anything:[ \t]*)(?P<path>[A-Za-z]:[\\/][^\r\n]*?)[ \t]*$")
 
 
@@ -3078,6 +3085,12 @@ async def handle_agent_task(ws: WebSocket, client: httpx.AsyncClient, history: l
                     raise SandboxPathError("path jaringan (UNC) tidak diterima")
                 if not Path(tp).is_file():
                     raise SandboxPathError("/rea %s butuh satu file yang ada: %s" % (tact, tp[:200]))
+                # v104: rea_api hanya boleh membaca di bawah REA_ROOTS (folder sandbox). File di luar sandbox disalin dulu (jalur yang sama dengan /rea
+                # biasa, jadi .env / kunci / riwayat Iris tetap ditolak); file yang sudah di dalam sandbox dipakai apa adanya.
+                if not any(_under(tp, win) for _mnt, win in SANDBOX_MOUNTS):
+                    tp_orig = tp
+                    tp = await asyncio.to_thread(_rea_stage_copy, tp)
+                    print("[INFO] /rea %s: salin %s -> %s" % (tact, tp_orig, tp), flush=True)
                 treq = _rea_tool_request(tact, tp, tm.group("arg"), max(1000, card_max - 600))
                 if treq is None:
                     raise SandboxPathError("argumen /rea %s tidak valid" % tact)
