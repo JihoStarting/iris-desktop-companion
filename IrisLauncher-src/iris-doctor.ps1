@@ -22,7 +22,7 @@ Berkas ini sengaja hanya berisi karakter ASCII supaya aman dibaca Windows PowerS
 [CmdletBinding()]
 param(
   [string]$Proyek = $PSScriptRoot,
-  [string]$Distro = 'Ubuntu',
+  [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Distro = 'Ubuntu',
   [int]$MinFreeGB = 15,
   [int]$RamWarnPct = 85
 )

@@ -19,7 +19,7 @@ Opsi:
 #>
 param(
   [string]$Proyek = $PSScriptRoot,
-  [string]$Distro = 'Ubuntu',
+  [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Distro = 'Ubuntu',
   [switch]$TanpaWSL,
   [switch]$HentikanPenjaga
 )

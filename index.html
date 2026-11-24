@@ -1,5 +1,8 @@
 <!DOCTYPE html>
 <!-- AI Companion overlay - by: KangJiho -->
+<!-- v106: bayangan, tab palet, scrollbar bubble -->
+<!-- v104: Iris Aura + Command Palette + System Monitor di atas v103 -->
+<!-- v107: palet tidak lagi menutupi bar input -->
 <!-- v103: Command Deck (bar input + panel chat) di atas v102 Neural HUD (peta pikiran, panel, bubble, bar) -->
 <html lang="id">
 <head>
@@ -1122,6 +1125,109 @@
   @media (prefers-reduced-motion: reduce) {
     #log::before, #bar::before, #bar::after, #dot::after, #logHead .title b, #logBody:empty::before, .msg { animation: none !important; }
   }
+
+  /* ===== v104: Iris Aura (aura + partikel karakter), Command Palette (Ctrl+K), System Monitor (/sistem). Hanya menambah; tidak mengubah blok lama. ===== */
+  #bar.live { filter: drop-shadow(0 0 calc(var(--lvl, 0) * 16px) rgba(var(--acc-rgb), calc(0.25 + var(--lvl, 0) * 0.6))); }
+  #palette { position: fixed; inset: 0; z-index: 9000; display: none; align-items: flex-start; justify-content: center; padding-top: 10vh; background: transparent; pointer-events: none; }
+  #palette.open { display: flex; }
+  #palette.open #palBox { pointer-events: auto; animation: palIn .22s cubic-bezier(.2,.9,.3,1.1); }
+  @keyframes palIn { from { opacity: 0; transform: translateY(-10px) scale(.97); } to { opacity: 1; transform: none; } }
+  @keyframes palRow { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+  @keyframes palSheen { from { background-position: 200% 0; } to { background-position: -100% 0; } }
+  #palBox { position: relative; width: min(500px, 94vw); max-height: 74vh; display: flex; flex-direction: column; border-radius: calc(var(--rad, 16px) + 4px); border: 1px solid transparent; overflow: hidden;
+    background: linear-gradient(165deg, rgba(var(--pt), 0.97), rgba(var(--pb), 0.99)) padding-box, linear-gradient(135deg, rgba(var(--acc-rgb), .9), rgba(var(--acc2-rgb), .35) 45%, rgba(var(--acc-rgb), .75)) border-box;
+    box-shadow: 0 24px 60px rgba(0,0,0,.6), 0 0 44px -10px var(--glow), inset 0 1px 0 rgba(255,255,255,.07); }
+  #palBox::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: linear-gradient(90deg, transparent, rgba(var(--acc-rgb), 1), rgba(var(--acc2-rgb), .9), transparent); background-size: 60% 100%; background-repeat: no-repeat; animation: palSheen 3.2s linear infinite; opacity: .9; pointer-events: none; }
+  #palTop { display: flex; align-items: center; gap: 11px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+  #palTop > svg { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--acc); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 6px var(--glow)); }
+  #palIn { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: 600 15px/1.2 "Segoe UI", system-ui, sans-serif; padding: 16px 0; caret-color: var(--acc); }
+  #palIn::placeholder { color: var(--ink-dim); font-weight: 500; }
+  .kbd { font: 600 10px/1 "Segoe UI", system-ui, sans-serif; color: var(--ink-dim); padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255,255,255,.04); box-shadow: 0 1px 0 rgba(0,0,0,.4); }
+  #palTabs { display: flex; align-items: center; gap: 6px; padding: 8px 12px 4px; }
+  #palTabs button { border: 1px solid transparent; background: transparent; color: var(--ink-dim); font: 600 11px "Segoe UI", system-ui, sans-serif; padding: 4px 11px; border-radius: 999px; cursor: pointer; transition: all .15s; }
+  #palTabs button:hover { color: var(--ink); background: rgba(var(--acc-rgb), .1); }
+  #palTabs button.on { color: var(--ink); background: rgba(var(--acc-rgb), .22); border-color: rgba(var(--acc-rgb), .5); box-shadow: 0 0 12px -3px var(--glow); }
+  #palCount { margin-left: auto; font: 11px "Segoe UI", system-ui, sans-serif; color: var(--ink-dim); opacity: .8; }
+  #palList { overflow-y: auto; padding: 4px 8px 8px; scrollbar-width: thin; scrollbar-color: rgba(var(--acc-rgb), .4) transparent; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 6px, #000 calc(100% - 14px), transparent 100%); mask-image: linear-gradient(to bottom, transparent 0, #000 6px, #000 calc(100% - 14px), transparent 100%); }
+  .pg { font: 700 10px "Segoe UI", system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--acc-2); opacity: .75; padding: 10px 10px 4px; }
+  .pi { position: relative; display: flex; align-items: center; gap: 12px; padding: 7px 10px; border-radius: 12px; cursor: pointer; color: var(--ink); font: 13px "Segoe UI", system-ui, sans-serif; animation: palRow .18s ease-out backwards; transition: background .12s; }
+  .pi .ic { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: rgba(var(--acc-rgb), .12); border: 1px solid rgba(var(--acc-rgb), .22); transition: all .15s; }
+  .pi .ic svg { width: 16px; height: 16px; fill: none; stroke: var(--acc); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+  .pi .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .pi .n { font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pi .n mark { background: none; color: var(--acc); text-shadow: 0 0 10px var(--glow); }
+  .pi .d { color: var(--ink-dim); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pi .a { flex: none; max-width: 120px; font: 600 10px "Cascadia Code", Consolas, monospace; color: var(--ink-dim); padding: 3px 7px; border-radius: 6px; background: rgba(255,255,255,.05); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pi .go { flex: none; opacity: 0; font-weight: 700; color: var(--acc); transition: opacity .12s; }
+  .pi.sel { background: linear-gradient(90deg, rgba(var(--acc-rgb), .22), rgba(var(--acc-rgb), .06)); box-shadow: inset 2px 0 0 var(--acc); }
+  .pi.sel .ic { background: rgba(var(--acc-rgb), .3); border-color: rgba(var(--acc-rgb), .7); box-shadow: 0 0 14px -2px var(--glow); }
+  .pi.sel .go { opacity: 1; }
+  .pe { padding: 30px 18px 34px; text-align: center; color: var(--ink-dim); font: 13px/1.5 "Segoe UI", system-ui, sans-serif; }
+  .pe b { color: var(--ink); }
+  #palFoot { padding: 8px 14px; font: 11px "Segoe UI", system-ui, sans-serif; color: var(--ink-dim); border-top: 1px solid var(--line); display: flex; align-items: center; gap: 14px; background: rgba(0,0,0,.14); }
+  #palFoot span { display: inline-flex; align-items: center; gap: 5px; }
+  #sysHud { position: absolute; left: 10px; top: 10px; z-index: 40; width: 168px; display: none; padding: 9px 11px 8px; border-radius: var(--rad, 14px); border: 1px solid rgba(var(--acc-rgb), 0.45);
+    background: linear-gradient(160deg, rgba(var(--pt), 0.82), rgba(var(--pb), 0.9)); backdrop-filter: blur(8px); box-shadow: 0 8px 24px rgba(0,0,0,.45), 0 0 18px -6px var(--glow);
+    font: 600 10px/1.2 "Segoe UI", system-ui, sans-serif; color: var(--ink-dim); letter-spacing: .06em; text-transform: uppercase; }
+  #sysHud.open { display: block; animation: palIn .25s ease-out; }
+  #sysHud .r { display: flex; justify-content: space-between; align-items: baseline; margin-top: 6px; }
+  #sysHud .r:first-child { margin-top: 0; }
+  #sysHud b { color: var(--ink); font-size: 13px; letter-spacing: 0; }
+  #sysHud canvas { width: 100%; height: 26px; display: block; margin-top: 3px; }
+  #sysHud .x { position: absolute; right: 6px; top: 4px; border: 0; background: none; color: var(--ink-dim); cursor: pointer; font-size: 11px; }
+
+  /* ===== v105: perbaikan tumpang tindih (HUD CPU/RAM, palet, bubble, mini-browser, menu) ===== */
+  /* urutan layer tunggal: musim < HUD < fx < bubble < menu/pop < webbar < imgView < palet */
+  #sysHud { z-index: 3; transition: left .22s ease, top .22s ease, opacity .18s ease, visibility .18s; }
+  #sysHud.hudhide { opacity: 0; visibility: hidden; pointer-events: none; }
+  /* v106: HUD tetap tampil saat palet terbuka (palet dihindari lewat hudRects) */   /* palet terbuka = HUD minggir */
+  /* palet digeser ke kanan panel /chrome (panel web adalah view native, selalu di atas HTML) */
+  #palette { box-sizing: border-box; padding: 0; justify-content: flex-start; align-items: flex-start; }
+  #palBox { margin-left: var(--pal-x, 10px); margin-top: var(--pal-y, 10px); width: var(--pal-w, 500px); max-height: var(--pal-h, 70vh); }
+  #palList { min-height: 0; }
+  #palTabs { flex-wrap: wrap; }
+  #palFoot { flex-wrap: wrap; gap: 6px 14px; }
+  /* bubble tidak boleh menutupi teks sendiri: batasi tinggi, scroll bila panjang */
+  #bubble { max-height: calc(100vh - 24px); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
+
+  /* ===== v106: perbaikan bayangan, tab palet, scrollbar bubble ===== */
+  /* Bayangan terpotong lurus di batas jendela overlay (jendela transparan kecil) dan backdrop-filter membuat kotak persegi terang di sekeliling kartu.
+     Solusi: tanpa backdrop-filter, bayangan dikecilkan (<= 10 px) supaya selalu muat di dalam jendela, dan margin palet/HUD dilebarkan jadi 14 px. */
+  #sysHud { left: 14px; top: 14px; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+    background: linear-gradient(160deg, rgba(var(--pt), 0.97), rgba(var(--pb), 0.98));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 3px 8px rgba(0,0,0,.4), 0 0 8px -2px var(--glow); }
+  #palBox { backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 4px 10px rgba(0,0,0,.45), 0 0 9px -2px var(--glow); }
+  #bubble { box-shadow: inset 3px 0 0 var(--emo), inset 0 1px 0 rgba(255,255,255,.12), 0 5px 12px rgba(0,0,0,.42), 0 0 10px -3px var(--glow); }
+  #bar.live { filter: none; }
+
+  /* tab palet (Semua / Aksi / Perintah) diperbesar */
+  #palTop { padding: 0 18px; }
+  #palIn { font-size: 16px; padding: 14px 0; }
+  #palTabs { gap: 8px; padding: 10px 14px 6px; }
+  #palTabs button { font-size: 14px; font-weight: 700; padding: 7px 18px; min-height: 32px; border-radius: 999px; }
+  #palCount { font-size: 12.5px; }
+  #palFoot { font-size: 12px; }
+  #palFoot .kbd, .kbd { font-size: 11px; padding: 4px 7px; }
+
+  /* bubble: scroll hanya di dalam teks (.btext), bukan di kotak bubble, jadi tidak ada scrollbar bawaan Chrome dengan panah atas / bawah */
+  #bubble { overflow: visible !important; scrollbar-width: none; }
+  #bubble .btext { overflow-y: auto; overflow-x: hidden; margin-right: 6px; padding-right: 10px; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--emo) 55%, transparent) transparent; }
+  #bubble .btext::-webkit-scrollbar { width: 4px; }
+  #bubble .btext::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  #bubble .btext::-webkit-scrollbar-track { background: transparent; margin: 2px 0; }
+  #bubble .btext::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--emo) 55%, transparent); border-radius: 999px; }
+  #bubble .btext::-webkit-scrollbar-thumb:hover { background: var(--emo); }
+
+  /* v106b: tab palet tidak turun baris di palet sempit; nama perintah tidak tertelan badge argumen */
+  #palTabs { flex-wrap: nowrap; gap: 6px; padding: 10px 12px 6px; }
+  #palTabs button { flex: none; font-size: 13px; padding: 6px 12px; min-height: 30px; white-space: nowrap; }
+  #palCount { flex: 0 1 auto; min-width: 0; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pi .tx { min-width: 84px; }
+  .pi .a { flex: 0 1 auto; min-width: 0; max-width: 36%; }
+
+  /* v106c: bubble yang tertimpa palet disembunyikan dulu, bukan terpotong setengah */
+  body.paloverlap #bubble.show { opacity: 0 !important; pointer-events: none !important; transition: opacity .12s; }
 </style>
 </head>
 <body>
@@ -1226,6 +1332,18 @@
   </div>
   <div id="linkPop" class="interactive"><button class="pill" id="linkCopy">Salin link</button></div>
   <div id="imgView" class="interactive"><img alt=""><div class="bar"><button id="ivBig" class="pill">Buka besar</button><button id="ivCopy" class="pill">Salin gambar</button><button id="ivSave" class="pill">Simpan</button><button id="ivClose" class="pill">Tutup</button></div></div>
+  
+<div id="sysHud" class="interactive"><button class="x" id="sysX" title="Tutup (/sistem mati)">✕</button>
+  <div class="r"><span>CPU</span><b id="sysCpu">--%</b></div><canvas id="sysCpuC" width="168" height="26"></canvas>
+  <div class="r"><span>RAM</span><b id="sysRam">--%</b></div><canvas id="sysRamC" width="168" height="26"></canvas>
+  <div class="r"><span id="sysUp">aktif --</span><span id="sysMem">-- GB</span></div>
+</div>
+<div id="palette" class="interactive"><div id="palBox">
+  <div id="palTop"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="palIn" placeholder="Cari perintah atau aksi…" autocomplete="off" spellcheck="false"><span class="kbd">Ctrl K</span></div>
+  <div id="palTabs"><button data-f="all" class="on">Semua</button><button data-f="aksi">Aksi</button><button data-f="perintah">Perintah</button><span id="palCount"></span></div>
+  <div id="palList"></div>
+  <div id="palFoot"><span><span class="kbd">↑↓</span> pilih</span><span><span class="kbd">Enter</span> jalankan</span><span><span class="kbd">Tab</span> filter</span><span><span class="kbd">Esc</span> tutup</span></div>
+</div></div>
   <div id="barWrap">
   <div id="slashPop" class="interactive"></div>
   <div id="dock"><div id="status" data-kind="busy"><span class="ic"></span><span class="t"></span><span class="s"></span></div><div id="webpill" class="interactive"></div><div id="conn" class="interactive" title="Status layanan (klik untuk detail)"></div><div id="attach" class="interactive"></div></div>
@@ -1298,7 +1416,11 @@ const Q_LEVELS = [
 ];
 let qMode = 'auto';
 try { const qs = localStorage.getItem('iris.q'); if (qs === 'auto' || Q_LEVELS.some((l) => l.name === qs)) qMode = qs; } catch { /* abaikan */ }
-let qLevel = Math.max(0, Q_LEVELS.findIndex((l) => l.name === qMode));   // auto -> mulai dari 'tinggi'
+/* v106: lantai kualitas. Konteks WebGL hilang = GPU tidak kuat di tingkat ini; tingkat tertinggi yang dipakai dinaikkan ke lantai itu, TANPA menimpa pilihan
+   pengguna (mode auto tetap auto). /kualitas yang diketik pengguna mengosongkan lantai. */
+let qFloor = 0;
+try { const f = Q_LEVELS.findIndex((l) => l.name === localStorage.getItem('iris.qfloor')); if (f > 0) qFloor = f; } catch { /* abaikan */ }
+let qLevel = Math.max(qFloor, Math.max(0, Q_LEVELS.findIndex((l) => l.name === qMode)));   // auto -> mulai dari 'tinggi'
 let qAcc = 0, qN = 0, lastPulseAt = 0;
 let qLastName = Q_LEVELS[qLevel].name;   // fase 4: main.js diberi tahu hanya saat tingkat kualitas berubah (hemat menutup panel /chrome)
 const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -1309,11 +1431,27 @@ renderer.setClearColor(0x000000, 0);
 charBox.appendChild(renderer.domElement);
 /* v37d: konteks WebGL hilang (GPU kehabisan memori / driver reset) = karakter lenyap padahal jendela masih ada. Cegah default supaya bisa pulih sendiri;
    kalau dalam 4 detik belum pulih, muat ulang halaman (history chat di server tetap aman). */
-let glLostTimer = null;
+let glLostTimer = null, lastWakeAt = 0;   // v106: kapan jendela terakhir 'bangun' (terlihat lagi / ada celah frame panjang)
+document.addEventListener('visibilitychange', () => { if (!document.hidden) lastWakeAt = Date.now(); });
 renderer.domElement.addEventListener('webglcontextlost', (e) => {
   e.preventDefault();
   console.warn('WebGL context hilang, mencoba pulih...');
-  clearTimeout(glLostTimer); glLostTimer = setTimeout(() => location.reload(), 4000);
+  // v106: turunkan lantai satu tingkat supaya halaman yang dimuat ulang tidak mengulang masalah yang sama. Kehilangan konteks tepat setelah tidur / kunci layar /
+  // jendela tersembunyi adalah reset driver biasa, bukan tanda GPU kewalahan, jadi tidak menurunkan apa pun.
+  if (Date.now() - lastWakeAt > 20000 && !document.hidden) {
+    try { localStorage.setItem('iris.qfloor', Q_LEVELS[Math.min(qLevel + 1, Q_LEVELS.length - 1)].name); } catch { /* abaikan */ }
+  }
+  // v106: batas muat ulang beruntun (3 per 5 menit, sama dengan main.js). GPU yang benar-benar mati tidak boleh membuat halaman memuat ulang tanpa henti.
+  let reloads = [];
+  try { reloads = JSON.parse(sessionStorage.getItem('iris.glReloads') || '[]').filter((t) => Date.now() - t < 300000); } catch { /* abaikan */ }
+  clearTimeout(glLostTimer);
+  if (reloads.length >= 3) {
+    console.warn('WebGL hilang terlalu sering; tidak dimuat ulang otomatis. Restart Iris atau ketik /kualitas hemat.');
+    try { addStamp(logAdd('err', 'GPU tidak stabil: karakter tidak bisa dipulihkan otomatis. Ketik /kualitas hemat lalu restart Iris.')); } catch { /* abaikan */ }
+    return;
+  }
+  try { reloads.push(Date.now()); sessionStorage.setItem('iris.glReloads', JSON.stringify(reloads)); } catch { /* abaikan */ }
+  glLostTimer = setTimeout(() => location.reload(), 4000);
 });
 renderer.domElement.addEventListener('webglcontextrestored', () => { clearTimeout(glLostTimer); console.warn('WebGL context pulih.'); });
 
@@ -1816,6 +1954,7 @@ function animate(now) {
   const gap = now - lastFrameAt;
   if (gap < minMs - 2) return;
   lastFrameAt = now;
+  if (gap > 5000) lastWakeAt = Date.now();   // v106: celah panjang = baru bangun dari tidur / kunci layar
   // v43: pantau kecepatan frame sebenarnya; kalau rata-rata jauh di bawah target, turunkan kualitas satu tingkat (hanya mode auto)
   if (qMode === 'auto' && !slow && gap < 1000) {
     qAcc += gap; qN++;
@@ -2169,6 +2308,7 @@ function frame(dt, t) {
   peekPivot.position.y = py * (1 - Math.cos(phi));
   updateGaze(dt);
   vrm.update(dt);
+  if (typeof auraTick === 'function') auraTick(dt, t);   // v104
   renderer.render(scene, camera);
   sampleHit();     // harus langsung setelah render, sebelum buffer ditampilkan
 }
@@ -4139,7 +4279,7 @@ if (window.companion && typeof window.companion.onWebSide === 'function') {
 }
 function openPop(el) {
   refreshDock();   // v47: cek ulang; kelas lama dipakai dulu supaya menu tidak berkedip
-  closePops(); updateMenu(); el.classList.add('open'); placeFloat(el); setIgnore(false);
+  closePops(); try { palClose(); } catch { /* abaikan */ } updateMenu(); el.classList.add('open'); placeFloat(el); setIgnore(false);
   setTimeout(replaceOpenFloats, 350); setTimeout(replaceOpenFloats, 900);   // v53b: setelah jendela selesai berubah ukuran
   clearTimeout(popT); popT = setTimeout(closePops, 7000);
 }
@@ -4313,6 +4453,7 @@ applyBody();
 function setQuality(a) {   // v43
   a = String(a || '').toLowerCase().trim();
   if (a) { if (/^(auto|otomatis)/.test(a)) qMode = 'auto'; else { const l = Q_LEVELS.find((x) => a.startsWith(x.name.slice(0, 3))); if (l) qMode = l.name; } }
+  qFloor = 0; try { localStorage.removeItem('iris.qfloor'); } catch { /* abaikan */ }   // v106: pilihan eksplisit pengguna mengalahkan lantai otomatis
   qLevel = Math.max(0, Q_LEVELS.findIndex((l) => l.name === qMode)); qAcc = 0; qN = 0;
   try { localStorage.setItem('iris.q', qMode); } catch { /* abaikan */ }
   applyQuality();
@@ -5975,6 +6116,9 @@ const HELP = [
   '/memori           lihat yang Iris ingat',
   '/lupa <no|semua>  hapus satu hal atau semuanya',
   '/alarm HH:MM [nama]  alarm jam tertentu (/alarm = daftar, /alarm batal <no|semua>)',
+  '/palet           Command Palette: cari semua perintah dan aksi (juga Ctrl+K)',
+  '/sistem [nyala|mati]  monitor CPU / RAM langsung di pojok kiri atas (hanya angka agregat dari sistem)',
+  '/aura [nyala|mati]  partikel dan cahaya tepi di sekitar karakter (otomatis mati saat tidur, fokus, atau kualitas hemat)',
   '/sapa [nyala|mati|sekarang]  sapaan sesuai waktu (pagi, siang, sore, malam, larut), sekali per waktu dengan kalimat tetap (bawaan mati; sekarang = coba satu sapaan untuk waktu ini)',
   '/jam [nyala|mati]  ucapkan jam sekarang (nyala/mati = ucapkan tiap jam)',
   '/sembunyi [nyala|mati|detik]  mengintip dari tepi layar (dekati atau klik untuk memunculkan); angka = berapa detik sebelum balik ke tepi (bawaan 3)',
@@ -6014,6 +6158,9 @@ function slashCmd(text) {
       }
       logAdd('task', focusReport()); return true;
     }
+    case 'palet': case 'palette': palOpen(); return true;
+    case 'sistem': case 'sys': case 'monitor': { const on = /^(nyala|on|ya)$/i.test(arg) ? true : /^(mati|off|tidak)$/i.test(arg) ? false : undefined; sysToggle(on); return true; }
+    case 'aura': { const on = /^(nyala|on|ya)$/i.test(arg) ? true : /^(mati|off|tidak)$/i.test(arg) ? false : SET.aura === false; SET.aura = on; saveSet(); openChat(); logAdd('task', 'Aura karakter ' + (on ? 'menyala.' : 'dimatikan.')); return true; }
     case 'kana': kanaStart(arg); return true;
     case 'sapa': setGreet(arg); return true;
     case 'batal': timer = null; tickTimer(); say('Timer dibatalkan.', 'neutral', 2000, 'タイマー、止めたよ。'); return true;
@@ -6300,6 +6447,325 @@ sendBtn.addEventListener('click', () => {
   input.focus();
   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
 });
+
+
+/* ===================== v104: Aura, Command Palette, System Monitor ===================== */
+// ---- Iris Aura: cincin partikel yang mengorbit karakter. Warna ikut aksen tema + emosi, berdenyut saat bicara. Mati otomatis saat tidur / mode fokus / kualitas hemat. ----
+const AURA_N = 90;
+const auraGeo = new THREE.BufferGeometry();
+const auraPos = new Float32Array(AURA_N * 3), auraSeed = new Float32Array(AURA_N * 3);
+for (let i = 0; i < AURA_N; i++) { auraSeed[i * 3] = Math.random() * 6.283; auraSeed[i * 3 + 1] = 0.45 + Math.random() * 0.4; auraSeed[i * 3 + 2] = Math.random(); }
+auraGeo.setAttribute('position', new THREE.BufferAttribute(auraPos, 3));
+const auraMat = new THREE.PointsMaterial({ size: 0.028, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, color: 0x7da0ee });
+const aura = new THREE.Points(auraGeo, auraMat);
+aura.frustumCulled = false;
+scene.add(aura);
+const auraRim = new THREE.DirectionalLight(0x7da0ee, 0);   // cahaya tepi dari belakang: karakter terlihat "terpisah" dari latar
+auraRim.position.set(-1.2, 1.4, -1.6);
+scene.add(auraRim);
+const AURA_EMO = { happy: 0xffd98a, shy: 0xff9ec4, angry: 0xff6b7a, sad: 0x7a9bd8, surprised: 0xfff1a0 };
+const _ac = new THREE.Color(), _at = new THREE.Color();
+let auraLvl = 0, auraOn = true, auraCssAt = 0;
+function auraTick(dt, t) {
+  try {
+    const off = asleep || quiet || Q_LEVELS[qLevel].lite || SET.aura === false;
+    const target = off ? 0 : 1;
+    auraOn = auraOn || target > 0;
+    auraLvl += (target - auraLvl) * Math.min(1, dt * 2.5);
+    if (auraLvl < 0.01) { auraMat.opacity = 0; auraRim.intensity = 0; aura.visible = false; return; }
+    aura.visible = true;
+    if (!auraCssAt || t - auraCssAt > 1.5) {   // warna aksen dibaca ulang sesekali (tema bisa berganti)
+      auraCssAt = t;
+      const c = getComputedStyle(document.documentElement).getPropertyValue('--acc').trim();
+      try { _at.set(c || '#7da0ee'); } catch { _at.set(0x7da0ee); }
+    }
+    _ac.copy(_at);
+    const em = AURA_EMO[lastFxEmo]; if (em) _ac.lerp(new THREE.Color(em), 0.55);
+    auraMat.color.lerp(_ac, Math.min(1, dt * 3)); auraRim.color.copy(auraMat.color);
+    const pulse = 1 + mouth * 0.9 + talk * 0.25;
+    auraMat.opacity = (0.55 + 0.25 * Math.sin(t * 1.4)) * auraLvl * Math.min(1, 0.7 + talk * 0.5);
+    auraMat.size = 0.026 + mouth * 0.03;
+    auraRim.intensity = (0.9 + mouth * 2.2) * auraLvl;
+    const cy = headRestY * 0.82;
+    for (let i = 0; i < AURA_N; i++) {
+      const a = auraSeed[i * 3] + t * (0.18 + auraSeed[i * 3 + 2] * 0.25);
+      const r = (auraSeed[i * 3 + 1] + 0.05 * Math.sin(t * 0.9 + i)) * pulse;
+      const rise = ((t * 0.07 * (0.4 + auraSeed[i * 3 + 2]) + auraSeed[i * 3 + 2] * 3.1) % 1);
+      auraPos[i * 3] = Math.cos(a) * r;
+      auraPos[i * 3 + 1] = cy - 0.55 + rise * 1.25;
+      auraPos[i * 3 + 2] = Math.sin(a) * r * 0.6 - 0.25;
+    }
+    auraGeo.attributes.position.needsUpdate = true;
+    // bar input ikut menyala mengikuti volume suara Iris
+    const bar = document.getElementById('bar');
+    if (bar) {
+      const lv = Math.min(1, mouth * 1.2);
+      if (lv > 0.03) { bar.classList.add('live'); bar.style.setProperty('--lvl', lv.toFixed(2)); }
+      else if (bar.classList.contains('live')) { bar.classList.remove('live'); bar.style.removeProperty('--lvl'); }
+    }
+  } catch { /* aura tidak boleh merusak render */ }
+}
+
+// ---- Command Palette (Ctrl+K atau /palet): cari semua perintah "/" dan aksi menu dalam satu kotak ----
+const palEl = document.getElementById('palette'), palIn = document.getElementById('palIn'), palList = document.getElementById('palList');
+let palItems = [], palSel = 0;
+const PAL_ACTS = [['chat', 'Buka chat'], ['shot', 'Screenshot layar'], ['translate', 'Terjemah layar'], ['clip', 'Tanya isi clipboard'], ['timer', 'Timer'], ['focus', 'Mode fokus nyala / mati'],
+  ['mute', 'Suara nyala / mati'], ['sleep', 'Tidur'], ['peek', 'Sembunyi di tepi layar'], ['outfit', 'Ganti baju'], ['web', 'Panel web /chrome'], ['set', 'Pengaturan']];
+function palFuzzy(q, text) {   // skor: awalan > kata > urutan huruf; -1 = tidak cocok
+  q = q.toLowerCase(); text = text.toLowerCase();
+  if (!q) return 0;
+  if (text.startsWith(q)) return 100 - text.length * 0.1;
+  const i = text.indexOf(q); if (i >= 0) return 60 - i * 0.5;
+  let j = 0, gap = 0; for (const ch of text) { if (ch === q[j]) j++; else if (j) gap++; if (j === q.length) break; }
+  return j === q.length ? 20 - gap * 0.3 : -1;
+}
+const PAL_IC = {
+  chat: '<path d="M21 11.5a8.4 8.4 0 0 1-9 8.4L3 21l1.6-5A8.4 8.4 0 1 1 21 11.5z"/>',
+  shot: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+  translate: '<path d="M4 6h9M8.5 4v2M6 6c.5 3 2.5 5.5 5.5 7M12 6c-.5 3-3 5.8-7 7.5"/><path d="M13 20l4-9 4 9M14.5 17h5"/>',
+  clip: '<rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 5V3h6v2M9 11h6M9 15h6"/>',
+  timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9.5 3h5"/>',
+  focus: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".8"/>',
+  mute: '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>',
+  sleep: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+  peek: '<path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  outfit: '<path d="M9 4l-6 4 2.5 4L8 11v9h8v-9l2.5 1L21 8l-6-4a3 3 0 0 1-6 0z"/>',
+  web: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9S14.5 18.4 12 21M12 3C9.5 5.6 8.2 8.6 8.2 12s1.3 6.4 3.8 9"/>',
+  set: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/>',
+  sys: '<path d="M3 12h4l2-6 4 12 2-6h6"/>',
+  aura: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16v4M17 18h4"/>',
+  cmd: '<path d="M16 4L8 20"/>'
+};
+let palFilter = 'all';
+function palHL(el, text, q) {   // huruf yang cocok disorot
+  q = (q || '').toLowerCase(); const lo = text.toLowerCase();
+  if (!q) { el.textContent = text; return; }
+  const at = lo.indexOf(q);
+  const mark = (str) => { const m = document.createElement('mark'); m.textContent = str; el.appendChild(m); };
+  if (at >= 0) { el.appendChild(document.createTextNode(text.slice(0, at))); mark(text.slice(at, at + q.length)); el.appendChild(document.createTextNode(text.slice(at + q.length))); return; }
+  let j = 0, buf = '';
+  for (let i = 0; i < text.length; i++) {
+    if (j < q.length && lo[i] === q[j]) { if (buf) { el.appendChild(document.createTextNode(buf)); buf = ''; } mark(text[i]); j++; } else buf += text[i];
+  }
+  if (buf) el.appendChild(document.createTextNode(buf));
+}
+function palBuild() {
+  const q = palIn.value.trim();
+  const all = [];
+  for (const [id, label] of PAL_ACTS) all.push({ k: 'aksi', ic: id, n: label, d: '', run: () => { const b = document.querySelector('#menu .mi[data-act="' + id + '"]'); if (b) b.click(); }, key: label + ' ' + id });
+  all.push({ k: 'aksi', ic: 'sys', n: 'Monitor sistem', d: 'CPU dan RAM langsung', run: () => sysToggle(), key: 'monitor sistem cpu ram' });
+  all.push({ k: 'aksi', ic: 'aura', n: 'Aura karakter nyala / mati', d: 'partikel dan cahaya tepi', run: () => { SET.aura = SET.aura === false; saveSet(); }, key: 'aura partikel cahaya' });
+  for (const c of getSlashCmds()) all.push({ k: 'perintah', ic: 'cmd', n: c.name, a: c.args, d: c.desc.split(/\s*[(;]\s*/)[0], run: () => palRunCmd(c), key: c.name + ' ' + (SLASH_ALIAS_OF[c.name] || []).join(' ') + ' ' + c.desc, use: slashUse[c.name] || 0 });
+  const pool = all.filter((it) => palFilter === 'all' || it.k === palFilter);
+  let groups;
+  if (q) {
+    const scored = [];
+    for (const it of pool) { const sc = Math.max(palFuzzy(q, it.n), palFuzzy(q, it.key) - 8); if (sc >= 0) scored.push([sc + (it.use || 0) * 0.2, it]); }
+    scored.sort((a, b) => b[0] - a[0]);
+    groups = [['', scored.slice(0, 50).map((x) => x[1])]];
+  } else {
+    const used = pool.filter((it) => it.use > 0).sort((a, b) => b.use - a.use).slice(0, 4);
+    const acts = pool.filter((it) => it.k === 'aksi');
+    const cmds = pool.filter((it) => it.k === 'perintah' && !used.includes(it));
+    groups = [['Sering dipakai', used], ['Aksi cepat', acts], ['Perintah', cmds]].filter((g) => g[1].length);
+  }
+  palItems = groups.flatMap((g) => g[1]);
+  if (palSel >= palItems.length) palSel = 0;
+  palList.textContent = '';
+  gid('palCount').textContent = palItems.length + (q ? ' hasil' : ' item');
+  if (!palItems.length) {
+    const e = document.createElement('div'); e.className = 'pe';
+    e.innerHTML = 'Tidak ada yang cocok dengan <b></b>.<br>Tekan <span class="kbd">Enter</span> untuk mengirimnya ke Iris sebagai pesan.';
+    e.querySelector('b').textContent = '“' + q + '”'; palList.appendChild(e); return;
+  }
+  let idx = 0;
+  for (const [title, items] of groups) {
+    if (title) { const h = document.createElement('div'); h.className = 'pg'; h.textContent = title; palList.appendChild(h); }
+    for (const it of items) {
+      const i = idx++;
+      const el = document.createElement('div'); el.className = 'pi' + (i === palSel ? ' sel' : ''); el.dataset.i = i; el.style.animationDelay = Math.min(i, 12) * 14 + 'ms';
+      const ic = document.createElement('span'); ic.className = 'ic'; ic.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + (PAL_IC[it.ic] || PAL_IC.cmd) + '</svg>'; el.appendChild(ic);
+      const tx = document.createElement('span'); tx.className = 'tx';
+      const n = document.createElement('span'); n.className = 'n'; palHL(n, it.n, q); tx.appendChild(n);
+      if (it.d) { const d = document.createElement('span'); d.className = 'd'; d.textContent = it.d; tx.appendChild(d); }
+      el.appendChild(tx);
+      if (it.a) { const a = document.createElement('span'); a.className = 'a'; a.textContent = it.a; el.appendChild(a); }
+      const go = document.createElement('span'); go.className = 'go'; go.textContent = '↵'; el.appendChild(go);
+      el.addEventListener('mousemove', () => { if (palSel !== i) { palSel = i; palMark(); } });
+      el.addEventListener('click', () => palRun(i));
+      palList.appendChild(el);
+    }
+  }
+}
+function palMark() { palList.querySelectorAll('.pi').forEach((el) => { const on = Number(el.dataset.i) === palSel; el.classList.toggle('sel', on); if (on) el.scrollIntoView({ block: 'nearest' }); }); }
+function palSetFilter(f) { palFilter = f; document.querySelectorAll('#palTabs button').forEach((b) => b.classList.toggle('on', b.dataset.f === f)); palSel = 0; palBuild(); }
+document.querySelectorAll('#palTabs button').forEach((b) => b.addEventListener('click', () => { palSetFilter(b.dataset.f); palIn.focus(); }));
+function palRunCmd(c) {
+  input.value = c.name + (c.args ? ' ' : '');
+  input.focus();
+  if (!c.args) input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));   // tanpa argumen = langsung jalan; ada argumen = tinggal dilengkapi
+}
+function palOpen() { try { closePops(); } catch { /* abaikan */ } document.body.classList.add('palopen'); hudSoon(); palEl.classList.add('open'); palPlace(); palIn.value = ''; palSel = 0; palFilter = 'all'; document.querySelectorAll('#palTabs button').forEach((b) => b.classList.toggle('on', b.dataset.f === 'all')); palBuild(); palList.scrollTop = 0; setTimeout(() => palIn.focus(), 0); try { window.companion.setIgnoreMouse(false); } catch { /* abaikan */ } }
+function palClose() { palEl.classList.remove('open'); document.body.classList.remove('palopen', 'paloverlap'); hudSoon(); }
+function palRun(i) { const it = palItems[i]; if (!it) return; palClose(); try { it.run(); } catch (e) { console.warn('palet:', e); } }
+palIn.addEventListener('input', () => { palSel = 0; palBuild(); });
+palIn.addEventListener('keydown', (e) => {
+  e.stopPropagation();
+  if (e.key === 'Escape') { palClose(); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); palSel = Math.min(palItems.length - 1, palSel + 1); palMark(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); palSel = Math.max(0, palSel - 1); palMark(); }
+  else if (e.key === 'Tab') { e.preventDefault(); const fs = ['all', 'aksi', 'perintah']; palSetFilter(fs[(fs.indexOf(palFilter) + (e.shiftKey ? 2 : 1)) % 3]); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (palItems.length) palRun(palSel); else if (palIn.value.trim()) { const t = palIn.value.trim(); palClose(); input.value = t; input.focus(); input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); } }
+});
+document.addEventListener('mousedown', (e) => { if (palEl.classList.contains('open') && !e.target.closest('#palBox')) palClose(); });
+document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') { e.preventDefault(); palEl.classList.contains('open') ? palClose() : palOpen(); } });
+
+// ---- System Monitor: kartu kecil CPU / RAM dengan grafik garis. Data dari main.js ('sys-stats': hanya angka agregat, tanpa nama proses atau isi layar). ----
+const sysHud = document.getElementById('sysHud'), sysHist = { cpu: [], ram: [] };
+let sysIv = null;
+function sysDraw(cv, arr) {
+  const c = cv.getContext('2d'), w = cv.width, h = cv.height;
+  c.clearRect(0, 0, w, h);
+  const acc = getComputedStyle(document.documentElement).getPropertyValue('--acc').trim() || '#7da0ee';
+  c.strokeStyle = 'rgba(255,255,255,0.08)'; c.lineWidth = 1; c.beginPath(); c.moveTo(0, h - 0.5); c.lineTo(w, h - 0.5); c.stroke();
+  if (arr.length < 2) return;
+  const step = w / 39, pts = arr.map((v, i) => [w - (arr.length - 1 - i) * step, h - 2 - (h - 4) * Math.min(1, v / 100)]);
+  c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
+  c.strokeStyle = acc; c.lineWidth = 1.6; c.lineJoin = 'round'; c.stroke();
+  c.lineTo(pts[pts.length - 1][0], h); c.lineTo(pts[0][0], h); c.closePath();
+  const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, acc + '55'); g.addColorStop(1, acc + '00'); c.fillStyle = g; c.fill();
+}
+async function sysPoll() {
+  try {
+    if (!window.companion || typeof window.companion.sysStats !== 'function') { sysHud.querySelector('#sysUp').textContent = 'butuh main.js + preload.js baru'; return; }
+    const r = await window.companion.sysStats(); if (!r || !r.ok) return;
+    for (const [k, v] of [['cpu', r.cpu], ['ram', r.ram]]) { sysHist[k].push(v); if (sysHist[k].length > 40) sysHist[k].shift(); }
+    gid('sysCpu').textContent = Math.round(r.cpu) + '%'; gid('sysRam').textContent = Math.round(r.ram) + '%';
+    gid('sysCpu').style.color = r.cpu > 85 ? 'var(--danger)' : ''; gid('sysRam').style.color = r.ram > 90 ? 'var(--danger)' : '';
+    gid('sysMem').textContent = r.usedGB.toFixed(1) + ' / ' + r.totalGB.toFixed(0) + ' GB';
+    const hh = Math.floor(r.uptime / 3600), mm = Math.floor((r.uptime % 3600) / 60);
+    gid('sysUp').textContent = 'aktif ' + hh + 'j ' + mm + 'm';
+    sysDraw(gid('sysCpuC'), sysHist.cpu); sysDraw(gid('sysRamC'), sysHist.ram);
+  } catch { /* abaikan */ }
+}
+var sysToggle = function sysToggle(force) {
+  const on = typeof force === 'boolean' ? force : !sysHud.classList.contains('open');
+  sysHud.classList.toggle('open', on);
+  clearInterval(sysIv); sysIv = null;
+  if (on) { sysPoll(); sysIv = setInterval(() => { if (!asleep && !document.hidden) sysPoll(); }, 2000); }
+  try { localStorage.setItem('iris.sys', on ? '1' : '0'); } catch { /* abaikan */ }
+};
+gid('sysX').addEventListener('click', () => sysToggle(false));
+try { if (localStorage.getItem('iris.sys') === '1') sysToggle(true); } catch { /* abaikan */ }
+
+// ---- v105: HUD CPU/RAM menghindari bubble, panel /chrome, menu, pop, timer, bar input ----
+const HUD_GAP = 8;
+function hudRects() {
+  const out = [];
+  const add = (el, pad) => { if (!el) return; const r = el.getBoundingClientRect(); if (r.width > 2 && r.height > 2) out.push({ l: r.left - (pad || 0), t: r.top - (pad || 0), r: r.right + (pad || 0), b: r.bottom + (pad || 0) }); };
+  if (bubble.classList.contains('show')) add(bubble, 4);
+  const wb = gid('webbar');
+  if (wb && wb.classList.contains('show')) {
+    const r = wb.getBoundingClientRect();   // panel web = dari bilah alat sampai dasar jendela (view native, menutupi HTML)
+    out.push({ l: r.left - 4, t: r.top - 4, r: r.right + 4, b: window.innerHeight });
+  }
+  for (const el of [menuEl, setPop, timerPop, gid('outfitPop'), gid('clipPop')]) { if (el && el.classList.contains('open')) add(el, 4); }
+  if (menuEl.classList.contains('open')) menuEl.querySelectorAll('.mi, .tlsub').forEach((c) => add(c, 6));   // mode peta pikiran: tombol menu keluar dari kotak #menu
+  if (pill && pill.classList.contains('show')) add(pill, 4);
+  const iv = gid('imgView'); if (iv && getComputedStyle(iv).display !== 'none') add(iv, 4);
+  add(gid('barWrap'), 4);
+  if (palEl.classList.contains('open')) add(gid('palBox'), 6);
+  const dk = gid('dock'); if (dk) for (const c of dk.children) { if (getComputedStyle(c).display !== 'none') add(c, 2); }
+  return out;
+}
+function hudOverlap(a, b) { const w = Math.min(a.r, b.r) - Math.max(a.l, b.l), h = Math.min(a.b, b.b) - Math.max(a.t, b.t); return w > 0 && h > 0 ? w * h : 0; }
+let hudQ = false;
+function hudSoon() { if (hudQ) return; hudQ = true; requestAnimationFrame(hudPlace); }
+function hudSettle() { hudSoon(); for (const t of [150, 450, 900, 1600]) setTimeout(hudSoon, t); }
+try { new MutationObserver(hudSettle).observe(gid('root'), { attributes: true, attributeFilter: ['class'] }); } catch { /* abaikan */ }
+function hudPlace() {
+  hudQ = false;
+  if (!sysHud.classList.contains('open')) return;
+  const W = window.innerWidth, H = window.innerHeight, w = sysHud.offsetWidth || 168, h = sysHud.offsetHeight || 110;
+  const wbEl = gid('webbar');
+  const webOn = !!(wbEl && wbEl.classList.contains('show')) && gid('root').classList.contains('webopen');
+  const webx = webOn ? (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--webx')) || 0) : 0;   // panel sudah ditutup: kembali ke pojok
+  const obs = hudRects();
+  const xs = []; for (let t = 14 + webx; t <= W - w - 14; t += 16) xs.push(t);
+  if (!xs.length) xs.push(14 + webx);
+  if (xs[xs.length - 1] < W - w - 14) xs.push(W - w - 14);
+  let best = null, bestScore = Infinity;
+  for (const y of (() => { const a = []; for (let t = 14; t <= H - h - 14; t += 16) a.push(t); return a.length ? a : [14]; })()) {
+    for (const x of xs) {
+      if (x < 4 || x + w > W - 4) continue;
+      const rc = { l: x, t: y, r: x + w, b: y + h };
+      let ov = 0; for (const o of obs) ov += hudOverlap(rc, o);
+      const score = ov * 1000 + y * 0.5 + (x - xs[0]) * 0.5;   // utamakan tanpa tabrakan, lalu pojok kiri atas
+      if (score < bestScore) { bestScore = score; best = { x, y, ov }; }
+      if (ov === 0 && x === xs[0] && y === 14) { bestScore = -1; break; }
+    }
+    if (bestScore === -1) break;
+  }
+  if (!best) { sysHud.classList.add('hudhide'); return; }
+  sysHud.style.left = Math.round(best.x) + 'px'; sysHud.style.top = Math.round(best.y) + 'px';
+  sysHud.classList.toggle('hudhide', best.ov > 0);   // tidak ada tempat kosong: sembunyi sementara, jangan menimpa
+}
+try {
+  const mo = new MutationObserver(hudSoon);
+  for (const el of [bubble, menuEl, setPop, timerPop, gid('outfitPop'), gid('clipPop'), pill, gid('webbar'), gid('imgView'), gid('barWrap'), gid('root')]) {
+    if (el) mo.observe(el, { attributes: true, attributeFilter: ['class', 'style'] });
+  }
+  mo.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class'] });
+} catch { /* abaikan */ }
+window.addEventListener('resize', hudSoon);
+setInterval(hudSoon, 800);   // jaring pengaman: jendela dipindah / diubah ukurannya dari main.js
+{ const _st = sysToggle; sysToggle = function (f) { _st(f); hudSoon(); }; }
+
+// ---- v105b: palet tidak boleh menutupi karakter / panel /chrome: cari area kosong ----
+function palPlace() {
+  if (!palEl.classList.contains('open')) return;
+  const W = window.innerWidth, H = window.innerHeight, M = 14;
+  const webx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--webx')) || 0;
+  const L = webx + M;
+  const cr = charBox.getBoundingClientRect();
+  const headX = cr.right - 152; let bodyL = headX - 100, bodyR = headX + 100;   // badan karakter kira-kira selebar 200px
+  let headTop = cr.top + bubbleOver - 4;
+  const br = (bubble.classList.contains('show') && bubble.getBoundingClientRect().width > 2) ? bubble.getBoundingClientRect() : null;   // v106: bubble juga penghalang
+  if (br) { bodyL = Math.min(bodyL, br.left); bodyR = Math.max(bodyR, br.right); headTop = Math.min(headTop, br.top - 4); }
+  let x, y = M, w, h = H - 2 * M;
+  const wantW = 500;
+  const leftW = bodyL - 12 - L, rightW = (W - M) - (bodyR + 12);
+  const aboveH = headTop - 12 - M;
+  if (leftW >= 320) { w = Math.min(wantW, leftW); x = L; }                      // 1) di kiri karakter
+  else if (rightW >= 320) { w = Math.min(wantW, rightW); x = W - M - w; }       // 2) di kanan karakter
+  else if (aboveH >= 240) {                                                      // 3) di atas kepala
+    w = Math.min(wantW, W - L - M); x = Math.max(L, Math.min(W - M - w, headX - w / 2)); h = aboveH;
+  } else {                                                                       // 4) ruang sempit: sisi terlapang, kecilkan
+    const useLeft = leftW >= rightW;
+    w = Math.max(240, Math.min(wantW, useLeft ? leftW : rightW)); x = useLeft ? L : W - M - w;
+  }
+  x = Math.max(M, Math.min(x, W - M - w));
+  // v107: palet tidak boleh menutupi bar input (tombol mic / kamera / chat / kirim) dan pil status di atasnya.
+  // Bila palet sejajar secara horizontal dengan bar, tingginya dipotong sampai tepat di atas bar (isi palet tetap bisa di-scroll).
+  let barTop = Infinity, barL = Infinity, barR = -Infinity;
+  if (gid('barWrap') && gid('barWrap').classList.contains('show')) {
+    for (const id of ['bar', 'conn', 'webpill', 'status', 'attach']) {
+      const el = gid(id); if (!el) continue;
+      const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+      if (r.width < 2 || r.height < 2 || cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) < 0.05) continue;
+      barTop = Math.min(barTop, r.top); barL = Math.min(barL, r.left); barR = Math.max(barR, r.right);
+    }
+  }
+  if (barTop < Infinity && x < barR + 6 && x + w > barL - 6) h = Math.min(h, barTop - 8 - y);
+  const st = palEl.style;
+  st.setProperty('--pal-x', Math.round(x) + 'px'); st.setProperty('--pal-y', Math.round(y) + 'px');
+  st.setProperty('--pal-w', Math.round(w) + 'px'); st.setProperty('--pal-h', Math.round(Math.max(160, h)) + 'px');
+  const pb = gid('palBox').getBoundingClientRect();   // ruang terlalu sempit: palet tetap menimpa bubble, jadi bubble disembunyikan sementara (bukan terpotong)
+  const hit = !!br && (x < br.right + 6 && x + w > br.left - 6 && pb.top < br.bottom + 6 && pb.bottom > br.top - 6);
+  document.body.classList.toggle('paloverlap', hit);
+}
+window.addEventListener('resize', palPlace);
+setInterval(palPlace, 600);   // panel /chrome atau karakter bergeser saat palet terbuka
 
 connect();
 </script>

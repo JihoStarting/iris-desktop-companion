@@ -349,7 +349,7 @@ Semua pengaturan dibaca dari file `.env` (di folder proyek atau di folder user W
 | `IRIS_TL_MAX_BLOCKS` | Batas blok teks per terjemah layar (bawaan 120) |
 | `IRIS_TL_MAX_PIXELS` | Batas piksel gambar yang diterima terjemah layar (bawaan 40 juta; v101). Gambar lebih besar ditolak sebelum dimuat ke memori |
 | `IRIS_TL_FONT_JP` | Font Jepang untuk menggambar hasil (bawaan Meiryo, Yu Gothic, atau Noto CJK) |
-| `IRIS_TL_DEBUG=1` | Simpan `iris_tl_debug.png` dan `iris_tl_debug.json` (kotak hijau diterjemahkan, merah tidak) |
+| `IRIS_TL_DEBUG=1` | Simpan `iris_tl_debug.png` dan `iris_tl_debug.json` (kotak hijau diterjemahkan, merah tidak) di folder `IRIS_TL_DEBUG_DIR` (bawaan folder tempat server dijalankan). JSON memuat isi layar, jadi matikan setelah selesai |
 | `IRIS_TL_VOICE=0` | Iris tidak bicara saat terjemah layar |
 | `FUNFACT_VERIFY` | `0` mematikan verifikasi kedua fun fact buatan model (bawaan `1`; verifikasi yang timeout atau galat tetap memakai fakta) |
 | `FUNFACT_TIMEOUT` | Batas total waktu pembuatan fun fact (detik, maksimal 48) |
@@ -434,7 +434,7 @@ Ketik di kotak input overlay. Ketik `/help` untuk daftar lengkap di aplikasi. Pe
 | `/chrome`, `/akun` | Mini-browser multi-akun, lihat [bagiannya](#mini-browser-chrome) |
 | `/lokal daftar` | Daftar aplikasi yang boleh dibuka; ketik nomor atau nama untuk membukanya |
 | `/status` | Tampilkan hasil `/health` (VOICEVOX, 9Router, Hermes, token) |
-| `/kualitas [auto\|tinggi\|normal\|hemat]` | Atur kualitas gambar; tanpa argumen melaporkan tingkat sekarang |
+| `/kualitas [auto\|tinggi\|normal\|hemat]` | Atur kualitas gambar; tanpa argumen melaporkan tingkat sekarang. Perintah ini juga mengosongkan batas bawah otomatis yang dinaikkan setelah WebGL hilang |
 
 ### Waktu dan fokus
 
@@ -927,16 +927,16 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 |---|---|
 | Iris tidak bersuara, terminal penuh `VOICEVOX gagal` | VOICEVOX belum berjalan. Nyalakan lewat chip VOICEVOX di peluncur, atau jalankan `vv-engine\run.exe` sendiri di port 50021. Cek pemilik port: `Get-Process -Id (Get-NetTCPConnection -LocalPort 50021 -State Listen).OwningProcess` (`run` = mesin Windows, `wslrelay` = unit WSL yang aktif) |
 | Balasan `401 Missing API key` | `NINEROUTER_API_KEY` kosong. Isi di `.env` lalu restart server |
-| Server langsung berhenti dengan `[FATAL] COMPANION_TOKEN wajib diisi` | Isi `COMPANION_TOKEN` (minimal 16 karakter) di `.env`, lalu start ulang. Hanya untuk pengembangan: `COMPANION_ALLOW_NO_TOKEN=1` |
+| Server langsung berhenti dengan `[FATAL] COMPANION_TOKEN wajib diisi` | Isi `COMPANION_TOKEN` (minimal 16 karakter) di `.env`, lalu start ulang. Hanya untuk pengembangan lokal: `COMPANION_ALLOW_NO_TOKEN=1` (mematikan autentikasi; jangan dipakai bila port 8765 terjangkau dari jaringan) |
 | Overlay tidak tersambung, log `/ws ditolak` | Token server dan overlay berbeda (mis. ada dua `.env` dengan token berbeda). Cek sidik token di terminal server dan terminal Electron, lalu restart keduanya |
 | Halaman `127.0.0.1:8765` menampilkan "Server Iris aktif" saja | Normal bila `COMPANION_TOKEN` aktif. Gunakan overlay Electron |
 | `/agen` membalas HTTP 503 atau tidak merespons | Pastikan API server Hermes aktif di `127.0.0.1:8642` dan `HERMES_API_KEY` sama dengan `API_SERVER_KEY` |
 | File hasil agen "tidak ada" di Download | Hermes berjalan di WSL, jadi `~/Downloads` miliknya adalah folder Linux. Atur `HERMES_WIN_HOME` agar menunjuk ke folder Windows |
 | Perubahan `.env` tidak terbaca | Server hanya membaca `.env` saat start. Restart server dan overlay |
-| Karakter menghilang sesekali | Pemulihan WebGL otomatis dan watchdog sudah dipasang. Coba `/kualitas hemat`, lalu lihat terminal Electron (`Renderer mati`, `WebGL context hilang`) |
+| Karakter menghilang sesekali | Pemulihan otomatis sudah dipasang: WebGL hilang atau render macet dimuat ulang (maksimal 3 kali per 5 menit), "selalu di atas" dipasang ulang tiap 10 detik, dan batas bawah kualitas naik satu tingkat tiap WebGL hilang (kecuali tepat setelah tidur atau kunci layar). Jendela yang tertutup penuh aplikasi fullscreen tidak dimuat ulang. Coba `/kualitas hemat`, lalu lihat terminal Electron (`Renderer mati`, `WebGL context hilang`, atau `Watchdog: ...` yang menyebut penyebabnya). Kalau log chat menampilkan "GPU tidak stabil", ketik `/kualitas hemat` dan restart Iris |
 | Iris lag atau RAM penuh | `/kualitas hemat`, tutup tab browser yang tidak dipakai, dan cek batas memori WSL di `.wslconfig`. `/chrome ram` menampilkan pemakaian panel |
-| Terjemah layar banyak teks tak ikut, atau muncul teks aneh | Pastikan paket bahasa OCR sumber terpasang, pilih bahasa manual di menu (bukan Auto), lalu jalankan dengan `IRIS_TL_DEBUG=1` dan lihat `iris_tl_debug.png`. Setelah mengganti `server.py` atau `iris_translate_img.py`, restart server (bukan hanya overlay) |
-| Terjemah layar menjawab "Gambar tidak bisa dibaca" dengan keterangan piksel melebihi batas | Gambar lebih besar dari `IRIS_TL_MAX_PIXELS` (bawaan 40 juta piksel, kira-kira tiga layar 4K). Pilih area yang lebih kecil, atau naikkan nilainya di `.env` bila RAM cukup |
+| Terjemah layar banyak teks tak ikut, atau muncul teks aneh | Pastikan paket bahasa OCR sumber terpasang, pilih bahasa manual di menu (bukan Auto), lalu jalankan dengan `IRIS_TL_DEBUG=1` dan lihat `iris_tl_debug.png` (disimpan di folder `IRIS_TL_DEBUG_DIR`, bawaan folder tempat server dijalankan). Setelah mengganti `server.py` atau `iris_translate_img.py`, restart server (bukan hanya overlay) |
+| Terjemah layar menjawab "Gambar tidak bisa dibaca" dengan keterangan piksel melebihi batas | Gambar lebih besar dari `IRIS_TL_MAX_PIXELS` (bawaan 40 juta piksel, hampir lima layar 4K). Pilih area yang lebih kecil, atau naikkan nilainya di `.env` bila RAM cukup |
 | Ekspor percakapan tersimpan dengan awalan `_` pada nama | Nama yang kamu beri sama dengan nama perangkat Windows (`CON`, `NUL`, `COM1`, dst.), jadi Iris menambahkan `_` di depannya (v101) |
 | Model gambar timeout | Kurangi jumlah gambar yang dikirim atau naikkan `NINEROUTER_VISION_READ_TIMEOUT` |
 | Tombol Salin gambar gagal | Restart Iris. Handler mencoba tiga cara berurutan, termasuk lewat PowerShell |
@@ -947,14 +947,16 @@ Pastikan kamu memiliki hak pakai atas model dan aset yang kamu gunakan.
 | Suara VOICEVOX lambat atau GPU tidak terpakai | Cek kotak **Mesin suara VOICEVOX** di Pengaturan peluncur, dan cari `DirectML (device_id=0): OK` di `iris-voicevox.err.log`. Bila unit `voicevox` di WSL masih aktif, matikan: `wsl -d Ubuntu -- systemctl --user disable --now voicevox` |
 | Server baru langsung mati dengan `Errno 10048` | Server lama masih memegang port 8765. Cek `Get-NetTCPConnection -LocalPort 8765 -State Listen`, matikan prosesnya (atau lewat peluncur), lalu start ulang |
 | Agen melapor "berhasil" tetapi file atau folder tidak berubah | Laporan agen tidak selalu benar, dan di sandbox path di luar folder kerja tidak terjangkau. Cek langsung dengan `dir`, dan kirim path penuh pada `/agen` |
-| `/agen` ditolak dengan pesan path di luar sandbox | `HERMES_SANDBOX=1` aktif: hanya folder kerja bawaan agen yang bisa disentuh lewat `/agen`. Letakkan berkasnya di sana (atau pakai `/rea`, yang menyalinnya otomatis), atau matikan sandbox sadar akan risikonya. Folder tambahan di `docker_volumes` Hermes belum dipetakan di Iris |
+| `/agen` ditolak dengan pesan path di luar sandbox | `HERMES_SANDBOX=1` aktif: hanya folder kerja bawaan agen yang bisa disentuh lewat `/agen`. Letakkan berkasnya di sana (atau pakai `/rea`, yang menyalinnya otomatis), atau matikan sandbox dengan sadar akan risikonya. Folder tambahan di `docker_volumes` Hermes belum dipetakan di Iris |
 | Iris melapor VOICEVOX, 9Router, atau Hermes "offline" padahal hidup | Dua penyebab yang pernah terbukti (9 November 2026): WSL mode NAT tidak menjangkau `localhost` Windows (atur `networkingMode=mirrored` di `.wslconfig`, lalu `wsl --shutdown`), dan cek status lewat `curl` dari terminal agen di sandbox tanpa jaringan selalu gagal (`000`). Lihat status lewat pil V 9 H atau `/status`, bukan dari terminal agen |
 | `/rea` lambat atau menolak | Mode standar dan `dalam` memakai Hermes dan bisa memakan beberapa menit; pakai `/rea cepat` untuk triase tanpa Hermes. Penyalinan hanya jalan bila `HERMES_SANDBOX=1`; folder kosong, terlalu besar, atau path jaringan (UNC) ditolak dengan pesan jelas. Tanpa `rea_triage.py` di folder `server.py`, triase mati dan mode `cepat` ditolak. Windows Defender memberi peringatan setelah `/rea`: kemungkinan `REA_CARVE=1` mengekstrak payload tertanam ke `rea-input\carved`; matikan atau hapus folder itu |
 | Tugas agen menggantung tanpa kartu izin | Pastikan `HERMES_STREAM=1` dan `approvals.mode` Hermes `manual`; restart server dan buka ulang overlay |
 | Stop tidak menghentikan agen Hermes | Pastikan `HERMES_STREAM=1` di `.env`, restart server, dan buka ulang overlay. Satu langkah yang sedang berjalan bisa selesai dulu. Me-restart `hermes-gateway` di tengah tugas memunculkan "Server disconnected"; itu bukan hasil tombol Stop |
 | Chip Hermes tampak gagal mati | Hermes bisa butuh sampai sekitar 70 detik untuk berhenti; peluncur menunggu 75 detik. Kalau tetap tampak gagal, cek `systemctl --user status hermes-gateway` di WSL. Peluncur lama (sebelum build ulang 8 November) hanya menunggu sekitar 12 detik, jadi bangun ulang `IrisLauncher.exe` |
 | Chip server.py tampak Mati padahal server jalan, atau server tidak bisa dinyalakan saat Hermes mati | Peluncur lama menilai server lewat `/health`, yang melambat saat Hermes mati. Perbarui `server.py`, bangun ulang `IrisLauncher.exe` (peluncur kini memakai `/ping`), lalu cek `http://127.0.0.1:8765/ping`. Bila masih salah, lihat di Task Manager apakah `python.exe` benar-benar hilang |
-| Cek update lama, atau daftar paket Ubuntu di dialog Update terasa usang | Cek paket Ubuntu memakai daftar yang disegarkan kurang dari 4 jam lalu supaya cepat; menjalankan Update menyegarkannya. Cek otomatis baru jalan sekitar 20 detik sesudah peluncur dibuka dan menunggu peluncur tidak sibuk. Bila varian VOICEVOX terbaca salah sesudah mengganti build mesin manual, hapus `vv-engine\iris-variant.txt`. Perubahan ini aktif setelah `IrisLauncher.exe` dibangun ulang |
+| Cek update lama, atau daftar paket Ubuntu di dialog Update terasa usang | Cek paket Ubuntu memakai daftar yang disegarkan kurang dari 4 jam lalu supaya cepat; menjalankan Update menyegarkannya |
+| Cek update otomatis tidak langsung jalan setelah peluncur dibuka | Normal: cek otomatis baru jalan sekitar 20 detik sesudah peluncur dibuka dan menunggu peluncur tidak sibuk |
+| Varian VOICEVOX terbaca salah sesudah mengganti build mesin manual | Hapus `vv-engine\iris-variant.txt`. Perubahan ini aktif setelah `IrisLauncher.exe` dibangun ulang |
 | Klip gerak jarang main, atau konsol penuh galat 404 klip | Cek saklar **Gerakan acak** di Pengaturan (mati = tanpa klip acak). Hapus entri `clips.json` yang berkasnya tidak ada. Lihat baris "Klip VRMA aksi siap" di konsol untuk klip dan tag yang benar-benar termuat; `idle` hanya ada di klip yang bertag itu. Lihat [Animasi klip VRMA](#animasi-klip-vrma) |
 
 Untuk diagnosis lebih lanjut, jalankan overlay dengan `npm start`, buka DevTools dengan `Ctrl+Alt+D`, dan cek tab Console (DevTools tidak tersedia di versi rilis).

@@ -19,7 +19,7 @@ param(
   [Parameter(Mandatory = $true)][ValidateSet('wsl', 'voicevox', 'router', 'hermes', 'server', 'overlay')][string]$Nama,
   [Parameter(Mandatory = $true)][ValidateSet('nyala', 'mati')][string]$Aksi,
   [string]$Proyek = '',
-  [string]$Distro = 'Ubuntu',
+  [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Distro = 'Ubuntu',
   [int]$TungguDetik = 90,
   [switch]$TanpaPenjaga,
   [switch]$TanpaGPU,

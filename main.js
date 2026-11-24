@@ -868,7 +868,7 @@ async function captureScreenDataURL(opts = {}) {
     console.warn('Screenshot gagal:', e.message || e);
     return null;
   } finally {
-    if (wasVisible && alive()) { if (opts.quiet) win.showInactive(); else win.show(); }
+    if (wasVisible && alive()) { if (opts.quiet) win.showInactive(); else win.show(); if (wantTop) win.setAlwaysOnTop(true, 'screen-saver'); }
   }
 }
 
@@ -1024,7 +1024,7 @@ async function snipRegion(lang, repeat) {
     return { ok: false, error: 'Pemilihan area gagal: ' + (e.message || e) };
   } finally {
     try { if (sw && !sw.isDestroyed()) sw.destroy(); } catch { /* abaikan */ }
-    if (wasVisible && alive()) win.show();
+    if (wasVisible && alive()) { win.show(); if (wantTop) win.setAlwaysOnTop(true, 'screen-saver'); }
     snipBusy = false;
   }
 }
@@ -1526,16 +1526,29 @@ let crashLog = [], unresponsiveNow = false;
    selama 45 dtk = render macet atau konteks WebGL mati: muat ulang (dibatasi 3x per 5 menit, sama dengan v37d).
    (2) Jendela sepenuhnya di luar semua layar (mis. setelah monitor dicabut atau lag saat diseret) = kembalikan ke pojok kanan bawah. */
 let pulseAt = Date.now();
+let wantTop = true;   // v105: status 'selalu di atas' yang diminta pengguna; watchdog memasangnya ulang tiap 10 dtk karena Windows bisa menurunkannya diam-diam
 ipcMain.on('render-pulse', (e) => { if (fromOverlay(e)) pulseAt = Date.now(); });
+/* v106: periksa keadaan halaman overlay untuk watchdog. {hidden: halaman tersembunyi/tertutup penuh, lost: konteks WebGL hilang (null = tidak terbaca)}; null = tidak menjawab 3 dtk. */
+function renderProbe() {
+  const js = "(() => { let lost = null; try { const c = document.querySelector('#char canvas'); const g = c && (c.getContext('webgl2') || c.getContext('webgl')); if (g) lost = g.isContextLost(); } catch (e) {} return { hidden: document.hidden, lost }; })()";
+  return Promise.race([win.webContents.executeJavaScript(js), new Promise((r) => setTimeout(() => r(null), 3000))]).catch(() => null);
+}
 function startWatchdog() {
   setInterval(() => {
     if (!win || win.isDestroyed()) return;
     try {
       if (win.isVisible() && !unresponsiveNow && Date.now() - pulseAt > 45000) {
-        const now = Date.now(); crashLog = crashLog.filter((t) => now - t < 300000); crashLog.push(now);
-        console.warn('Watchdog: tidak ada denyut render 45 dtk; ' + (crashLog.length > 3 ? 'terlalu sering, restart overlay manual.' : 'memuat ulang halaman.'));
-        pulseAt = now;
-        if (crashLog.length <= 3) win.webContents.reload();
+        pulseAt = Date.now();   // v106: cegah pemeriksaan ganda selama probe berjalan
+        // v106: denyut berhenti juga saat Chromium menghentikan render jendela yang tertutup penuh (aplikasi fullscreen / game): itu bukan macet.
+        // Tanya halaman dulu: tersembunyi dan WebGL sehat = biarkan; konteks hilang, render macet, atau halaman tidak menjawab = muat ulang.
+        renderProbe().then((p) => {
+          if (!win || win.isDestroyed()) return;
+          if (p && p.hidden && p.lost !== true) { console.warn('Watchdog: halaman tersembunyi / tertutup penuh; tidak dimuat ulang.'); pulseAt = Date.now(); return; }
+          const now = Date.now(); crashLog = crashLog.filter((t) => now - t < 300000); crashLog.push(now);
+          console.warn('Watchdog: tidak ada denyut render 45 dtk (' + (p ? (p.lost ? 'konteks WebGL hilang' : 'render macet') : 'halaman tidak menjawab') + '); ' + (crashLog.length > 3 ? 'terlalu sering, restart overlay manual.' : 'memuat ulang halaman.'));
+          pulseAt = now;
+          if (crashLog.length <= 3) win.webContents.reload();
+        });
         return;
       }
       const b = win.getBounds();
@@ -1548,6 +1561,8 @@ function startWatchdog() {
         const c = cornerPos(); console.warn('Watchdog: jendela di luar layar; dipindah ke pojok kanan bawah.');
         win.setPosition(c.x, c.y);
       }
+      // v105: karakter 'hilang' padahal masih berdenyut = jendela tertutup jendela lain (z-order turun setelah aplikasi fullscreen, UAC, menu Start, atau hide/show saat screenshot)
+      if (wantTop && win.isVisible() && !dragIv && !(peek && peek.anim)) win.setAlwaysOnTop(true, 'screen-saver');
     } catch (e) { console.warn('Watchdog galat:', e && e.message); }
   }, 10000);
   try { powerMonitor.on('resume', () => { pulseAt = Date.now(); }); powerMonitor.on('unlock-screen', () => { pulseAt = Date.now(); }); } catch { /* abaikan */ }
@@ -2192,6 +2207,7 @@ ipcMain.on('set-sit', (e, on, now) => {
 });
 ipcMain.on('set-top', (e, on) => {
   if (!fromOverlay(e)) return;
+  wantTop = !!on;
   if (on) win.setAlwaysOnTop(true, 'screen-saver'); else win.setAlwaysOnTop(false);
 });
 // v47: renderer menanyakan apakah jendela menempel di tepi kiri layar; kalau ya, menu dan popover dipindah ke KANAN karakter (bukan ketahan di kiri)
@@ -2231,6 +2247,20 @@ ipcMain.handle('pin-image', async (e, d) => {   // v99: tempel terjemahan di ata
 });
 ipcMain.on('pin-close', (e) => { if (win && !win.isDestroyed() && e.sender === win.webContents) closePin(); });
 // v23: detik sejak input terakhir (hanya angka, dari powerMonitor); dipakai /pantau supaya tidak memotret saat pengguna sedang pergi
+// v104: monitor sistem. Hanya angka agregat (CPU %, RAM %, uptime); tidak ada nama proses.
+let _cpuPrev = null;
+ipcMain.handle('sys-stats', (e) => {
+  if (!fromOverlay(e)) return { ok: false };
+  try {
+    let idle = 0, total = 0;
+    for (const c of os.cpus()) { for (const k of Object.keys(c.times)) total += c.times[k]; idle += c.times.idle; }
+    let cpu = 0;
+    if (_cpuPrev && total > _cpuPrev.total) cpu = 100 * (1 - (idle - _cpuPrev.idle) / (total - _cpuPrev.total));
+    _cpuPrev = { idle, total };
+    const tot = os.totalmem(), free = os.freemem();
+    return { ok: true, cpu: Math.max(0, Math.min(100, cpu)), ram: 100 * (1 - free / tot), usedGB: (tot - free) / 1073741824, totalGB: tot / 1073741824, uptime: os.uptime() };
+  } catch { return { ok: false }; }
+});
 ipcMain.handle('idle-time', (e) => { if (!fromOverlay(e)) return 0; try { return powerMonitor.getSystemIdleTime(); } catch { return 0; } });
 ipcMain.handle('read-clipboard', (e) => fromOverlay(e) ? readClipboardPayload() : { text: '', image: null });
 // Salin gambar (data URL) ke clipboard Windows; navigator.clipboard di jendela overlay sering ditolak

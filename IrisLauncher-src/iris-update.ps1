@@ -36,7 +36,7 @@ param(
   [Parameter(Mandatory = $true)][ValidateSet('cek', 'update', 'pulihkan')][string]$Aksi,
   [string]$Nama = 'semua',
   [string]$Proyek = '',
-  [string]$Distro = 'Ubuntu',
+  [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Distro = 'Ubuntu',
   [int]$TungguDetik = 90,
   [switch]$TanpaGPU,
   [switch]$Diam,
@@ -44,7 +44,7 @@ param(
   [string]$WslState = '',
   [string]$Launcher = '',
   [string]$LauncherVersion = '',
-  [string]$LauncherRepo = ''
+  [ValidatePattern('^([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)?$')][string]$LauncherRepo = ''
 )
 
 $ErrorActionPreference = 'Continue'
@@ -311,10 +311,19 @@ exit 0
 '@
 
 $BashAptUpd = @'
-export DEBIAN_FRONTEND=noninteractive
-timeout 150 apt-get update 2>&1 | tail -n 3
-timeout 2400 apt-get -y -o Dpkg::Options::=--force-confold upgrade 2>&1 | tail -n 25
-exit ${PIPESTATUS[0]}
+export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1
+LOG=/var/log/iris-apt.log
+echo "== $(date) ==" >> $LOG
+echo "Log lengkap: $LOG (di dalam WSL)"
+O="-o DPkg::Lock::Timeout=120 -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef"
+# Rapikan sisa update yang terputus sebelumnya (aman bila tidak ada).
+timeout -k 20 300 dpkg --configure -a >> $LOG 2>&1
+timeout -k 20 150 apt-get update $O 2>&1 | tee -a $LOG | tail -n 3
+# Tanpa 'tail': baris penting langsung tampil di log launcher.
+timeout -k 60 2400 apt-get -y $O upgrade 2>&1 | tee -a $LOG | grep --line-buffered -E '^(Get:|Unpacking|Setting up|E:|W:)' | cut -c1-110
+RC=${PIPESTATUS[0]}
+echo "apt selesai, kode=$RC"
+exit $RC
 '@
 
 $BashHermesCheck = @'

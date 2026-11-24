@@ -12,7 +12,7 @@ Perbaikan 1.0: cek WSL tidak lagi gagal palsu karena stderr wsl.exe; dicoba ulan
 #>
 param(
   [string]$Proyek = $PSScriptRoot,
-  [string]$Distro = 'Ubuntu',
+  [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Distro = 'Ubuntu',
   [int]$TungguDetik = 90,
   [switch]$TanpaPenjaga,
   [switch]$TanpaOverlay,

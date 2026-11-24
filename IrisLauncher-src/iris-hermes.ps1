@@ -12,7 +12,7 @@ PERINGATAN: jangan matikan saat Hermes sedang mengerjakan tugas /agen.
 Opsi: -Nyalakan (paksa nyala)  -Matikan (paksa mati)  -TanpaPenjaga  -Distro Ubuntu  -TungguDetik 90
 #>
 param(
-  [string]$Distro = 'Ubuntu',
+  [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Distro = 'Ubuntu',
   [int]$TungguDetik = 90,
   [switch]$Nyalakan,
   [switch]$Matikan,

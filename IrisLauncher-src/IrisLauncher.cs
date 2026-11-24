@@ -50,9 +50,36 @@ namespace IrisLauncher
         public static string Quote(string v)
         {
             if (v == null) v = "";
+            v = v.Replace("\"", "");   // kutip di dalam nilai tidak boleh lolos ke baris perintah
             int n = 0;
             for (int i = v.Length - 1; i >= 0 && v[i] == '\\'; i--) n++;
             return "\"" + v + new string('\\', n) + "\"";
+        }
+
+        // Jalur penuh ke program sistem. Nama telanjang ("powershell.exe") dicari Windows di folder exe lebih dulu,
+        // jadi berkas tiruan di folder yang sama (mis. Downloads) bisa ikut jalan.
+        public static string Sys32(string exe)
+        {
+            string p = Path.Combine(Environment.SystemDirectory, exe);
+            if (File.Exists(p)) return p;
+            try   // proses 32-bit di Windows 64-bit: SysWOW64 tidak punya wsl.exe, pakai Sysnative
+            {
+                string sn = WinDir(Path.Combine("Sysnative", exe));
+                if (File.Exists(sn)) return sn;
+            }
+            catch { }
+            return exe;
+        }
+        public static string WinDir(string exe)
+        {
+            string w = Environment.GetEnvironmentVariable("WINDIR");
+            if (string.IsNullOrEmpty(w)) w = @"C:\Windows";
+            return Path.Combine(w, exe);
+        }
+        public static string PowerShellExe()
+        {
+            string p = Path.Combine(Path.Combine(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell"), "v1.0"), "powershell.exe");
+            return File.Exists(p) ? p : "powershell.exe";
         }
 
         [DllImport("kernel32.dll")]
@@ -152,6 +179,8 @@ namespace IrisLauncher
         protected override void OnMouseDown(MouseEventArgs e) { down = true; Invalidate(); base.OnMouseDown(e); }
         protected override void OnMouseUp(MouseEventArgs e) { down = false; Invalidate(); base.OnMouseUp(e); }
         protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
+        protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+        protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
 
         static GraphicsPath Round(Rectangle r, int rad)
         {
@@ -173,6 +202,7 @@ namespace IrisLauncher
             if (Width < 30 || Height < 24) return;
             Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
             Color c = BackColor;
+            if (!Enabled) c = Color.FromArgb((c.R + Theme.Panel.R * 2) / 3, (c.G + Theme.Panel.G * 2) / 3, (c.B + Theme.Panel.B * 2) / 3);
             Color top = (hover && Enabled) ? ControlPaint.Light(c, 0.45F) : ControlPaint.Light(c, 0.20F);
             Color bot = down ? ControlPaint.Dark(c, 0.10F) : c;
             using (GraphicsPath path = Round(r, 12))
@@ -182,7 +212,13 @@ namespace IrisLauncher
                 using (Pen pen = new Pen(Color.FromArgb(Enabled ? (hover ? 150 : 60) : 30, Color.White), 1F))
                     g.DrawPath(pen, path);
             }
-            TextRenderer.DrawText(g, Text, Font, r, Enabled ? ForeColor : Theme.Muted,
+            if (Focused && ShowFocusCues)
+            {
+                using (GraphicsPath fp = Round(new Rectangle(3, 3, Width - 7, Height - 7), 10))
+                using (Pen fpen = new Pen(Color.FromArgb(220, Theme.Accent), 1.5F))
+                    g.DrawPath(fpen, fp);
+            }
+            TextRenderer.DrawText(g, Text, Font, r, Enabled ? ForeColor : Theme.Dim,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
         }
     }
@@ -471,6 +507,41 @@ namespace IrisLauncher
             return Path.Combine(Path.Combine(b, "IrisLauncher"), "scripts");
         }
 
+        // Dipanggil sebelum setiap eksekusi skrip: bila isi berkas di disk beda dengan resource exe
+        // (diubah program lain / rusak), tulis ulang. Skrip dijalankan dengan -ExecutionPolicy Bypass.
+        public static void EnsureScripts()
+        {
+            string dir = ScriptDir();
+            Directory.CreateDirectory(dir);
+            foreach (string n in new string[] { "iris-start.ps1", "iris-stop.ps1", "iris-hermes.ps1", "iris-doctor.ps1", "iris-service.ps1", "iris-update.ps1" })
+            {
+                byte[] want;
+                using (Stream s = Open(n))
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    byte[] buf = new byte[8192]; int r;
+                    while ((r = s.Read(buf, 0, buf.Length)) > 0) ms.Write(buf, 0, r);
+                    want = ms.ToArray();
+                }
+                string path = Path.Combine(dir, n);
+                bool same = false;
+                try
+                {
+                    if (File.Exists(path))
+                    {
+                        byte[] have = File.ReadAllBytes(path);
+                        if (have.Length == want.Length)
+                        {
+                            using (System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256.Create())
+                                same = Convert.ToBase64String(sha.ComputeHash(have)) == Convert.ToBase64String(sha.ComputeHash(want));
+                        }
+                    }
+                }
+                catch { same = false; }
+                if (!same) File.WriteAllBytes(path, want);
+            }
+        }
+
         // Menulis ulang skrip dari resource setiap kali launcher dibuka (selalu sama dengan versi exe).
         public static void ExtractScripts()
         {
@@ -573,6 +644,11 @@ namespace IrisLauncher
             }
             catch { }
 
+            // Berkas settings.ini bisa diedit tangan; nilainya masuk ke baris perintah PowerShell, jadi periksa lagi di sini.
+            if (!System.Text.RegularExpressions.Regex.IsMatch(s.Distro, @"^[A-Za-z0-9._-]+$")) s.Distro = "Ubuntu";
+            if (s.LauncherRepo.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(s.LauncherRepo, @"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")) s.LauncherRepo = "";
+            foreach (char ch in s.Proyek) { if (ch == '"' || ch < ' ') { s.Proyek = ""; break; } }
+
             if (!IsProject(s.Proyek))
             {
                 string exeDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
@@ -611,7 +687,7 @@ namespace IrisLauncher
         // Argumen iris-stop.ps1 (sama dengan tombol Stop): StopSemua=false -> hanya overlay + server.py
         public string StopArgs()
         {
-            string a = "-Proyek " + AppInfo.Quote(Proyek) + " -Distro " + Distro;
+            string a = "-Proyek " + AppInfo.Quote(Proyek) + " -Distro " + AppInfo.Quote(Distro);
             if (!StopSemua) a += " -TanpaWSL";
             return a;
         }
@@ -960,7 +1036,7 @@ namespace IrisLauncher
                 string n = cb.SelectedItem as string;
                 if (n == null) return;
                 string p = Path.Combine(dir, n);
-                try { if (File.Exists(p)) Process.Start("notepad.exe", "\"" + p + "\""); } catch { }
+                try { if (File.Exists(p)) Process.Start(AppInfo.Sys32("notepad.exe"), "\"" + p + "\""); } catch { }
             };
             top.Controls.Add(cb); top.Controls.Add(cbLive); top.Controls.Add(bRe); top.Controls.Add(bOpen);
 
@@ -1145,7 +1221,7 @@ namespace IrisLauncher
                 MessageBox.Show(this, "Belum ada riwayat update.", "Riwayat", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            try { Process.Start("notepad.exe", "\"" + f + "\""); }
+            try { Process.Start(AppInfo.Sys32("notepad.exe"), "\"" + f + "\""); }
             catch (Exception ex) { MessageBox.Show(this, ex.Message, "Riwayat"); }
         }
 
@@ -1452,7 +1528,9 @@ namespace IrisLauncher
             else if (u.StartsWith("---")) c = Theme.Muted;
             else if (u.IndexOf("GAGAL", StringComparison.OrdinalIgnoreCase) >= 0 || u.IndexOf(" ERROR", StringComparison.OrdinalIgnoreCase) >= 0
                 || u.IndexOf(" ERR ", StringComparison.OrdinalIgnoreCase) >= 0) c = Theme.Red;
+            else if (u.StartsWith("Tip:", StringComparison.OrdinalIgnoreCase)) c = Theme.Muted;
             else if (u.IndexOf(" WARN", StringComparison.OrdinalIgnoreCase) >= 0 || u.IndexOf("Dibatalkan", StringComparison.OrdinalIgnoreCase) >= 0
+                || u.IndexOf("tidak bisa", StringComparison.OrdinalIgnoreCase) >= 0
                 || u.IndexOf("berhenti sendiri", StringComparison.OrdinalIgnoreCase) >= 0) c = Theme.Amber;
             else if (u.IndexOf("Selesai", StringComparison.OrdinalIgnoreCase) >= 0 || u.IndexOf("sudah menjawab", StringComparison.OrdinalIgnoreCase) >= 0
                 || u.IndexOf("naik", StringComparison.OrdinalIgnoreCase) >= 0 || u.IndexOf("hidup", StringComparison.OrdinalIgnoreCase) >= 0) c = Theme.Green;
@@ -1482,7 +1560,7 @@ namespace IrisLauncher
             if (startTray && cfg.MinimalKeTray) DoHide(false);   // dibuka dari Windows Startup: langsung ke tray
             Startup.Set(cfg.MulaiDenganWindows);                 // sinkronkan entri Run (juga memperbarui jalur exe)
 
-            try { Res.ExtractScripts(); }
+            try { Res.EnsureScripts(); }
             catch (Exception ex) { Log("[GAGAL] Tidak bisa menyiapkan skrip: " + ex.Message); }
 
             if (!Settings.IsProject(cfg.Proyek) && !startTray)
@@ -1557,7 +1635,7 @@ namespace IrisLauncher
         {
             try
             {
-                if (Directory.Exists(cfg.Proyek)) Process.Start("explorer.exe", AppInfo.Quote(cfg.Proyek));
+                if (Directory.Exists(cfg.Proyek)) Process.Start(AppInfo.WinDir("explorer.exe"), AppInfo.Quote(cfg.Proyek));
                 else Log("Folder proyek belum diatur.");
             }
             catch (Exception ex) { Log("[GAGAL] " + ex.Message); }
@@ -1849,7 +1927,7 @@ namespace IrisLauncher
             if (string.IsNullOrEmpty(path) || !File.Exists(path)) { Log("Berkas tidak ditemukan: " + path); return; }
             try
             {
-                Process.Start("notepad.exe", "\"" + path + "\"");
+                Process.Start(AppInfo.Sys32("notepad.exe"), "\"" + path + "\"");
                 if (path.EndsWith(".env", StringComparison.OrdinalIgnoreCase)) Log("Membuka .env di Notepad (berisi kunci rahasia; jangan dibagikan).");
             }
             catch (Exception ex) { Log("GAGAL: " + ex.Message); }
@@ -1878,7 +1956,7 @@ namespace IrisLauncher
             try
             {
                 string d = DownloadsDir();
-                if (Directory.Exists(d)) Process.Start("explorer.exe", AppInfo.Quote(d));
+                if (Directory.Exists(d)) Process.Start(AppInfo.WinDir("explorer.exe"), AppInfo.Quote(d));
                 else Log("Folder Downloads tidak ditemukan: " + d);
             }
             catch (Exception ex) { Log("[GAGAL] " + ex.Message); }
@@ -1898,7 +1976,7 @@ namespace IrisLauncher
                 try
                 {
                     ProcessStartInfo psi = new ProcessStartInfo();
-                    psi.FileName = "wsl.exe";
+                    psi.FileName = AppInfo.Sys32("wsl.exe");
                     psi.Arguments = "-d " + distro + " -- printenv HOME";
                     psi.UseShellExecute = false; psi.CreateNoWindow = true;
                     psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
@@ -2117,7 +2195,7 @@ namespace IrisLauncher
         void RunService(int i, bool nyala, Action<int> after)
         {
             string a = "-Nama " + ChipKey[i] + " -Aksi " + (nyala ? "nyala" : "mati")
-                + " -Distro " + cfg.Distro + " -TungguDetik " + cfg.TungguDetik;
+                + " -Distro " + Q(cfg.Distro) + " -TungguDetik " + cfg.TungguDetik;
             if (!string.IsNullOrEmpty(cfg.Proyek)) a += " -Proyek " + Q(cfg.Proyek);
             if (!cfg.Penjaga) a += " -TanpaPenjaga";
             if (!cfg.VoiceGpu) a += " -TanpaGPU";
@@ -2287,10 +2365,7 @@ namespace IrisLauncher
         void Run(string title, string script, string args, Action<int> done)
         {
             if (busy) return;
-            if (!File.Exists(Path.Combine(Res.ScriptDir(), script)))
-            {
-                try { Res.ExtractScripts(); } catch (Exception ex) { Log("[GAGAL] " + ex.Message); return; }
-            }
+            try { Res.EnsureScripts(); } catch (Exception ex) { Log("[GAGAL] " + ex.Message); return; }
             Log("");
             runTitle = title;
             if (title == "Doctor") doctorLines.Clear();
@@ -2300,7 +2375,7 @@ namespace IrisLauncher
             SetBusy(true, title + " ...");
 
             ProcessStartInfo psi = new ProcessStartInfo();
-            psi.FileName = "powershell.exe";
+            psi.FileName = AppInfo.PowerShellExe();
             psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File " + P(script) + " " + args;
             psi.UseShellExecute = false; psi.CreateNoWindow = true;
             psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
@@ -2348,7 +2423,7 @@ namespace IrisLauncher
             if (p == null) return;
             try
             {
-                Process k = Process.Start(new ProcessStartInfo("taskkill.exe", "/PID " + p.Id + " /T /F") { CreateNoWindow = true, UseShellExecute = false });
+                Process k = Process.Start(new ProcessStartInfo(AppInfo.Sys32("taskkill.exe"), "/PID " + p.Id + " /T /F") { CreateNoWindow = true, UseShellExecute = false });
                 Log("Dibatalkan oleh pengguna.");
             }
             catch (Exception ex) { Log("[GAGAL] " + ex.Message); }
@@ -2358,7 +2433,7 @@ namespace IrisLauncher
         {
             if (busy || !Ready()) return;
             if (!last.Server) RotateLogs(false);
-            string a = "-Proyek " + Q(cfg.Proyek) + " -Distro " + cfg.Distro + " -TungguDetik " + cfg.TungguDetik;
+            string a = "-Proyek " + Q(cfg.Proyek) + " -Distro " + Q(cfg.Distro) + " -TungguDetik " + cfg.TungguDetik;
             if (!cfg.Penjaga) a += " -TanpaPenjaga";
             if (!cfg.Overlay) a += " -TanpaOverlay";
             if (!cfg.VoiceGpu) a += " -TanpaGPU";
@@ -2492,7 +2567,7 @@ namespace IrisLauncher
             {
                 try { Res.ExtractScripts(); } catch (Exception ex) { Log("[GAGAL] " + ex.Message); return; }
             }
-            string a = "-Nama " + ChipKey[i] + " -Aksi mati -Distro " + cfg.Distro + " -TungguDetik " + cfg.TungguDetik;
+            string a = "-Nama " + ChipKey[i] + " -Aksi mati -Distro " + Q(cfg.Distro) + " -TungguDetik " + cfg.TungguDetik;
             if (!string.IsNullOrEmpty(cfg.Proyek)) a += " -Proyek " + Q(cfg.Proyek);
             if (!cfg.Penjaga) a += " -TanpaPenjaga";
             if (!cfg.VoiceGpu) a += " -TanpaGPU";
@@ -2502,8 +2577,9 @@ namespace IrisLauncher
             UpdateChips();
             Log(tag + "dimatikan selagi update berjalan...");
 
+            try { Res.EnsureScripts(); } catch { }
             ProcessStartInfo psi = new ProcessStartInfo();
-            psi.FileName = "powershell.exe";
+            psi.FileName = AppInfo.PowerShellExe();
             psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File " + P(script) + " " + a;
             psi.UseShellExecute = false; psi.CreateNoWindow = true;
             psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
@@ -2551,7 +2627,7 @@ namespace IrisLauncher
 
         string UpdArgs(string aksi, string nama)
         {
-            string a = "-Aksi " + aksi + " -Nama " + nama + " -Proyek " + Q(cfg.Proyek) + " -Distro " + cfg.Distro
+            string a = "-Aksi " + aksi + " -Nama " + nama + " -Proyek " + Q(cfg.Proyek) + " -Distro " + Q(cfg.Distro)
                 + " -TungguDetik " + cfg.TungguDetik;
             if (!cfg.VoiceGpu) a += " -TanpaGPU";
             a += " -Launcher " + Q(Application.ExecutablePath) + " -LauncherVersion " + Q(AppInfo.Version);
@@ -2628,8 +2704,9 @@ namespace IrisLauncher
                 List<string> lines = new List<string>();
                 try
                 {
+                    try { Res.EnsureScripts(); } catch { }
                     ProcessStartInfo psi = new ProcessStartInfo();
-                    psi.FileName = "powershell.exe";
+                    psi.FileName = AppInfo.PowerShellExe();
                     psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File " + Q(ps1) + " " + args;
                     psi.UseShellExecute = false; psi.CreateNoWindow = true;
                     psi.RedirectStandardOutput = true;
@@ -2839,7 +2916,7 @@ namespace IrisLauncher
         {
             try
             {
-                ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c ping -n 3 127.0.0.1 >nul & start \"\" " + Q(Application.ExecutablePath));
+                ProcessStartInfo psi = new ProcessStartInfo(AppInfo.Sys32("cmd.exe"), "/c ping -n 3 127.0.0.1 >nul & start \"\" " + Q(Application.ExecutablePath));
                 psi.CreateNoWindow = true; psi.UseShellExecute = false;
                 Process.Start(psi);
             }
@@ -2851,7 +2928,7 @@ namespace IrisLauncher
         void DoDoctor()
         {
             if (busy || !Ready()) return;
-            Run("Doctor", "iris-doctor.ps1", "-Proyek " + Q(cfg.Proyek) + " -Distro " + cfg.Distro,
+            Run("Doctor", "iris-doctor.ps1", "-Proyek " + Q(cfg.Proyek) + " -Distro " + Q(cfg.Distro),
                 delegate (int c) { try { BeginInvoke((Action)ApplyDoctorBadge); } catch { } });
         }
     }
@@ -2865,10 +2942,10 @@ namespace IrisLauncher
             {
                 Settings s = Settings.Load();
                 if (!Settings.IsProject(s.Proyek)) return;
-                Res.ExtractScripts();
+                Res.EnsureScripts();
                 ProcessStartInfo psi = new ProcessStartInfo();
-                psi.FileName = "powershell.exe";
-                psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + Path.Combine(Res.ScriptDir(), "iris-stop.ps1") + "\" " + s.StopArgs();
+                psi.FileName = AppInfo.PowerShellExe();
+                psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File " + AppInfo.Quote(Path.Combine(Res.ScriptDir(), "iris-stop.ps1")) + " " + s.StopArgs();
                 psi.UseShellExecute = false; psi.CreateNoWindow = true;
                 using (Process p = Process.Start(psi)) { p.WaitForExit(180000); }
             }

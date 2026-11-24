@@ -1,4 +1,4 @@
-"""rea_triage.py - triase statis lokal untuk perintah /rea (Iris v99.20, kumulatif dengan v99.19, v99.18, v99.17, v99.16, v99.15, v99.14, v99.13, v99.12, v99.11, v99.10, v99.9, v99.8, v99.7, v99.6, v99.5, v99.4, v99.3, v99.1, v99.0, v98.6, v97, v96, v95, v94, v93, v92, v91).  by: KangJiho
+"""rea_triage.py - triase statis lokal untuk perintah /rea (Iris v99.22, kumulatif dengan v99.21, v99.20, v99.19, v99.18, v99.17, v99.16, v99.15, v99.14, v99.13, v99.12, v99.11, v99.10, v99.9, v99.8, v99.7, v99.6, v99.5, v99.4, v99.3, v99.1, v99.0, v98.6, v97, v96, v95, v94, v93, v92, v91).  by: KangJiho
 
 Dihitung langsung di PC oleh Python (hanya pustaka standar), TANPA LLM dan TANPA menjalankan file:
 hash, jenis file, entropi, header PE / ELF / ZIP (APK, JAR), import / export, bagian (section), string menarik,
@@ -101,6 +101,17 @@ v99.13 (roadmap v2, Tier S butir 3: CFG + kompleksitas fungsi; aditif; by: KangJ
 NOTICE: _CAPA_RULES diturunkan dari aturan mandiant/capa-rules (c) Mandiant / Google, lisensi Apache-2.0
 (https://github.com/mandiant/capa-rules). Hanya nama aturan, ATT&CK, dan daftar API yang dipakai ulang; telah diubah bentuk dan disaring.
 
+v99.22 (roadmap v2, Tier A butir 4 'RE Lab Mach-O / ARM', TAHAP 1 dari beberapa; aditif; by: KangJiho): peta alamat ELF ARM / AArch64 dan Mach-O ARM / ARM64 (tipis + fat; arm64 diutamakan)
+      lewat _arm_layout() / _macho_layout() dan _elf_layout(d, arm=True): segmen, bagian kode, slot impor (GOT / la_symbol_ptr), stub Mach-O, simbol fungsi, penanda Thumb, entry, cryptid.
+      Murni stdlib. BELUM disambungkan ke _relab_any / triage() / rea_api (decoder ARM64 menyusul di tahap 2), jadi keluaran yang ada tidak berubah. Jalur x86 / x64 tidak berubah (diuji identik pada ELF nyata).
+      Diuji dengan ELF dan Mach-O sintetis buatan sendiri serta 12.000 berkas rusak acak; belum diuji pada biner ARM nyata.
+v99.21 (roadmap v2, Tier A: SerializedFile Unity; aditif; by: KangJiho): parser Unity dari gamelab (SerializedFile v13-v22, TypeTree, Texture2D / Mesh / AnimationClip / TextAsset) kini terhubung ke inti.
+      Asset Explorer: `--assets` pada UnityFS menampilkan objek per kelas; `--assets-extract` (tanpa pola, convert=True) menulis objek ke unity_objects/<Kelas>/ (PNG / OBJ / anim.json / bytes) di samping node mentah.
+      Baru: unity_info / unity_text / unity_extract, CLI `--unity FILE` dan `--unity-extract OUTDIR FILE [--types ..] [--name REGEX] [--no-flip]`, aksi API {"action": "unity" | "unity_extract", ...},
+      capabilities melaporkan optional_deps. Dekompresi gamelab kini lewat _unity_decomp (LZ4 murni Python, tanpa paket lz4, tanpa sys.exit di pustaka); batas UNITY_MAX_FILE / UNITY_MAX_BLOB / UNITY_MAX_OBJECTS / UNITY_TIME,
+      jumlah blok / node dan ukuran array TypeTree dibatasi. Tekstur: Pillow bila ada, jatuh ke PNG murni Python untuk format tak terkompresi + DXT1 / DXT5 / BC4 / BC5 (format lain butuh texture2ddecoder).
+      Batasan: build rilis tanpa TypeTree (objek tidak bisa didekode), bundle UnityCN / terenkripsi, mesh terkompresi, tekstur swizzle konsol, UnityWeb / UnityRaw. Diuji dengan bundle sintetis (TextAsset, Texture2D RGBA32 / DXT1;
+      LZMA / LZ4 / tanpa kompresi); jalur Mesh dan AnimationClip belum diuji ulang; verifikasi dengan satu bundle asli kecil. Skor triase tidak berubah.
 v99.20 (roadmap v2, Tier A butir 2: deobfuscation skrip berlapis; aditif; by: KangJiho): PowerShell / VBScript / JavaScript dibongkar secara STATIS (skrip tidak dijalankan).
       Inline: sambung string, -f, .Replace / -replace / Replace() / .split().join(), -join / .join, balik string, [char] / Chr() / fromCharCode, |%{[char]$_ -bxor N}, indeks $env:ComSpec / $ShellId / $pshome,
       FromBase64String dalam GetString / atob / unescape, escape \\xNN / \\uNNNN, backtick, variabel konstan (termasuk di dalam "string $var"). Pembungkus: -EncodedCommand, FromBase64String + Deflate / Gzip (+ XOR -bxor),
@@ -3343,7 +3354,7 @@ def triage_json(path, ioc_only: bool = False) -> str:
 #      laporan Markdown, dan API JSON untuk Iris / Hermes. Semuanya hanya-baca, pustaka standar, file tidak dijalankan.
 # ---------------------------------------------------------------------------
 
-VERSION = "99.20"
+VERSION = "99.22"
 AUTHOR = "KangJiho"
 
 # nama impor Mach-O (garis bawah depan sudah dibuang) yang menandai manipulasi proses lain
@@ -10345,14 +10356,20 @@ _RE_GROUPS["ptrace (anti-debug / injeksi ELF)"] = ({"ptrace"}, 1, 3, "T1622 / T1
 _RE_INTR = re.compile(_RE_INTR.pattern + r"|/bin/(?:ba|da|z)?sh\b|/etc/(?:passwd|shadow)|/proc/self|/dev/tcp|crontab|authorized_keys|ld_preload|\.ssh/|/tmp/\.", re.I)
 
 
-def _elf_layout(d: bytes) -> dict | None:
-    """Peta alamat ELF untuk RE Lab: segmen LOAD, bagian eksekusi, impor (slot GOT -> nama), simbol fungsi. None bila bukan x86 / x86-64 LE."""
+def _elf_layout(d: bytes, arm: bool = False) -> dict | None:
+    """Peta alamat ELF untuk RE Lab: segmen LOAD, bagian eksekusi, impor (slot GOT -> nama), simbol fungsi. None bila bukan x86 / x86-64 LE
+    (arm=True: ARM 32-bit atau AArch64 LE; v99.22, menambah kunci arch / fmt / thumb)."""
     if len(d) < 64 or d[:4] != b"\x7fELF" or d[5] != 1 or d[4] not in (1, 2):
         return None
     is64 = d[4] == 2
     mach = struct.unpack_from("<H", d, 18)[0]
-    if mach not in (3, 62) or (mach == 62) != is64:
+    if arm:
+        if mach not in (40, 183) or (mach == 183) != is64:
+            return None
+    elif mach not in (3, 62) or (mach == 62) != is64:
         return None
+    rel_ok = ((21, 22) if mach == 40 else (1025, 1026)) if arm else (6, 7)
+    thumb: set[int] = set()
     try:
         if is64:
             entry, phoff, shoff = struct.unpack_from("<QQQ", d, 24)
@@ -10428,7 +10445,12 @@ def _elf_layout(d: bytes) -> dict | None:
                 symcache[si] = symtab(si)
                 for nm, val, _sz, typ, _bd, shndx in symcache[si]:
                     if typ == 2 and shndx != 0 and val and nm and len(exports) < 30000:
-                        exports.setdefault(val, nm)
+                        if arm and mach == 40:
+                            if val & 1:
+                                thumb.add(val & ~1)   # simbol Thumb: bit 0 menandai mode, alamat sebenarnya genap
+                            exports.setdefault(val & ~1, nm)
+                        else:
+                            exports.setdefault(val, nm)
         iat: dict[int, str] = {}
         for t in sh:
             if t["type"] not in (4, 9) or t["link"] not in symcache:
@@ -10445,7 +10467,7 @@ def _elf_layout(d: bytes) -> dict | None:
                 else:
                     roff, rinfo = struct.unpack_from("<II", d, o)
                     rsym, rtyp = rinfo >> 8, rinfo & 0xFF
-                if rtyp in (6, 7) and 0 < rsym < len(syms):
+                if rtyp in rel_ok and 0 < rsym < len(syms):
                     nm, _v, _sz, _ty, _bd, shndx = syms[rsym]
                     nm = nm.split("@")[0]
                     if shndx == 0 and nm and not nm.startswith(("_ITM_", "__gmon_start__", "__libc_start_main", "__cxa_finalize", "__stack_chk", "__cxa_atexit")):
@@ -10468,9 +10490,200 @@ def _elf_layout(d: bytes) -> dict | None:
         if not xsecs:
             return None
         return {"base": base, "is64": is64, "size_img": size_img, "secs": secs, "xsecs": xsecs, "iat": iat, "exports": exports, "r2o": r2o,
-                "entry_va": entry if entry else 0, "entry_off": r2o(entry - base) if entry and entry >= base else None, "stripped": not any(t["type"] == 2 for t in sh)}
+                "entry_va": entry if entry else 0, "entry_off": r2o(entry - base) if entry and entry >= base else None, "stripped": not any(t["type"] == 2 for t in sh),
+                "arch": ("arm64" if mach == 183 else "arm") if arm else ("x64" if is64 else "x86"), "fmt": "ELF", "thumb": thumb, "stubs": {}}
     except (struct.error, IndexError, OverflowError):
         return None
+
+
+# ---------------------------------------------------------------------------
+# v99.22 (roadmap v2, Tier A butir 4, tahap 1: peta alamat ARM / ARM64; aditif): _arm_layout() menghasilkan peta alamat untuk ELF ARM / AArch64 (LE)
+# dan Mach-O ARM / ARM64 (tipis atau fat) dengan bentuk yang sama seperti _elf_layout (base, secs, xsecs, iat, exports, r2o, entry), ditambah
+# arch ("arm" | "arm64"), fmt, thumb (alamat fungsi Thumb), stubs (alamat stub -> nama impor, Mach-O) dan encrypted (Mach-O, cryptid != 0).
+# Murni stdlib, tidak memakai lief / capstone. Belum disambungkan ke _relab_any: decoder ARM menyusul di tahap berikut.
+# ---------------------------------------------------------------------------
+MACHO_ARM_CPU = {12: "arm", 0x0100000C: "arm64"}
+
+
+def _macho_pick_slice(d: bytes) -> int | None:
+    """Offset awal irisan Mach-O ARM / ARM64 (fat: arm64 diutamakan), atau None."""
+    m = d[:4]
+    if m in (b"\xca\xfe\xba\xbe", b"\xca\xfe\xba\xbf"):
+        n = struct.unpack_from(">I", d, 4)[0]
+        if not 1 <= n <= 16:
+            return None
+        f64, best = m[3] == 0xBF, None
+        esz = 32 if f64 else 20
+        for i in range(n):
+            p = 8 + i * esz
+            if p + esz > len(d):
+                break
+            if f64:
+                cpu, _s, off, _size, _a, _r = struct.unpack_from(">IIQQII", d, p)
+            else:
+                cpu, _s, off, _size, _a = struct.unpack_from(">IIIII", d, p)
+            if cpu in MACHO_ARM_CPU and (best is None or cpu == 0x0100000C):
+                best = off
+        return best
+    return 0 if m in (b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe") else None
+
+
+def _macho_layout(d: bytes) -> dict | None:
+    """Peta alamat Mach-O ARM / ARM64 little-endian untuk RE Lab. None bila bukan ARM / ARM64, rusak, atau tanpa bagian kode."""
+    sb = _macho_pick_slice(d)
+    if sb is None or sb + 32 > len(d):
+        return None
+    try:
+        m = d[sb:sb + 4]
+        is64 = m[0] == 0xCF
+        hsz = 32 if is64 else 28
+        cpu, _sub, _ft, ncmds, szcmds, _fl = struct.unpack_from("<IIIIII", d, sb + 4)
+        arch = MACHO_ARM_CPU.get(cpu)
+        if arch is None or (arch == "arm64") != is64:
+            return None
+        psz = 8 if is64 else 4
+        segs, secs_raw = [], []
+        symtab = dysym = None
+        entry_off = pc = None
+        encrypted = False
+        text_va = None
+        off, end = sb + hsz, min(len(d), sb + hsz + szcmds)
+        for _ in range(min(ncmds, 600)):
+            if off + 8 > end:
+                break
+            cmd, csz = struct.unpack_from("<II", d, off)
+            if csz < 8 or off + csz > end:
+                break
+            if cmd in (0x1, 0x19):
+                need, ssz = (72, 80) if cmd == 0x19 else (56, 68)
+                if csz >= need:
+                    if cmd == 0x19:
+                        nm, va, vsz, fo, fsz, _mp, ip, ns, _fg = struct.unpack_from("<16sQQQQiiII", d, off + 8)
+                    else:
+                        nm, va, vsz, fo, fsz, _mp, ip, ns, _fg = struct.unpack_from("<16sIIIIiiII", d, off + 8)
+                    segs.append((va, sb + fo, fsz, vsz, ip))
+                    if nm.startswith(b"__TEXT") and fo == 0:
+                        text_va = va
+                    for i in range(min(ns, 256)):
+                        p = off + need + i * ssz
+                        if p + ssz > off + csz:
+                            break
+                        if is64:
+                            sn, _sg, a, sz, so, _al, _ro, _nr, fl, r1, r2 = struct.unpack_from("<16s16sQQIIIIIII", d, p)
+                        else:
+                            sn, _sg, a, sz, so, _al, _ro, _nr, fl, r1, r2 = struct.unpack_from("<16s16sIIIIIIIII", d, p)
+                        secs_raw.append({"nm": sn.split(b"\0")[0].decode("ascii", "replace"), "addr": a, "size": sz, "off": so, "fl": fl, "r1": r1, "r2": r2, "ip": ip})
+            elif cmd == 0x2 and csz >= 24:
+                symtab = struct.unpack_from("<IIII", d, off + 8)
+            elif cmd == 0xB and csz >= 64:
+                dysym = struct.unpack_from("<II", d, off + 8 + 48)   # indirectsymoff, nindirectsyms
+            elif cmd == 0x80000028 and csz >= 16:
+                entry_off = struct.unpack_from("<Q", d, off + 8)[0]
+            elif cmd == 0x5 and csz >= 16:
+                flav, cnt = struct.unpack_from("<II", d, off + 8)
+                if arch == "arm64" and flav == 6 and csz >= 16 + 33 * 8:
+                    pc = struct.unpack_from("<Q", d, off + 16 + 32 * 8)[0]
+                elif arch == "arm" and flav == 1 and csz >= 16 + 16 * 4:
+                    pc = struct.unpack_from("<I", d, off + 16 + 15 * 4)[0]
+            elif cmd in (0x21, 0x2C) and csz >= 20:
+                encrypted = struct.unpack_from("<I", d, off + 16)[0] != 0
+            off += csz
+        body = [x for x in segs if x[2]]
+        if not body:
+            return None
+        base = text_va if text_va is not None else min(x[0] for x in body) & ~0xFFF
+        size_img = max(x[0] + x[3] for x in body) - base
+
+        def r2o(rva):
+            va = rva + base
+            for sv, so, sf, _sm, _ip in body:
+                if sv <= va < sv + sf:
+                    o = so + (va - sv)
+                    return o if o < len(d) else None
+            return None
+        # tabel simbol
+        syms: list[tuple[str, int, int, int, int]] = []   # (nama, n_type, n_sect, n_desc, n_value)
+        if symtab:
+            so_, ns, sto, stsz = symtab
+            esz = 16 if is64 else 12
+            for i in range(min(ns, 60000)):
+                p = sb + so_ + i * esz
+                if p + esz > len(d):
+                    break
+                if is64:
+                    strx, nt, nsect, ndesc, nval = struct.unpack_from("<IBBHQ", d, p)
+                else:
+                    strx, nt, nsect, ndesc, nval = struct.unpack_from("<IBBHI", d, p)
+                nm_ = _macho_cstr(d, sb + sto + strx, min(200, stsz - strx)) if strx < stsz else ""
+                syms.append((nm_[1:] if nm_.startswith("_") else nm_, nt, nsect, ndesc, nval))
+        indirect: list[int] = []
+        if dysym:
+            io, ni = dysym
+            for i in range(min(ni, 100000)):
+                p = sb + io + i * 4
+                if p + 4 > len(d):
+                    break
+                indirect.append(struct.unpack_from("<I", d, p)[0])
+
+        def ind_name(k):
+            if 0 <= k < len(indirect):
+                si = indirect[k]
+                if si < len(syms) and si < 0x40000000:
+                    return syms[si][0]
+            return ""
+        iat: dict[int, str] = {}
+        stubs: dict[int, str] = {}
+        secs, xsecs = [], []
+        for x in secs_raw:
+            typ = x["fl"] & 0xFF
+            if typ in (6, 7) and x["size"]:                       # penunjuk simbol (GOT / la_symbol_ptr)
+                for k in range(min(x["size"] // psz, 20000)):
+                    nm_ = ind_name(x["r1"] + k)
+                    if nm_:
+                        iat[x["addr"] + k * psz] = nm_
+            elif typ == 8 and x["r2"] and x["size"]:               # stub impor (__stubs)
+                for k in range(min(x["size"] // x["r2"], 20000)):
+                    nm_ = ind_name(x["r1"] + k)
+                    if nm_:
+                        stubs[x["addr"] + k * x["r2"]] = nm_
+            zerofill = typ in (1, 0xC, 0x12)
+            sec = {"name": x["nm"], "va": x["addr"] - base, "vsize": x["size"], "rsize": 0 if zerofill else x["size"], "rptr": sb + x["off"],
+                   "flags": "R" + ("W" if x["ip"] & 2 else "-") + ("X" if x["ip"] & 4 else "-")}
+            secs.append(sec)
+            if x["fl"] & 0x80000400 and not zerofill and x["off"] and sb + x["off"] < len(d):
+                xsecs.append(sec)
+        if not xsecs:
+            return None
+        ranges = [(base + s_["va"], base + s_["va"] + s_["vsize"]) for s_ in xsecs]
+        exports: dict[int, str] = {}
+        thumb: set[int] = set()
+        for nm_, nt, nsect, ndesc, nval in syms:
+            if nt & 0xE0 or nt & 0x0E != 0x0E or not nm_ or not nsect:   # bukan simbol terdefinisi di section
+                continue
+            a = nval & ~1 if arch == "arm" else nval
+            if any(lo <= a < hi for lo, hi in ranges) and len(exports) < 30000:
+                if arch == "arm" and (ndesc & 0x8 or nval & 1):
+                    thumb.add(a)
+                exports.setdefault(a, nm_)
+        ent = 0
+        if entry_off is not None and text_va is not None:
+            ent = text_va + entry_off
+        elif pc:
+            ent = pc & ~1 if arch == "arm" else pc
+            if arch == "arm" and pc & 1:
+                thumb.add(ent)
+        return {"base": base, "is64": is64, "size_img": size_img, "secs": secs, "xsecs": xsecs, "iat": iat, "stubs": stubs, "exports": exports,
+                "r2o": r2o, "entry_va": ent, "entry_off": r2o(ent - base) if ent and ent >= base else None, "stripped": not exports,
+                "arch": arch, "fmt": "Mach-O", "thumb": thumb, "encrypted": encrypted}
+    except (struct.error, IndexError, OverflowError):
+        return None
+
+
+def _arm_layout(d: bytes) -> dict | None:
+    """Peta alamat untuk ELF ARM / AArch64 atau Mach-O ARM / ARM64 (LE). None bila format / arsitektur lain atau berkas rusak."""
+    if d[:4] == b"\x7fELF":
+        return _elf_layout(d, arm=True)
+    return _macho_layout(d)
 
 
 def _relab_elf(d: bytes, t0: float | None = None):
@@ -11430,7 +11643,7 @@ def func_diff_text(path_a, path_b, max_items: int = 15) -> str:
     return "\n".join(L)
 
 
-_API_ACTIONS = ("export", "funcdiff", "sigcheck", "reputation", "unpack7z", "capabilities", "cache", "triage", "json", "ioc", "yara", "md", "similar", "hex", "compare", "list", "extract", "dir", "ctph", "re", "xref", "disasm", "unpack", "yarascan", "assets", "assets_extract", "assets_carve", "formats", "dex", "dotnet", "cfg", "emu", "config", "deobf")
+_API_ACTIONS = ("export", "funcdiff", "sigcheck", "reputation", "unpack7z", "capabilities", "cache", "triage", "json", "ioc", "yara", "md", "similar", "hex", "compare", "list", "extract", "dir", "ctph", "re", "xref", "disasm", "unpack", "yarascan", "assets", "assets_extract", "assets_carve", "formats", "dex", "dotnet", "cfg", "emu", "config", "deobf", "unity", "unity_extract")
 
 
 _DEFAULT_ROOTS: list = []     # diisi pemanggil tepercaya (server.py) lewat set_default_roots(); dipakai bila env REA_ROOTS kosong
@@ -11477,6 +11690,7 @@ def rea_api(request) -> dict:
             return {"ok": True, "version": VERSION, "actions": list(_API_ACTIONS), "rea_extract": _extract_mod() is not None,
                     "rea_binary": _has_binary(), "rea_assets": _assets_mod() is not None, "roots_restricted": bool(_roots()),
                     "cache": _cache_dir() is not None, "sigcheck_crypto": importlib.util.find_spec("cryptography") is not None,
+                    "optional_deps": {m_: importlib.util.find_spec(m_) is not None for m_ in ("PIL", "texture2ddecoder", "lz4", "lief", "capstone", "UnityPy")},
                     "online_enabled": os.environ.get("REA_ONLINE", "").strip() == "1", "vt_key_set": bool(os.environ.get("REA_VT_KEY", "").strip()),
                     "sevenzip": any(__import__("shutil").which(x) for x in ("7zz", "7z", "7za", "7zr"))}
         if act == "cache":
@@ -11537,6 +11751,11 @@ def rea_api(request) -> dict:
             return {"ok": True, "action": act, "text": trim(dex_text(_api_path(req["path"]), defang=bool(req.get("defang", True)), compact=bool(req.get("compact", False))))}
         if act == "assets":
             return {"ok": True, "action": act, "text": trim(assets_text(_api_path(req["path"]), max_chars=mc))}
+        if act == "unity":
+            return {"ok": True, "action": act, "data": unity_info(_api_path(req["path"])), "text": trim(unity_text(_api_path(req["path"])))}
+        if act == "unity_extract":
+            m = unity_extract(_api_path(req["path"]), _api_outdir(req["outdir"]), types=req.get("types"), name=req.get("name"), flip=bool(req.get("flip", True)))
+            return {"ok": m.get("status") in ("success", "partial"), "action": act, "manifest": m}
         if act == "assets_extract":
             m = assets_extract(_api_path(req["path"]), _api_outdir(req["outdir"]), pattern=req.get("pattern"), convert=bool(req.get("convert", True)))
             return {"ok": m.get("status") in ("success", "partial"), "action": act, "manifest": m}
@@ -14133,10 +14352,11 @@ def _unityfs(d, p):
             raise ValueError("data node tidak lengkap")
         return bytes(buf)
     return _Arc(ents, read, ["Unity %s (revisi %s), format UnityFS v%d; node diekstrak apa adanya (SerializedFile 'CAB-*' dan aliran .resS)." % (_as_clean(uver, 30), _as_clean(rev, 30), ver),
-                             "Isi SerializedFile (mesh, tekstur, animasi) belum diurai REA; pakai alat khusus pada hasil ekstraksi."], kind="Unity AssetBundle")
+                             ] + _unityfs_objects_note(p), kind="Unity AssetBundle")
 
 
-_add_archive("UnityFS", lambda d, e: bytes(d[:8]) == b"UnityFS\x00", _unityfs, "Unity AssetBundle (UnityFS; LZMA / LZ4 / LZ4HC)", 20)
+register("UnityFS", "archive", lambda d, e: bytes(d[:8]) == b"UnityFS\x00", _arc_inspect_factory(_unityfs), lambda d, p, out, opts: _unityfs_extract(d, p, out, opts), 20,
+         "Unity AssetBundle (UnityFS; LZMA / LZ4 / LZ4HC); objek Texture2D / Mesh / AnimationClip / TextAsset didekode (v99.21)")
 
 
 # --- deteksi-saja: 7z, RAR ---
@@ -17841,15 +18061,8 @@ def lzma_unity(data, usize):
 
 
 def decompress(data, mode, usize):
-    if mode == 0:
-        return data
-    if mode == 1:
-        return lzma_unity(data, usize)
-    if mode in (2, 3):
-        if lz4block is None:
-            sys.exit("Butuh lz4: pip install lz4")
-        return lz4block.decompress(data, uncompressed_size=usize)
-    raise ValueError(f"Kompresi tidak dikenal: {mode}")
+    # v99.21: memakai _unity_decomp (Asset Explorer): batas ukuran, LZ4 murni Python tanpa paket lz4, tanpa sys.exit di dalam pustaka.
+    return _unity_decomp(data, mode, usize)
 
 
 # --------------------------------------------------------------------------- #
@@ -17875,17 +18088,27 @@ class Bundle:
             r.pos = save
         else:
             raw = r.bytes(csize)
+        if csize > 64 * 1024 * 1024 or usize > 64 * 1024 * 1024:
+            raise ValueError("blok info UnityFS tidak wajar")
         info = decompress(raw, self.flags & 0x3F, usize)
         if self.flags & 0x200:
             r.align(16)
 
         ir = Reader(info, ">")
         ir.bytes(16)  # hash
-        blocks = [(ir.u32(), ir.u32(), ir.u16()) for _ in range(ir.i32())]
+        nb = ir.i32()
+        if nb < 0 or nb > MAX_ENTRIES:
+            raise ValueError("jumlah blok Unity tidak wajar")
+        blocks = [(ir.u32(), ir.u32(), ir.u16()) for _ in range(nb)]
+        nn = ir.i32()
+        if nn < 0 or nn > MAX_ENTRIES:
+            raise ValueError("jumlah node Unity tidak wajar")
         nodes = []
-        for _ in range(ir.i32()):
+        for _ in range(nn):
             off, sz, fl = ir.i64(), ir.i64(), ir.u32()
             nodes.append((off, sz, fl, ir.cstr()))
+        if sum(b[0] for b in blocks) > UNITY_MAX_BLOB:
+            raise ValueError("isi bundle Unity terlalu besar untuk dibuka di memori (batas %d MB)" % (UNITY_MAX_BLOB >> 20))
 
         out = bytearray()
         for u, c, fl in blocks:
@@ -17963,6 +18186,8 @@ def read_value(r, nodes, ends, i):
         v = r.bytes(ln)
     elif n.is_array and t == "Array":
         size = r.i32()
+        if size < 0 or size > len(r.d):
+            raise ValueError("ukuran array TypeTree tidak wajar")
         di = i + 2
         dn = nodes[di]
         pf = PRIMS.get(dn.type)
@@ -18652,6 +18877,243 @@ def gamelab_main(argv=None) -> int:
 
 
 
+# ===================================================================================================
+# v99.21 [roadmap v2, Tier A: SerializedFile Unity]: parser gamelab dihubungkan ke Asset Explorer, rea_api dan CLI (--unity / --unity-extract).
+# Aditif. Dependensi opsional: Pillow (PNG cepat), texture2ddecoder (BC6H/BC7/ETC/ASTC/PVRTC/Crunch). Tanpa keduanya: PNG murni Python untuk
+# format tak terkompresi dan DXT1 / DXT5 / BC4 / BC5. Batas: UNITY_MAX_FILE, UNITY_MAX_BLOB, UNITY_MAX_OBJECTS, UNITY_TIME, MAX_PIXELS.
+# ===================================================================================================
+UNITY_MAX_FILE = 1024 ** 3            # berkas bundle / serialized yang boleh dibaca
+UNITY_MAX_BLOB = 1024 ** 3            # total isi bundle setelah dekompresi (disimpan di memori)
+UNITY_MAX_OBJECTS = 20000             # objek yang didekode per ekstraksi
+UNITY_TIME = 120.0                    # detik, seluruh dekode objek
+_UNITY_DEFAULT_TYPES = ("Texture2D", "Mesh", "AnimationClip", "TextAsset")
+
+
+def _unity_open(path):
+    p = str(path)
+    if os.path.getsize(p) > UNITY_MAX_FILE:
+        raise ValueError("berkas Unity terlalu besar (batas %d MB)" % (UNITY_MAX_FILE >> 20))
+    return Container(p)
+
+
+def _unity_tex_fallback(d, c):
+    """Tekstur -> PNG tanpa Pillow: format tak terkompresi + DXT1 / DXT5 / BC4 / BC5 (lewat dekoder DDS milik Asset Explorer)."""
+    w, h, fmt = int(d["m_Width"]), int(d["m_Height"]), int(d["m_TextureFormat"])
+    if w <= 0 or h <= 0 or w * h > MAX_PIXELS:
+        raise ValueError("ukuran tekstur tidak wajar (%dx%d)" % (w, h))
+    img = to_bytes(d.get("image data"))
+    sd = d.get("m_StreamData") or {}
+    if not img and sd.get("size"):
+        img = c.resource(sd["path"], sd["offset"], sd["size"])
+    if not img:
+        raise ValueError("data gambar kosong")
+    px = bytearray(w * h * 4)
+    if fmt in TEX_UNCOMP:
+        bpp = TEX_UNCOMP[fmt]
+        img = bytes(img[:w * h * bpp])
+        if len(img) < w * h * bpp:
+            raise ValueError("data tekstur terpotong")
+        for i in range(w * h):
+            q = img[i * bpp:(i + 1) * bpp]
+            if fmt in (1, 63):
+                r_ = g = b = q[0]; a = 255
+            elif fmt == 3:
+                r_, g, b = q; a = 255
+            elif fmt == 4:
+                r_, g, b, a = q
+            elif fmt == 5:
+                a, r_, g, b = q
+            elif fmt == 14:
+                b, g, r_, a = q
+            elif fmt == 62:
+                r_ = g = b = q[0]; a = q[1]
+            elif fmt == 7:
+                v = q[0] | (q[1] << 8)
+                r_, g, b, a = (v >> 11) * 255 // 31, ((v >> 5) & 63) * 255 // 63, (v & 31) * 255 // 31, 255
+            else:   # 2 = ARGB4444, 13 = RGBA4444
+                v = q[0] | (q[1] << 8)
+                n = [(v >> s) & 15 for s in (12, 8, 4, 0)]
+                a, r_, g, b = n if fmt == 2 else (n[3], n[0], n[1], n[2])
+                r_, g, b, a = r_ * 17, g * 17, b * 17, a * 17
+            px[i * 4:i * 4 + 4] = bytes((r_, g, b, a))
+    elif fmt in (10, 12, 26, 27):
+        fcc = {10: b"DXT1", 12: b"DXT5", 26: b"ATI1", 27: b"ATI2"}[fmt]
+        hdr = bytearray(128)
+        hdr[0:4] = b"DDS "
+        struct.pack_into("<IIII", hdr, 4, 124, 0x1007, h, w)
+        struct.pack_into("<II", hdr, 76, 32, 4)
+        hdr[84:88] = fcc
+        struct.pack_into("<I", hdr, 108, 0x1000)
+        w2, h2, px = _dds_decode(bytes(hdr) + bytes(img))
+    else:
+        raise RuntimeError("TextureFormat %d butuh Pillow + texture2ddecoder (pip install pillow texture2ddecoder)" % fmt)
+    stride = w * 4
+    flipped = bytearray()
+    for y in range(h - 1, -1, -1):   # Unity menyimpan baris dari bawah
+        flipped += px[y * stride:(y + 1) * stride]
+    return _png_encode(w, h, flipped)
+
+
+def _unity_texture_png(d, c):
+    """-> (bytes PNG, catatan). Pillow bila ada; format yang tidak terjangkau jatuh ke jalur murni Python."""
+    w, h = int(d.get("m_Width", 0)), int(d.get("m_Height", 0))
+    if w <= 0 or h <= 0 or w * h > MAX_PIXELS:
+        raise ValueError("ukuran tekstur tidak wajar (%dx%d)" % (w, h))
+    try:
+        import io
+        from PIL import Image  # noqa: F401
+    except ImportError:
+        return _unity_tex_fallback(d, c), "PNG murni Python"
+    try:
+        im = decode_texture(d, c)
+        buf = io.BytesIO()
+        im.save(buf, "PNG")
+        return buf.getvalue(), "Pillow"
+    except RuntimeError:
+        return _unity_tex_fallback(d, c), "PNG murni Python"
+
+
+def _unity_extract_objects(c, out, types, rx=None, t_budget=UNITY_TIME, flip=True, prefix="unity_objects"):
+    """Dekode objek SerializedFile ke `out` (_Out): Texture2D -> .png, Mesh -> .obj, AnimationClip -> .anim.json, TextAsset -> .bytes, lainnya -> .json."""
+    import time
+    t0 = time.time()
+    tos = None
+    seen = 0
+    done = collections.Counter()
+    for sf, o in c.all_objects():
+        if time.time() - t0 > t_budget:
+            out.errors.append("dekode objek Unity dihentikan: melewati batas waktu %d dtk" % t_budget)
+            break
+        cn = sf.class_name(o)
+        if cn not in types:
+            continue
+        if seen >= UNITY_MAX_OBJECTS:
+            out.errors.append("dekode objek Unity dihentikan: melewati batas %d objek" % UNITY_MAX_OBJECTS)
+            break
+        name = sf.peek_name(o)
+        if rx and not rx.search(name or ""):
+            continue
+        seen += 1
+        base = "%s_%s" % (safe_name(name, cn), o.path_id)
+        sub = "%s/%s/" % (prefix, cn)
+        try:
+            d = sf.read(o)
+            name = d.get("m_Name") or name
+            base = "%s_%s" % (safe_name(name, cn), o.path_id)
+            if cn == "Texture2D":
+                png, how = _unity_texture_png(d, c)
+                out.write(sub + base + ".png", png, "unity-object", "Texture2D %sx%s format %s (%s)" % (d.get("m_Width"), d.get("m_Height"), d.get("m_TextureFormat"), how))
+            elif cn == "Mesh":
+                attrs, subs = decode_mesh(d, version_tuple(sf.unity_version))
+                out.write_text(sub + base + ".obj", mesh_to_obj(name, attrs, subs, flip), "unity-object", "Mesh -> OBJ")
+            elif cn == "AnimationClip":
+                if tos is None:
+                    tos = avatar_paths(c)
+                out.write_text(sub + base + ".anim.json", jdump(decode_animation(d, tos)), "unity-object", "AnimationClip (keyframe mentah + binding)")
+            elif cn == "TextAsset":
+                out.write(sub + base + ".bytes", d.get("m_Script", "").encode("utf-8", "surrogateescape"), "unity-object", "TextAsset")
+            else:
+                out.write_text(sub + base + ".json", jdump(d), "unity-object", "%s (dump TypeTree)" % cn)
+            done[cn] += 1
+        except Exception as e:
+            out.errors.append("Unity %s %s: %s" % (cn, _as_clean(base, 50), _as_clean(e, 110)))
+    return dict(done)
+
+
+def unity_info(path) -> dict:
+    """Ringkasan bundle / SerializedFile Unity: versi, node, jumlah objek per kelas, TypeTree ada / dibuang. Tidak melempar."""
+    try:
+        c = _unity_open(path)
+        r = {"ok": True, "path": str(path), "kind": "UnityFS" if c.bundle else "SerializedFile", "files": []}
+        if c.bundle:
+            b = c.bundle
+            r["bundle"] = {"format_version": b.version, "player": b.player_version, "revision": b.revision, "compression": b.flags & 0x3F,
+                           "size_decompressed": len(b.blob), "nodes": [{"path": n["path"], "size": n["size"], "serialized": bool(n["flags"] & 4)} for n in b.nodes[:500]]}
+        for sf in c.files:
+            cnt = collections.Counter(sf.class_name(o) for o in sf.objects.values())
+            nt = sum(1 for o in sf.objects.values() if o.type and o.type.nodes)
+            r["files"].append({"name": sf.name, "serialized_version": sf.version, "unity_version": sf.unity_version, "platform": sf.platform,
+                               "objects": len(sf.objects), "classes": dict(cnt.most_common(40)), "typetree": bool(sf.has_typetree and nt),
+                               "externals": sf.externals[:20]})
+        return r
+    except Exception as e:
+        return {"ok": False, "error": "%s: %s" % (type(e).__name__, _as_clean(e, 160))}
+
+
+def unity_text(path, max_chars: int = 0) -> str:
+    r = unity_info(path)
+    if not r.get("ok"):
+        return "UNITY gagal: %s" % r.get("error")
+    L = ["UNITY %s: %s" % (r["kind"], os.path.basename(str(path)))]
+    b = r.get("bundle")
+    if b:
+        L.append("  UnityFS v%s, player %s, revisi %s, kompresi %s, isi %s byte, %d node" % (b["format_version"], b["player"], b["revision"], b["compression"], b["size_decompressed"], len(b["nodes"])))
+    for f in r["files"]:
+        L.append("  SerializedFile %s: v%s unity %s, %d objek, TypeTree %s" % (f["name"], f["serialized_version"], f["unity_version"], f["objects"], "ada" if f["typetree"] else "TIDAK ADA (objek tidak bisa didekode; build rilis membuangnya)"))
+        L.append("    kelas: " + ", ".join("%s x%d" % kv for kv in f["classes"].items()))
+        if f["externals"]:
+            L.append("    externals: " + ", ".join(f["externals"]))
+    if not r["files"]:
+        L.append("  tidak ada SerializedFile di dalamnya (node hanya data mentah / aliran .resS)")
+    L.append("Ekstrak objek: --unity-extract OUTDIR FILE [--types Texture2D,Mesh,AnimationClip,TextAsset] [--name REGEX]")
+    t = "\n".join(L)
+    return t if not max_chars or len(t) <= max_chars else t[:max_chars - 30] + "\n[...dipangkas...]"
+
+
+def unity_extract(path, outdir, types=None, name=None, flip: bool = True) -> dict:
+    """Dekode objek Unity ke outdir. Mengembalikan manifest {status, files, errors, ...}. Tidak melempar."""
+    try:
+        want = {t.strip() for t in (types.split(",") if isinstance(types, str) else (types or _UNITY_DEFAULT_TYPES)) if t.strip()}
+        rx = re.compile(name, re.I) if name else None
+        out = _Out(outdir)
+        c = _unity_open(path)
+        done = _unity_extract_objects(c, out, want, rx, flip=flip)
+        ok = bool(out.files)
+        man = {"status": ("partial" if out.errors or out.skipped else "success") if ok else "error", "format": "Unity", "source": str(path), "outdir": str(out.root),
+               "entries_extracted": len(out.files), "entries_skipped": len(out.skipped), "entries_failed": len(out.errors), "by_class": done,
+               "files": out.files, "skipped": out.skipped, "errors": out.errors}
+        if not ok:
+            man["message"] = "tidak ada objek yang berhasil didekode" + (": " + out.errors[0] if out.errors else " (TypeTree dibuang, atau tidak ada kelas yang diminta)")
+        try:
+            (out.root / "manifest.json").write_text(json.dumps(man, ensure_ascii=False, indent=1), encoding="utf-8")
+            man["manifest_path"] = str(out.root / "manifest.json")
+        except OSError:
+            pass
+        return man
+    except Exception as e:
+        return {"status": "error", "message": "%s: %s" % (type(e).__name__, _as_clean(e, 160))}
+
+
+def _unityfs_objects_note(p):
+    """Baris ringkasan isi SerializedFile untuk Asset Explorer (tanpa melempar; dilewati untuk berkas besar)."""
+    try:
+        if os.path.getsize(str(p)) > 200 * 1024 * 1024:
+            return ["Ringkasan objek dilewati (berkas besar): pakai `--unity FILE`."]
+        c = _unity_open(p)
+        L = []
+        for sf in c.files:
+            cnt = collections.Counter(sf.class_name(o) for o in sf.objects.values())
+            has = any(o.type and o.type.nodes for o in sf.objects.values())
+            L.append("SerializedFile %s (v%s, Unity %s): %d objek [%s]%s" % (_as_clean(sf.name, 40), sf.version, _as_clean(sf.unity_version, 20), len(sf.objects),
+                                                                          ", ".join("%s x%d" % kv for kv in cnt.most_common(8)), "" if has else "; TypeTree dibuang, objek tidak bisa didekode"))
+        if L:
+            L.append("Ekstrak (tanpa pola): Texture2D -> .png, Mesh -> .obj, AnimationClip -> .anim.json, TextAsset -> .bytes di unity_objects/. Detail: `--unity FILE`.")
+        return L
+    except Exception as e:
+        return ["Isi SerializedFile tidak bisa diurai: %s" % _as_clean(e, 100)]
+
+
+def _unityfs_extract(d, p, out, opts):
+    _arc_extract_factory(_unityfs)(d, p, out, opts)
+    if opts.get("convert", True) and not opts.get("pattern"):   # pola hanya memfilter node; objek didekode bila pola kosong
+        try:
+            c = _unity_open(p)
+            _unity_extract_objects(c, out, set(_UNITY_DEFAULT_TYPES))
+        except Exception as e:
+            out.errors.append("Unity objek: %s" % _as_clean(e, 120))
+
+
+
 if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [--compact] [--json] [--ioc] [--raw] [--yara] [--carve DIR]
     argv = sys.argv[1:]
     cdir = None
@@ -18788,6 +19250,27 @@ if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [-
         for _f in (_m.formats() if _m else []):
             print("%-12s %-10s inspect=%s extract=%s%s  %s" % (_f["name"], _f["category"], "ya" if _f["inspect"] else "-", "ya" if _f["extract"] else "-", " [plugin]" if _f["plugin"] else "", _f["about"]))
         raise SystemExit(0)
+    if "--unity" in argv:   # --unity FILE  -> ringkasan bundle / SerializedFile Unity (v99.21)
+        t = [x for x in argv[argv.index("--unity") + 1:] if not x.startswith("--")]
+        print(unity_text(t[0]) if t else "pemakaian: --unity FILE")
+        raise SystemExit(0)
+    if "--unity-extract" in argv:   # --unity-extract OUTDIR FILE [--types T1,T2] [--name REGEX] [--no-flip]
+        k = argv.index("--unity-extract")
+        rest = argv[k + 1:]
+        opt = {}
+        for key in ("--types", "--name"):
+            if key in rest:
+                j = rest.index(key)
+                opt[key] = rest[j + 1] if j + 1 < len(rest) else None
+                del rest[j:j + 2]
+        flip_ = "--no-flip" not in rest
+        t = [x for x in rest if not x.startswith("--")]
+        if len(t) < 2:
+            print("pemakaian: --unity-extract OUTDIR FILE [--types Texture2D,Mesh,AnimationClip,TextAsset] [--name REGEX] [--no-flip]")
+            raise SystemExit(2)
+        m = unity_extract(t[1], t[0], types=opt.get("--types"), name=opt.get("--name"), flip=flip_)
+        print(json.dumps({k_: v for k_, v in m.items() if k_ not in ("files",)}, ensure_ascii=False, indent=1, default=str))
+        raise SystemExit(0 if m.get("status") in ("success", "partial") else 1)
     if "--assets" in argv:   # --assets FILE
         t = [x for x in argv[argv.index("--assets") + 1:] if not x.startswith("--")]
         print(assets_text(t[0]) if t else "pemakaian: --assets FILE")
@@ -18828,7 +19311,7 @@ if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [-
     args = [x for x in argv if not x.startswith("--")]
     flags = {x for x in argv if x.startswith("--")}
     if not args:
-        print("pemakaian: python rea_triage.py <file|folder> [--compact] [--card] [--json] [--ioc] [--raw (tanpa defang)] [--yara] [--carve DIR] | --config FILE [--key STR] | --deobf FILE [--json] [--full] | --hex FILE [OFFSET [LENGTH]] | --compare A B | --list <container> | --extract OUTDIR <container> [pola] [--scan] | --similar A B | --md FILE | --html FILE [OUT.html] | --gamelab pak|re|unity ... | --dex FILE [--compact] | --net FILE [--compact] | --cfg FILE [entry|0xVA] | --emu FILE [entry|0xVA] | --export FILE ghidra|ida|x64dbg [OUT] | --funcdiff A B | --ctph FILE | --re FILE | --xref FILE QUERY | --disasm FILE [AT [N [ARCH]]] | --unpack FILE OUTDIR | --unpack7z FILE OUTDIR | --sigcheck FILE [--online] | --vt FILE|SHA256 --online | --yarascan FILE RULES | --assets FILE | --assets-extract OUTDIR FILE [pola] [--no-convert] | --assets-carve FILE [OUTDIR] | --formats | --plugins FOLDER | --bin CMD ... | --ex CMD ... | --api JSON | --no-cache | --cache-info | --cache-clear")
+        print("pemakaian: python rea_triage.py <file|folder> [--compact] [--card] [--json] [--ioc] [--raw (tanpa defang)] [--yara] [--carve DIR] | --config FILE [--key STR] | --deobf FILE [--json] [--full] | --hex FILE [OFFSET [LENGTH]] | --compare A B | --list <container> | --extract OUTDIR <container> [pola] [--scan] | --similar A B | --md FILE | --html FILE [OUT.html] | --gamelab pak|re|unity ... | --dex FILE [--compact] | --net FILE [--compact] | --cfg FILE [entry|0xVA] | --emu FILE [entry|0xVA] | --export FILE ghidra|ida|x64dbg [OUT] | --funcdiff A B | --ctph FILE | --re FILE | --xref FILE QUERY | --disasm FILE [AT [N [ARCH]]] | --unpack FILE OUTDIR | --unpack7z FILE OUTDIR | --sigcheck FILE [--online] | --vt FILE|SHA256 --online | --yarascan FILE RULES | --unity FILE | --unity-extract OUTDIR FILE [--types T1,T2] [--name REGEX] | --assets FILE | --assets-extract OUTDIR FILE [pola] [--no-convert] | --assets-carve FILE [OUTDIR] | --formats | --plugins FOLDER | --bin CMD ... | --ex CMD ... | --api JSON | --no-cache | --cache-info | --cache-clear")
     elif Path(args[0]).is_dir():
         print(triage_dir_text(args[0], defang="--raw" not in flags))
     elif "--card" in flags and not ({"--json", "--ioc", "--yara"} & flags):

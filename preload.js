@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('companion', {
   // v23: captureScreen({quiet, maxSide, quality}) untuk pemotretan otomatis (/pantau); getIdle() = detik sejak input terakhir
   captureScreen: (opts) => ipcRenderer.invoke('capture-screen', opts),
   getIdle: () => ipcRenderer.invoke('idle-time'),
+  // v104: monitor sistem (CPU %, RAM %, uptime) untuk kartu /sistem
+  sysStats: () => ipcRenderer.invoke('sys-stats'),
   // v90: Terjemah layar ala Snipping Tool: jendela pilih area, mengembalikan {ok, url, w, h} atau {ok:false, cancelled} / {ok:false, error}
   // v99: snipRegion(lang, true) = ulangi area terakhir tanpa memilih lagi
   snipRegion: (lang, repeat) => ipcRenderer.invoke('snip-region', String(lang || 'auto'), !!repeat),
