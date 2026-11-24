@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <!-- AI Companion overlay - by: KangJiho -->
+<!-- v103: Command Deck (bar input + panel chat) di atas v102 Neural HUD (peta pikiran, panel, bubble, bar) -->
 <html lang="id">
 <head>
 <meta charset="utf-8">
@@ -98,7 +99,12 @@
   #conn b.down::before { background: #e0566a; box-shadow: 0 0 6px #e0566a; }
   /* fase 4: pil akun mini-browser (nomor dan nama akun aktif, chip akun lain, tombol tutup); hanya tampil saat panel /chrome terbuka */
   #webpill { display: none; align-items: center; gap: 2px; padding: 2px 3px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); color: var(--ink-dim); font-size: 11px; pointer-events: auto; flex: none; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }   /* v50: flex: none = pil akun TIDAK ikut menyusut (dulu slot 6 terpotong saat pil 'Memproses' tampil); yang menyusut pil status (teksnya ellipsis). Sampai 10 akun: kalau benar-benar tidak muat, pil bisa digeser */
-  #webpill.show { display: flex; animation: webpillin .45s cubic-bezier(.2, 1.2, .3, 1) .12s both; }
+  #webpill.show { display: flex; animation: webpillin .5s cubic-bezier(.2, 1.2, .3, 1) .2s both; }
+  #webpill.fresh > button { animation: webkid .36s cubic-bezier(.2, 1.25, .4, 1) backwards; }
+  #webpill.fresh > :nth-child(1) { animation-delay: .34s; } #webpill.fresh > :nth-child(2) { animation-delay: .39s; } #webpill.fresh > :nth-child(3) { animation-delay: .44s; }
+  #webpill.fresh > :nth-child(4) { animation-delay: .49s; } #webpill.fresh > :nth-child(5) { animation-delay: .54s; } #webpill.fresh > :nth-child(n+6) { animation-delay: .59s; }
+  #webpill.show.leaving { animation: webpillout .2s cubic-bezier(.5, 0, .75, 0) both; pointer-events: none; }
+  @keyframes webpillout { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(8px) scale(.92); } }
   @keyframes webpillin { from { opacity: 0; transform: translateY(8px) scale(.92); } to { opacity: 1; transform: none; } }
   /* v50: ringkas chip supaya ke-6 slot + ✕ muat berdampingan dengan pil status dan pil V 9 H */
   #webpill button.on { max-width: 64px; overflow: hidden; text-overflow: ellipsis; }
@@ -169,7 +175,7 @@
   }
   #bubble .who i { width: 7px; height: 7px; border-radius: 50%; background: var(--emo); box-shadow: 0 0 8px var(--emo); }
   /* v40: pikiran batin Iris (tidak disuarakan): kecil, miring, redup, di atas teks utama */
-  #bubble .th { font-size: 11.5px; line-height: 1.35; font-style: italic; color: var(--ink-dim); opacity: .85; margin-bottom: 5px; }
+  #bubble .th { font-size: 12px; line-height: 1.4; font-style: italic; color: color-mix(in srgb, var(--emo) 45%, var(--ink-dim)); margin-bottom: 6px; }
   #bubble .th::before { content: '💭 '; font-style: normal; }
   #bubble.narrow .th { display: none; }
   #bubble .id { font-size: 15px; line-height: 1.4; }
@@ -363,6 +369,10 @@
     font-size: 11px; line-height: 20px; background: #2b3350; color: #fff; cursor: pointer; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   }
   .thumb .x:hover { background: var(--danger); }
+  .thumb .chip { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 100%; height: 100%; box-sizing: border-box; padding: 4px; border-radius: 10px; border: 2px solid var(--acc); background: #1B1D3D; color: #fff; font-size: 9.5px; line-height: 1.15; text-align: center; overflow: hidden; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); cursor: default; }
+  .thumb .chip b { font-size: 20px; font-weight: normal; line-height: 1; }
+  .thumb .chip span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thumb .badge { position: absolute; left: 3px; bottom: 3px; padding: 0 4px; border-radius: 6px; background: rgba(0, 0, 0, 0.65); color: #fff; font-size: 11px; line-height: 16px; pointer-events: none; }
   #root.dragging #char, #root.dragging #bar { outline: 2px dashed var(--acc); outline-offset: 2px; border-radius: 14px; }
 
   /* ===== v6: menu aksi cepat, popover, timer, efek emoji ===== */
@@ -438,11 +448,12 @@
   #bubble .btext::-webkit-scrollbar { width: 5px; }
   #bubble .btext::-webkit-scrollbar-thumb { background: rgba(160, 200, 255, 0.3); border-radius: 3px; }
   #bubble .id { font-size: 15px; line-height: 1.5; letter-spacing: .005em; }
+  /* v104: blok Jepang tidak lagi berupa kotak di dalam kotak: cukup garis pemisah tipis, label 日本語 sebaris dengan teksnya */
   #bubble .jp {
-    margin-top: 8px; padding: 7px 10px 8px; border-top: 0; border-radius: 10px;
-    background: rgba(255, 255, 255, 0.05); font-size: 12px; line-height: 1.55;
+    margin-top: 7px; padding: 6px 0 0; border: 0; border-top: 1px solid color-mix(in srgb, var(--emo) 24%, transparent); border-radius: 0;
+    background: none; font-size: 12.5px; line-height: 1.55;
   }
-  #bubble .jp::before { content: '日本語'; display: block; margin-bottom: 2px; font-size: 9px; letter-spacing: .16em; color: var(--emo); opacity: .85; }
+  #bubble .jp::before { content: '日本語'; display: inline-block; margin-right: 8px; font-size: 9px; letter-spacing: .16em; color: var(--emo); opacity: .85; vertical-align: 1px; }
   #bubble::after { right: 146px; }
   #bar {
     background: linear-gradient(180deg, rgba(var(--pt), 1), rgba(var(--pb), 1));
@@ -487,8 +498,20 @@
   #webbar { position: absolute; left: 12px; width: var(--webw, 420px); height: 34px; box-sizing: border-box; bottom: calc(12px + var(--webh, 520px) + 6px); z-index: 11;
     display: flex; align-items: center; gap: 2px; padding: 0 6px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); color: var(--ink);
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); -webkit-app-region: no-drag;
-    transform: translateY(calc(var(--webh, 520px) + 6px)) scale(.1); transform-origin: 100% 100%; opacity: 0; pointer-events: none; transition: transform .3s cubic-bezier(.5, 0, 1, 1), opacity .2s ease-in; }   /* v54: bilah mengecil ke pojok kanan-bawah panel (dekat karakter), sejalan dengan panel yang tumbuh dari situ */
-  #webbar.show { transform: none; opacity: 1; pointer-events: auto; transition: transform .42s cubic-bezier(.2, .9, .3, 1) .06s, opacity .2s ease-out .06s; }
+    transform: translateY(calc(var(--webh, 520px) + 6px)) scale(.1); transform-origin: 100% 100%; opacity: 0; pointer-events: none; transition: transform .4s cubic-bezier(.6, -0.3, .74, .05), opacity .16s ease-in .04s; will-change: transform, opacity; overflow: hidden; }   /* v54: bilah mengecil ke pojok kanan-bawah panel (dekat karakter), sejalan dengan panel yang tumbuh dari situ */
+  #webbar.show { transform: none; opacity: 1; pointer-events: auto; transition: transform .6s cubic-bezier(.16, 1.1, .3, 1) .04s, opacity .24s ease-out .16s; animation: webglow 1s ease-out .5s; }
+  /* v102: tombol dan kolom alamat muncul berurutan (bukan sekaligus) setelah bilah hampir sampai; fill-mode backwards supaya .dis (opacity .35) tetap berlaku sesudahnya */
+  /* v102b: kilau aksen sesaat setelah bilah sampai + sapuan cahaya melintas di atasnya */
+  @keyframes webglow { 38% { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 0 1.5px rgba(var(--acc-rgb), 0.6), 0 0 22px rgba(var(--acc-rgb), 0.5); } }
+  @keyframes websheen { from { transform: translateX(-130%); } to { transform: translateX(130%); } }
+  #webbar::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(105deg, transparent 32%, rgba(var(--acc-rgb), 0.3) 50%, transparent 68%); transform: translateX(-130%); }
+  #webbar.show::after { animation: websheen .85s cubic-bezier(.4, 0, .2, 1) .5s; }
+  @keyframes webkid { from { opacity: 0; transform: translateY(6px) scale(.78); } 60% { opacity: 1; } }
+  #webbar.show > button, #webbar.show > .wt { animation: webkid .38s cubic-bezier(.2, 1.25, .4, 1) backwards; }
+  #webbar.show > :nth-child(1) { animation-delay: .26s; } #webbar.show > :nth-child(2) { animation-delay: .30s; } #webbar.show > :nth-child(3) { animation-delay: .34s; }
+  #webbar.show > :nth-child(4) { animation-delay: .38s; } #webbar.show > :nth-child(5) { animation-delay: .42s; } #webbar.show > :nth-child(6) { animation-delay: .46s; }
+  #webbar.show > :nth-child(7) { animation-delay: .50s; } #webbar.show > :nth-child(8) { animation-delay: .54s; }
+  @media (prefers-reduced-motion: reduce) { #webbar, #webbar.show { transition-duration: .01s; transition-delay: 0s; animation: none; } #webbar.show::after { animation: none; } #webbar.show > button, #webbar.show > .wt { animation: none; } }
   #webbar button { all: unset; box-sizing: border-box; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink); flex: none; }
   #webbar button:hover { background: rgba(var(--acc-rgb), 0.2); }
   #webbar button.dis { opacity: .35; pointer-events: none; }
@@ -646,6 +669,459 @@
     60% { translate: 4px -1px; } 80% { translate: -2px 0; } 100% { translate: 0 0; }
   }
   #root.ouch #char { animation: ouchshake .55s ease-out; }
+  /* ===== v91: menu aksi cepat bergaya panel holografik: kartu ikon kaca yang melayang (grid 3 kolom), bukan daftar teks.
+     Hanya CSS: DOM, data-act dan JS (placeFloat, cols2, click handler) tidak diubah. Warna ikut tema lewat --acc-rgb. ===== */
+  #menu, #menu.cols2 { --w: 226px; }
+  #menu {
+    width: 226px; padding: 11px; border-radius: 24px; gap: 8px;
+    background:
+      radial-gradient(120% 70% at 50% 0%, rgba(var(--acc-rgb), 0.24), transparent 62%),
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 4px),
+      linear-gradient(180deg, rgba(var(--pt), 0.96), rgba(var(--pb), 0.98));
+    border: 1px solid rgba(var(--acc-rgb), 0.55);
+    box-shadow: inset 0 0 0 1px rgba(var(--acc-rgb), 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 28px rgba(var(--acc-rgb), 0.3), 0 16px 36px rgba(0, 0, 0, 0.55);
+  }
+  #menu.open, #menu.open.cols2 { display: grid; grid-template-columns: repeat(3, 1fr); width: 226px; align-content: start; }
+  #menu .tlgrp { display: contents; }
+  #menu .tlsub { grid-column: 1 / -1; padding: 0 2px 1px; gap: 6px; }
+  #menu .tlp { border-radius: 999px; padding: 3px 4px; font-size: 10px; border-color: rgba(var(--acc-rgb), 0.3); background: rgba(var(--acc-rgb), 0.06); }
+  #menu .tlp.on { border-color: rgba(var(--acc-rgb), 0.9); background: rgba(var(--acc-rgb), 0.22); color: var(--ink); box-shadow: 0 0 10px rgba(var(--acc-rgb), 0.55); }
+
+  #menu .mi {
+    position: relative; overflow: hidden; flex-direction: column; justify-content: center; align-items: center; gap: 6px;
+    min-height: 68px; padding: 10px 3px 8px; margin: 0; text-align: center; white-space: normal; line-height: 1.15;
+    font-size: 10.5px; color: var(--ink-dim); border-radius: 16px;
+    border: 1px solid rgba(var(--acc-rgb), 0.3);
+    background: linear-gradient(150deg, rgba(var(--acc-rgb), 0.2), rgba(255, 255, 255, 0.035) 55%, rgba(var(--acc-rgb), 0.07));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 3px 10px rgba(0, 0, 0, 0.3);
+    transition: transform .18s cubic-bezier(.2, .9, .3, 1.3), box-shadow .18s, border-color .18s, background .18s, color .18s;
+  }
+  #menu .mi::after {   /* kilau kaca yang menyapu saat disorot */
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.2) 50%, transparent 65%);
+    transform: translateX(-130%); transition: transform .55s ease;
+  }
+  #menu .mi:hover { transform: translateY(-3px) scale(1.05); color: var(--ink); border-color: rgba(var(--acc-rgb), 0.9);
+    background: linear-gradient(150deg, rgba(var(--acc-rgb), 0.34), rgba(255, 255, 255, 0.06) 55%, rgba(var(--acc-rgb), 0.12));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 0 18px rgba(var(--acc-rgb), 0.55), 0 8px 16px rgba(0, 0, 0, 0.35); }
+  #menu .mi:hover::after { transform: translateX(130%); }
+  #menu .mi:active { transform: translateY(0) scale(0.97); }
+  #menu .mi.on { color: var(--ink); border-color: rgba(var(--acc-rgb), 0.95); background: linear-gradient(150deg, rgba(var(--acc-rgb), 0.4), rgba(var(--acc-rgb), 0.12)); box-shadow: 0 0 16px rgba(var(--acc-rgb), 0.6), inset 0 0 12px rgba(var(--acc-rgb), 0.25); }
+  #menu .mi .e { width: 28px; height: 28px; color: rgb(var(--acc-rgb)); filter: drop-shadow(0 0 5px rgba(var(--acc-rgb), 0.85)); }
+  #menu .mi .e svg { width: 23px; height: 23px; stroke-width: 1.7; }
+  #menu .mi[data-act="focus"] { margin-top: 0; }
+  #menu .mi[data-act="focus"]::before { display: none; }
+  /* Terjemah layar = kartu lebar di baris paling atas */
+  #menu .mi[data-act="translate"] { grid-column: 1 / -1; flex-direction: row; justify-content: flex-start; gap: 10px; min-height: 0; padding: 9px 13px; font-size: 12.5px; color: var(--ink); text-align: left; }
+  #menu .mi[data-act="translate"] .e { width: 22px; height: 22px; }
+  #menu .mi[data-act="translate"] .e svg { width: 20px; height: 20px; }
+  /* muncul satu per satu, seperti ikon hologram yang menyala */
+  #menu.open .mi { animation: miIn .36s cubic-bezier(.2, .9, .3, 1.25) backwards; }
+  #menu.open > .mi:nth-child(2) { animation-delay: .04s; } #menu.open > .mi:nth-child(3) { animation-delay: .08s; }
+  #menu.open > .mi:nth-child(4) { animation-delay: .12s; } #menu.open > .mi:nth-child(5) { animation-delay: .16s; }
+  #menu.open > .mi:nth-child(6) { animation-delay: .20s; } #menu.open > .mi:nth-child(7) { animation-delay: .24s; }
+  #menu.open > .mi:nth-child(8) { animation-delay: .28s; } #menu.open > .mi:nth-child(9) { animation-delay: .32s; }
+  #menu.open > .mi:nth-child(10) { animation-delay: .36s; }
+  @keyframes miIn { from { opacity: 0; transform: translateY(12px) scale(0.8); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+  /* popover lain (timer, baju, pengaturan) ikut bercahaya supaya serasi */
+  .pop { border: 1px solid rgba(var(--acc-rgb), 0.5); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 24px rgba(var(--acc-rgb), 0.25), 0 14px 32px rgba(0, 0, 0, 0.55); }
+  /* v91b: panel hologram miring 3D menghadap karakter + kartu melayang pelan. Miring lewat transform di #menu (tidak mengubah ukuran / posisi layout);
+     melayang lewat properti 'translate' supaya tidak bentrok dengan transform hover. Animasi hanya jalan saat menu terbuka (menu ditutup otomatis 7 dtk). */
+  #menu { --tilt: 9deg; transform-origin: 100% 50%; }
+  #root.dockleft:not(.webopen):not(.webright) #menu { --tilt: -9deg; transform-origin: 0% 50%; }
+  #menu.open { transform: perspective(900px) rotateY(var(--tilt)); animation: menuIn .28s cubic-bezier(.2, .9, .3, 1.15); }
+  @keyframes menuIn { from { opacity: 0; transform: perspective(900px) rotateY(calc(var(--tilt) * 3)) translateX(-14px) scale(0.92); } to { opacity: 1; transform: perspective(900px) rotateY(var(--tilt)); } }
+  #menu.open .mi { animation: miIn .36s cubic-bezier(.2, .9, .3, 1.25) backwards, miFloat 3.4s ease-in-out .6s infinite; }
+  #menu.open > .mi:nth-child(odd) { animation-duration: .36s, 3.1s; }
+  #menu.open > .mi:nth-child(3n) { animation-duration: .36s, 3.8s; }
+  #menu.open > .mi:nth-child(2) { animation-delay: .04s, .6s; } #menu.open > .mi:nth-child(3) { animation-delay: .08s, 1.1s; }
+  #menu.open > .mi:nth-child(4) { animation-delay: .12s, .8s; } #menu.open > .mi:nth-child(5) { animation-delay: .16s, 1.4s; }
+  #menu.open > .mi:nth-child(6) { animation-delay: .20s, .9s; } #menu.open > .mi:nth-child(7) { animation-delay: .24s, 1.6s; }
+  #menu.open > .mi:nth-child(8) { animation-delay: .28s, 1.0s; } #menu.open > .mi:nth-child(9) { animation-delay: .32s, 1.3s; }
+  #menu.open > .mi:nth-child(10) { animation-delay: .36s, 0.7s; }
+  @keyframes miFloat { 0%, 100% { translate: 0 0; } 50% { translate: 0 -2.5px; } }
+  @media (prefers-reduced-motion: reduce) { #menu.open .mi { animation: none; } }
+  /* ===== v91c: popover (Timer, Ganti baju, Teks disalin, Pengaturan) + pil, saklar, slider, kolom isian disamakan dengan menu hologram ===== */
+  .pop {
+    border-radius: 22px; padding-left: 14px; padding-right: 14px;
+    background:
+      radial-gradient(120% 55% at 50% 0%, rgba(var(--acc-rgb), 0.22), transparent 65%),
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 4px),
+      linear-gradient(180deg, rgba(var(--pt), 0.96), rgba(var(--pb), 0.98));
+    border: 1px solid rgba(var(--acc-rgb), 0.55);
+    box-shadow: inset 0 0 0 1px rgba(var(--acc-rgb), 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 28px rgba(var(--acc-rgb), 0.3), 0 16px 36px rgba(0, 0, 0, 0.55);
+    --ptilt: 6deg; transform-origin: 100% 50%;
+  }
+  #root.dockleft:not(.webopen):not(.webright) .pop { --ptilt: -6deg; transform-origin: 0% 50%; }
+  .pop.open { transform: perspective(1000px) rotateY(var(--ptilt)); animation: popIn .26s cubic-bezier(.2, .9, .3, 1.12); }
+  @keyframes popIn { from { opacity: 0; transform: perspective(1000px) rotateY(calc(var(--ptilt) * 3)) translateX(-12px) scale(0.94); } to { opacity: 1; transform: perspective(1000px) rotateY(var(--ptilt)); } }
+  .pop h4 { display: flex; align-items: center; gap: 8px; color: var(--ink); text-shadow: 0 0 10px rgba(var(--acc-rgb), 0.7); border-bottom: 1px solid rgba(var(--acc-rgb), 0.28); }
+  .pop h4::before { content: ''; width: 7px; height: 7px; flex: none; transform: rotate(45deg); background: rgb(var(--acc-rgb)); box-shadow: 0 0 8px rgba(var(--acc-rgb), 0.95); border-radius: 2px; }
+
+  /* pil di dalam popover: kapsul kaca bercahaya */
+  .pop .pill {
+    position: relative; overflow: hidden; border-radius: 999px; padding: 4px 12px; color: var(--ink);
+    border: 1px solid rgba(var(--acc-rgb), 0.38);
+    background: linear-gradient(150deg, rgba(var(--acc-rgb), 0.22), rgba(255, 255, 255, 0.04) 60%, rgba(var(--acc-rgb), 0.08));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 2px 8px rgba(0, 0, 0, 0.3);
+    transition: transform .16s cubic-bezier(.2, .9, .3, 1.3), box-shadow .16s, border-color .16s, background .16s;
+  }
+  .pop .pill:hover { transform: translateY(-2px); border-color: rgba(var(--acc-rgb), 0.95); background: linear-gradient(150deg, rgba(var(--acc-rgb), 0.38), rgba(255, 255, 255, 0.06) 60%, rgba(var(--acc-rgb), 0.14)); box-shadow: 0 0 14px rgba(var(--acc-rgb), 0.55), 0 6px 12px rgba(0, 0, 0, 0.3); }
+  .pop .pill:active { transform: scale(0.96); }
+  .pop .pill.on { color: var(--ink); border-color: rgba(var(--acc-rgb), 1); box-shadow: 0 0 14px rgba(var(--acc-rgb), 0.6), inset 0 0 10px rgba(var(--acc-rgb), 0.3); }
+  #tGo { font-weight: 600; background: linear-gradient(150deg, rgba(var(--acc-rgb), 0.5), rgba(var(--acc-rgb), 0.2)); }
+
+  /* kolom angka / teks / pilihan */
+  .num { border: 1px solid rgba(var(--acc-rgb), 0.32); background: rgba(0, 0, 0, 0.28); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35); outline: none; transition: border-color .15s, box-shadow .15s; }
+  .num:hover { border-color: rgba(var(--acc-rgb), 0.6); }
+  .num:focus { border-color: rgba(var(--acc-rgb), 1); box-shadow: 0 0 10px rgba(var(--acc-rgb), 0.5), inset 0 1px 3px rgba(0, 0, 0, 0.35); }
+  .num.sel option { background: rgb(var(--pb)); color: var(--ink); }
+
+  /* saklar: jalur kaca, menyala saat aktif */
+  .sw input { background: rgba(255, 255, 255, 0.12); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(var(--acc-rgb), 0.25); transition: background .2s, box-shadow .2s; }
+  .sw input::after { box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
+  .sw input:checked { background: linear-gradient(90deg, rgba(var(--acc-rgb), 0.75), rgba(var(--acc-rgb), 1)); box-shadow: 0 0 10px rgba(var(--acc-rgb), 0.75), 0 0 0 1px rgba(var(--acc-rgb), 0.8); }
+  .sw input:checked::after { background: #fff; box-shadow: 0 0 6px rgba(255, 255, 255, 0.9); }
+
+  /* slider */
+  .row input[type=range] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 999px; background: linear-gradient(90deg, rgba(var(--acc-rgb), 0.8), rgba(var(--acc-rgb), 0.18)); outline: none; cursor: pointer; }
+  .row input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: #fff; border: 2px solid rgb(var(--acc-rgb)); box-shadow: 0 0 9px rgba(var(--acc-rgb), 0.95); transition: transform .12s; }
+  .row input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
+
+  /* baris Pengaturan: kaca tipis, menyala saat disorot */
+  #setPop .row { padding: 2px 7px; margin: 0 -3px; border-radius: 10px; transition: background .15s; }
+  #setPop .row:hover { background: rgba(var(--acc-rgb), 0.12); }
+  .pop::-webkit-scrollbar-thumb { background: rgba(var(--acc-rgb), 0.45); }
+
+  /* kapsul timer di pojok dan pil clip ikut bergaya */
+  #timerPill { border-color: rgba(var(--acc-rgb), 0.7); background: linear-gradient(150deg, rgba(var(--pt), 0.97), rgba(var(--pb), 0.98)); box-shadow: 0 0 16px rgba(var(--acc-rgb), 0.45), 0 4px 14px rgba(0, 0, 0, 0.4); text-shadow: 0 0 8px rgba(var(--acc-rgb), 0.7); }
+  #clipPrev { padding: 6px 8px; border-radius: 10px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(var(--acc-rgb), 0.2); }
+  @media (prefers-reduced-motion: reduce) { .pop.open { animation: none; } }
+  /* v91d: cahaya (glow) panel terpotong di tepi kiri jendela: jendela overlay sempit, dan menu / popover menempel di left: 2px sehingga bayangan 28 px
+     terpangkas lurus di batas jendela. Sekarang batas kiri diberi 16 px ruang dan cahaya dikecilkan supaya muat penuh di dalam jendela. */
+  #root:not(.dockleft):not(.webright) #menu, #root:not(.dockleft):not(.webright) .pop {
+    left: max(calc(16px + var(--webx, 0px)), calc(100% - var(--rpad) - 12px - 320px - var(--w) + var(--menu-over, 0px)));
+  }
+  #root.webopen.webright #menu, #root.webopen.webright .pop { left: 16px; }
+  #menu { box-shadow: inset 0 0 0 1px rgba(var(--acc-rgb), 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 12px rgba(var(--acc-rgb), 0.34), 0 8px 16px rgba(0, 0, 0, 0.5); }
+  .pop { box-shadow: inset 0 0 0 1px rgba(var(--acc-rgb), 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 12px rgba(var(--acc-rgb), 0.34), 0 8px 16px rgba(0, 0, 0, 0.5); }
+  /* v91e: jendela sempit membuat menu menempel ke kiri lalu menimpa karakter. Menu dibuat lebih ramping (226 -> 194 px) dan batas kiri 10 px,
+     jadi tepi kanan menu mundur ~46 px dari karakter. Cahaya dikecilkan lagi agar tetap muat di 10 px. */
+  #menu, #menu.cols2 { --w: 194px; }
+  #menu, #menu.open, #menu.open.cols2 { width: 194px; }
+  #menu { padding: 9px; gap: 6px; border-radius: 22px; }
+  #menu.open, #menu.open.cols2 { gap: 6px; }
+  #menu .mi { min-height: 60px; padding: 8px 2px 6px; gap: 4px; font-size: 10px; border-radius: 14px; }
+  #menu .mi .e { width: 24px; height: 24px; }
+  #menu .mi .e svg { width: 20px; height: 20px; }
+  #menu .mi[data-act="translate"] { min-height: 0; padding: 8px 11px; font-size: 12px; }
+  #menu .mi[data-act="translate"] .e { width: 20px; height: 20px; }
+  #menu .mi[data-act="translate"] .e svg { width: 18px; height: 18px; }
+  #menu .tlp { font-size: 9.5px; padding: 2px 3px; }
+  #root:not(.dockleft):not(.webright) #menu, #root:not(.dockleft):not(.webright) .pop {
+    left: max(calc(10px + var(--webx, 0px)), calc(100% - var(--rpad) - 12px - 320px - var(--w) + var(--menu-over, 0px)));
+  }
+  #root.webopen.webright #menu, #root.webopen.webright .pop { left: 10px; }
+  #menu, .pop { box-shadow: inset 0 0 0 1px rgba(var(--acc-rgb), 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 8px rgba(var(--acc-rgb), 0.38), 0 6px 14px rgba(0, 0, 0, 0.5); }
+  /* v91f: menu / popover tidak boleh menyentuh karakter, berapa pun lebar jendelanya. Lebar panel = min(lebar ideal, ruang kosong di kiri karakter),
+     dan tepi kanannya berhenti 14 px sebelum kotak karakter (kotak karakter: 100% - rpad - 12 - 320 dari kiri #root). Hanya untuk posisi normal (menu di kiri karakter). */
+  #root:not(.dockleft):not(.webright) #menu, #root:not(.dockleft):not(.webright) #menu.cols2 { --w: min(194px, max(164px, calc(100% - var(--rpad) - 12px - 320px - 24px - var(--webx, 0px)))); }
+  #root:not(.dockleft):not(.webright) #timerPop, #root:not(.dockleft):not(.webright) #outfitPop, #root:not(.dockleft):not(.webright) #setPop { --w: min(196px, max(164px, calc(100% - var(--rpad) - 12px - 320px - 24px - var(--webx, 0px)))); }
+  #root:not(.dockleft):not(.webright) #clipPop { --w: min(220px, max(164px, calc(100% - var(--rpad) - 12px - 320px - 24px - var(--webx, 0px)))); }
+  #menu, #menu.open, #menu.open.cols2, #timerPop, #outfitPop, #setPop, #clipPop { width: var(--w); }
+  #root:not(.dockleft):not(.webright) #menu, #root:not(.dockleft):not(.webright) .pop {
+    left: max(calc(10px + var(--webx, 0px)), calc(100% - var(--rpad) - 12px - 320px - var(--w) - 14px + var(--menu-over, 0px)));
+  }
+
+  /* ===== v100: dua gaya menu. 'panel' = kartu holografik di kiri karakter (bawaan). 'mind' = peta pikiran: karakter di tengah, 10 kartu mengelilinginya
+     dan tiap kartu tersambung garis bercahaya ke tubuh karakter. Elemen #menu yang sama dipakai (JS klik, updateMenu, closePops tidak berubah);
+     posisi kartu dihitung placeMind() di JS, garis digambar di <svg class="mlines">. Konstanta tata letak: objek MIND di JS. ===== */
+  #menu .mmode { grid-column: 1 / -1; flex-direction: row; gap: 7px; min-height: 0; padding: 5px 8px; font-size: 10px; border-radius: 999px; }
+  #menu .mmode .e { width: 16px; height: 16px; }
+  #menu .mmode .e svg { width: 14px; height: 14px; }
+  #menu .mlines { display: none; }
+  #menu.mind { background: none !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; border-radius: 0 !important; backdrop-filter: none !important; transform: none !important; pointer-events: none; }
+  #menu.mind.open { display: block !important; overflow: visible !important; animation: mindIn .28s ease-out; }
+  #menu.mind .tlgrp { display: block; position: absolute; width: 60px; height: 60px; pointer-events: none; z-index: 2; }
+  #menu.mind .mi, #menu.mind .mi[data-act="translate"] { position: absolute; width: 60px; height: 60px; min-height: 0; padding: 6px 2px 4px; gap: 3px; font-size: 9.5px; flex-direction: column; justify-content: center; text-align: center; pointer-events: auto; z-index: 2; }
+  #menu.mind .tlgrp > .mi[data-act="translate"] { left: 0; top: 0; }
+  #menu.mind .mi .e, #menu.mind .mi[data-act="translate"] .e { width: 24px; height: 24px; }
+  #menu.mind .mi .e svg, #menu.mind .mi[data-act="translate"] .e svg { width: 20px; height: 20px; }
+  #menu.mind .tlsub { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); width: max-content; padding: 0; gap: 4px; pointer-events: auto; z-index: 2; }
+  #menu.mind .tlp { font-size: 9px; padding: 2px 6px; }
+  #menu.mind .mi.mmode { width: 96px; height: auto; padding: 4px 8px; flex-direction: row; gap: 6px; font-size: 9.5px; border-radius: 999px; }
+  #menu.mind .mi.mmode .e { width: 16px; height: 16px; }
+  #menu.mind .mi.mmode .e svg { width: 14px; height: 14px; }
+  #menu.mind .mlines { display: block; position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; animation: mindIn .5s ease-out .08s backwards; }
+  #menu.mind .mlines path { fill: none; stroke: rgba(var(--acc-rgb), 0.6); stroke-width: 1.4; stroke-linecap: round; stroke-dasharray: 5 6; animation: mindFlow 1.8s linear infinite; filter: drop-shadow(0 0 3px rgba(var(--acc-rgb), 0.85)); }
+  #menu.mind .mlines .core { fill: rgba(var(--acc-rgb), 0.95); filter: drop-shadow(0 0 6px rgba(var(--acc-rgb), 1)); }
+  #menu.mind .mlines .ring { fill: none; stroke: rgba(var(--acc-rgb), 0.7); stroke-width: 1.2; transform-box: fill-box; transform-origin: center; animation: mindPulse 2s ease-out infinite; }
+  @keyframes mindIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes mindFlow { to { stroke-dashoffset: -22; } }
+  @keyframes mindPulse { from { transform: scale(0.6); opacity: 0.9; } to { transform: scale(2.4); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { #menu.mind .mlines path, #menu.mind .mlines .ring { animation: none; } }
+  /* ===== v101: peta pikiran dirapikan. Kartu berlatar solid (terbaca di wallpaper ramai), label 11px tebal, ukuran seragam; garis putus-putus dan titik di badan diganti
+     satu lengkung tipis per kolom; pilihan bahasa Terjemah muncul ke sisi luar kartu saat disorot (tidak lagi menumpuk di kartu lain); tombol Panel di bawah kolom. ===== */
+  #menu.mind .tlgrp { width: 66px; height: 66px; }
+  #menu.mind .mi, #menu.mind .mi[data-act="translate"] {
+    width: 66px; height: 66px; padding: 7px 3px 5px; gap: 4px; font-size: 11px; font-weight: 600; line-height: 1.12; color: var(--ink); border-radius: 18px;
+    background: linear-gradient(155deg, rgb(var(--pt)), rgb(var(--pb)));
+    border: 1px solid rgba(var(--acc-rgb), 0.6);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), 0 0 10px -2px rgba(var(--acc-rgb), 0.45);
+  }
+  #menu.mind .mi.on { border-color: rgba(var(--acc-rgb), 0.95); background: linear-gradient(150deg, rgba(var(--acc-rgb), 0.4), rgba(var(--acc-rgb), 0.12)), linear-gradient(155deg, rgb(var(--pt)), rgb(var(--pb))); }
+  #menu.mind .mi .e, #menu.mind .mi[data-act="translate"] .e { width: 22px; height: 22px; }
+  #menu.mind .mi .e svg, #menu.mind .mi[data-act="translate"] .e svg { width: 20px; height: 20px; }
+  #menu.mind .mi.mmode { width: 96px; height: auto; min-height: 0; padding: 5px 10px; flex-direction: row; gap: 6px; font-size: 10.5px; border-radius: 999px; }
+  #menu.mind .mlines path { stroke: rgba(var(--acc-rgb), 0.55); stroke-width: 1.3; stroke-dasharray: none; animation: none; filter: none; }
+  #menu.mind .mlines .core { fill: rgba(var(--acc-rgb), 0.9); filter: none; }
+  #menu.mind .tlsub { top: 0; left: auto; right: auto; transform: none; flex-direction: column; width: auto; gap: 4px; padding: 0 6px; opacity: 0; visibility: hidden; transition: opacity .15s; z-index: 6; }
+  #menu.mind .tlgrp.out-l .tlsub { right: 100%; }
+  #menu.mind .tlgrp.out-r .tlsub { left: 100%; }
+  #menu.mind .tlgrp:hover .tlsub, #menu.mind .tlgrp:focus-within .tlsub { opacity: 1; visibility: visible; }
+  #menu.mind .tlp { font-size: 10.5px; font-weight: 600; padding: 4px 10px; background: rgb(var(--pt)); border-color: rgba(var(--acc-rgb), 0.5); }
+  #menu.mind .tlp.on { background: linear-gradient(rgba(var(--acc-rgb), 0.28), rgba(var(--acc-rgb), 0.28)), rgb(var(--pt)); }
+  /* v101b: bubble chat Iris menempel ke kolom kanan kartu dan menutupi / berdesakan dengan kartu: saat peta pikiran terbuka bubble dipudarkan dan tidak menangkap klik (menu menutup sendiri setelah 7 dtk, bubble kembali jelas) */
+  #bubble { transition: opacity .2s; }
+  /* v101c: bubble tidak lagi dipudarkan (teks jadi tidak terbaca). placeBubble menaikkan bubble ke atas deretan kartu; hanya kalau tidak ada ruang sama sekali (.mindfade) bubble dipudarkan */
+  #root:has(#menu.mind.open) #bubble.mindfade { opacity: 0.3; pointer-events: none; }
+  /* ===== v102: "Neural HUD". Upgrade visual peta pikiran + panel + bubble. Murni tambahan CSS (di bawah v101) + sedikit SVG di placeMind.
+     Warna tetap ikut tema (--acc-rgb / --acc2-rgb). Mode hemat (#root.lite) dan prefers-reduced-motion mematikan semua animasi baru. ===== */
+  @property --ang { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+
+  /* --- kartu peta pikiran: kaca bertingkat, sudut berlekuk, lencana ikon bercahaya --- */
+  #menu.mind .mi, #menu.mind .mi[data-act="translate"] {
+    border-radius: 20px; overflow: hidden; font-size: 10.5px; letter-spacing: .02em;
+    background:
+      radial-gradient(120% 90% at 50% -10%, rgba(var(--acc-rgb), 0.30), transparent 60%),
+      linear-gradient(160deg, rgba(var(--pt), 0.97), rgba(var(--pb), 0.99));
+    border: 1px solid rgba(var(--acc-rgb), 0.55);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -14px 18px -14px rgba(var(--acc-rgb), 0.35), 0 8px 18px rgba(0, 0, 0, 0.5), 0 0 14px -3px rgba(var(--acc-rgb), 0.5);
+    transition: transform .22s cubic-bezier(.2, .9, .3, 1.3), box-shadow .22s, border-color .22s, background .22s, color .22s;
+  }
+  /* garis terang tipis di tepi atas (kilau kaca) */
+  #menu.mind .mi::before {
+    content: ''; position: absolute; left: 18%; right: 18%; top: 0; height: 2px; border-radius: 2px; pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgba(var(--acc2-rgb), 0.95), transparent); opacity: .65; transition: opacity .2s, left .25s, right .25s;
+  }
+  #menu.mind .mi:hover::before { opacity: 1; left: 6%; right: 6%; }
+  #menu.mind .mi .e { position: relative; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%;
+    background: radial-gradient(circle at 50% 35%, rgba(var(--acc-rgb), 0.28), rgba(var(--acc-rgb), 0.04) 70%);
+    box-shadow: inset 0 0 0 1px rgba(var(--acc-rgb), 0.35), 0 0 12px -2px rgba(var(--acc-rgb), 0.55);
+    filter: drop-shadow(0 0 4px rgba(var(--acc-rgb), 0.8)); }
+  #menu.mind .mi .e svg { width: 18px; height: 18px; stroke-width: 1.8; }
+  #menu.mind .mi:hover { transform: translateY(-4px) scale(1.09); color: #fff; border-color: rgba(var(--acc2-rgb), 0.95);
+    background:
+      radial-gradient(120% 90% at 50% -10%, rgba(var(--acc-rgb), 0.55), transparent 62%),
+      linear-gradient(160deg, rgba(var(--pt), 0.98), rgba(var(--pb), 0.99));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 26px rgba(var(--acc-rgb), 0.75), 0 12px 22px rgba(0, 0, 0, 0.55); z-index: 5; }
+  #menu.mind .mi:hover .e { background: radial-gradient(circle at 50% 35%, rgba(var(--acc-rgb), 0.6), rgba(var(--acc-rgb), 0.08) 72%); box-shadow: inset 0 0 0 1px rgba(var(--acc2-rgb), 0.8), 0 0 18px rgba(var(--acc-rgb), 0.9); }
+  #menu.mind .mi:hover .e svg { animation: icoPop .5s cubic-bezier(.2, .9, .3, 1.4); }
+  @keyframes icoPop { 0% { transform: scale(1) rotate(0); } 45% { transform: scale(1.3) rotate(-8deg); } 100% { transform: scale(1) rotate(0); } }
+  /* status aktif: LED kecil + denyut halus */
+  #menu.mind .mi.on { color: #fff; border-color: rgba(var(--acc2-rgb), 0.95);
+    background: radial-gradient(120% 90% at 50% -10%, rgba(var(--acc-rgb), 0.6), transparent 62%), linear-gradient(160deg, rgba(var(--pt), 0.98), rgba(var(--pb), 0.99));
+    animation: miOn 2.4s ease-in-out infinite; }
+  #menu.mind .mi.on::after {
+    content: ''; position: absolute; right: 7px; top: 7px; width: 6px; height: 6px; border-radius: 50%; inset: auto; transform: none;
+    background: rgb(var(--acc2-rgb)); box-shadow: 0 0 8px rgb(var(--acc2-rgb)), 0 0 2px #fff;
+  }
+  @keyframes miOn { 0%, 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 8px 18px rgba(0,0,0,.5), 0 0 12px rgba(var(--acc-rgb), .55); } 50% { box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 8px 18px rgba(0,0,0,.5), 0 0 26px rgba(var(--acc-rgb), .95); } }
+  /* masuk: kartu "keluar" dari tubuh karakter, berurutan */
+  #menu.mind.open .mi, #menu.mind.open .tlgrp > .mi { animation: mindPop .55s cubic-bezier(.2, 1.1, .3, 1.2) backwards, miFloat 4s ease-in-out .8s infinite; }
+  #menu.mind.open > .tlgrp > .mi { animation-delay: 0s, .7s; }
+  #menu.mind.open > .mi:nth-child(2) { animation-delay: .05s, 1.0s; } #menu.mind.open > .mi:nth-child(3) { animation-delay: .10s, 1.3s; }
+  #menu.mind.open > .mi:nth-child(4) { animation-delay: .15s, .9s; } #menu.mind.open > .mi:nth-child(5) { animation-delay: .20s, 1.2s; }
+  #menu.mind.open > .mi:nth-child(6) { animation-delay: .25s, 1.5s; } #menu.mind.open > .mi:nth-child(7) { animation-delay: .30s, 1.0s; }
+  #menu.mind.open > .mi:nth-child(8) { animation-delay: .35s, 1.4s; } #menu.mind.open > .mi:nth-child(9) { animation-delay: .40s, .8s; }
+  #menu.mind.open > .mi:nth-child(10) { animation-delay: .45s, 1.1s; }
+  @keyframes mindPop { from { opacity: 0; scale: .35; filter: blur(4px); } to { opacity: 1; scale: 1; filter: none; } }
+  #menu.mind.open .mi.on { animation: mindPop .55s cubic-bezier(.2, 1.1, .3, 1.2) backwards, miOn 2.4s ease-in-out .6s infinite; }
+
+  /* tombol Panel / Peta pikiran: kapsul kaca */
+  #menu.mind .mi.mmode { border-radius: 999px; box-shadow: 0 6px 14px rgba(0,0,0,.45), 0 0 14px -3px rgba(var(--acc-rgb), .6); }
+  #menu.mind .mi.mmode .e { width: 20px; height: 20px; }
+  #menu.mind .mi.mmode .e svg { width: 12px; height: 12px; }
+
+  /* pilihan bahasa terjemah */
+  #menu.mind .tlp { border-radius: 999px; box-shadow: 0 4px 10px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.12); transition: transform .15s, box-shadow .15s, border-color .15s; }
+  #menu.mind .tlp:hover { transform: translateX(2px) scale(1.05); border-color: rgba(var(--acc2-rgb), .9); box-shadow: 0 0 14px rgba(var(--acc-rgb), .7); }
+  #menu.mind .tlgrp:hover .tlsub { transition: opacity .15s, visibility 0s; }
+
+  /* --- garis saraf (SVG dari placeMind) --- */
+  #menu.mind .mlines .nl { fill: none; stroke-width: 1.5; stroke-linecap: round; filter: drop-shadow(0 0 3px rgba(var(--acc-rgb), .7)); stroke-dasharray: 3 5; animation: mindFlow 1.6s linear infinite; opacity: .95; }
+  #menu.mind .mlines .nl-base { fill: none; stroke: rgba(var(--acc-rgb), .16); stroke-width: 4; stroke-linecap: round; }
+  #menu.mind .mlines .pkt { fill: rgb(var(--acc2-rgb)); filter: drop-shadow(0 0 4px rgb(var(--acc2-rgb))) drop-shadow(0 0 8px rgba(var(--acc-rgb), 1)); }
+  #menu.mind .mlines .core { fill: rgb(var(--acc2-rgb)); filter: drop-shadow(0 0 5px rgba(var(--acc-rgb), 1)); }
+  #menu.mind .mlines .ring { fill: none; stroke: rgba(var(--acc2-rgb), .8); stroke-width: 1.1; transform-box: fill-box; transform-origin: center; animation: mindPulse 2.4s ease-out infinite; }
+  #menu.mind .mlines .hud { fill: none; stroke: rgba(var(--acc-rgb), .55); stroke-width: 1.3; stroke-linecap: round; filter: drop-shadow(0 0 4px rgba(var(--acc-rgb), .7)); }
+  #menu.mind .mlines .hud2 { fill: none; stroke: rgba(var(--acc2-rgb), .45); stroke-width: .9; stroke-dasharray: 2 7; stroke-linecap: round; transform-box: fill-box; transform-origin: center; animation: hudSpin 38s linear infinite; }
+  #menu.mind .mlines .hud3 { fill: none; stroke: rgba(var(--acc-rgb), .28); stroke-width: .8; stroke-dasharray: 22 10 4 10; transform-box: fill-box; transform-origin: center; animation: hudSpin 26s linear infinite reverse; }
+  #menu.mind .mlines .tick { stroke: rgba(var(--acc2-rgb), .7); stroke-width: 1; stroke-linecap: round; }
+  #menu.mind .mlines .scan { fill: none; stroke: url(#mlScan); stroke-width: 1.2; animation: hudScan 3.6s ease-in-out infinite; }
+  @keyframes hudSpin { to { transform: rotate(360deg); } }
+  @keyframes hudScan { 0%, 100% { transform: translateY(-46px); opacity: 0; } 15%, 85% { opacity: .9; } 50% { transform: translateY(46px); opacity: .9; } }
+  #menu.mind .mlines { animation: mindIn .6s ease-out .12s backwards; }
+
+  /* --- panel (gaya "Panel") dan popover: border berputar bercahaya + header ala HUD --- */
+  #menu:not(.mind)::before, #timerPop::before, #outfitPop::before, #clipPop::before {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+    background: conic-gradient(from var(--ang), rgba(var(--acc-rgb), 0) 0deg, rgba(var(--acc2-rgb), .95) 60deg, rgba(var(--acc-rgb), 0) 140deg, rgba(var(--acc-rgb), 0) 220deg, rgba(var(--acc-rgb), .85) 290deg, rgba(var(--acc-rgb), 0) 360deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+    animation: angSpin 6s linear infinite; opacity: .9;
+  }
+  @keyframes angSpin { to { --ang: 360deg; } }
+  .pop h4 { letter-spacing: .08em; text-transform: uppercase; font-size: 11.5px; }
+  .pop h4::after { content: ''; flex: 1; height: 1px; margin-left: 4px; background: linear-gradient(90deg, rgba(var(--acc-rgb), .6), transparent); }
+
+  /* --- bubble chat Iris: kartu kaca dengan garis emosi, avatar berdenyut, jp sebagai tag --- */
+  #bubble {
+    border-radius: 20px;
+    background:
+      radial-gradient(90% 120% at 0% 0%, color-mix(in srgb, var(--emo) 20%, transparent), transparent 55%),
+      linear-gradient(155deg, rgb(var(--pt)) 0%, rgb(var(--pb)) 75%);
+    box-shadow: inset 3px 0 0 var(--emo), inset 0 1px 0 rgba(255,255,255,.12), 0 12px 30px rgba(0,0,0,.5), 0 0 24px -6px var(--glow);
+  }
+  #bubble .who { font-size: 10.5px; letter-spacing: .16em; }
+  #bubble .who::after { content: ''; flex: 1; height: 1px; margin-left: 4px; background: linear-gradient(90deg, color-mix(in srgb, var(--emo) 70%, transparent), transparent); }
+  #bubble .who i { animation: whoBeat 2.2s ease-in-out infinite; }
+  @keyframes whoBeat { 0%, 100% { transform: scale(1); box-shadow: 0 0 6px var(--emo); } 50% { transform: scale(1.35); box-shadow: 0 0 14px var(--emo); } }
+  #bubble .id { font-weight: 500; text-shadow: 0 1px 8px rgba(0,0,0,.35); }
+  #bubble .jp { background: none; border: 0; border-top: 1px solid color-mix(in srgb, var(--emo) 24%, transparent); }
+  #bubble.show { animation: bubIn .38s cubic-bezier(.2, 1.1, .3, 1.15); }
+  @keyframes bubIn { from { opacity: 0; transform: translateY(10px) scale(.94); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+
+  /* --- input bar: garis atas berkilau + tombol bulat berpendar saat disorot (tanpa glow bayangan, sesuai v-sebelumnya) --- */
+  #bar { border-color: rgba(var(--acc-rgb), .38); }
+  #bar:focus-within { border-color: rgba(var(--acc2-rgb), .85); }
+  #bar .ib { transition: transform .15s cubic-bezier(.2, .9, .3, 1.3), background .15s, color .15s; }
+  #bar .ib:hover { transform: translateY(-1px) scale(1.12); background: rgba(var(--acc-rgb), .2); color: rgb(var(--acc2-rgb)); }
+  #bar .ib:active { transform: scale(.94); }
+  #input::selection { background: rgba(var(--acc-rgb), .45); }
+
+  /* --- mode hemat / gerak dikurangi: matikan animasi berat --- */
+  #root.lite #menu.mind .mlines :is(.nl, .ring, .hud2, .hud3, .scan, .pkt), #root.lite #menu::before, #root.lite .pop::before, #root.lite #bubble .who i, #root.lite #menu.mind .mi.on { animation: none !important; }
+  @media (prefers-reduced-motion: reduce) {
+    #menu.mind .mlines :is(.nl, .ring, .hud2, .hud3, .scan), #menu::before, .pop::before, #bubble .who i, #menu.mind .mi.on, #menu.mind.open .mi { animation: none !important; }
+  }
+  #root.lite #menu.mind .mlines .pkt { display: none; }
+  @media (prefers-reduced-motion: reduce) { #menu.mind .mlines .pkt { display: none; } }
+
+  /* ===== v103: "Command Deck". Upgrade visual bar input + panel chat (lanjutan Neural HUD v102). Murni tambahan CSS, tanpa mengubah JS/struktur.
+     Bar input tetap TANPA bayangan/glow (sesuai v sebelumnya): kilau memakai garis tepi bergradasi, bukan box-shadow.
+     Mode hemat (#root.lite) dan prefers-reduced-motion mematikan animasi baru. ===== */
+
+  /* --- panel chat: kaca bertingkat + border berputar + kurung sudut HUD --- */
+  #log { position: relative; border-color: rgba(var(--acc-rgb), .30); isolation: isolate;
+    background:
+      radial-gradient(120% 70% at 100% 0%, rgba(var(--acc-rgb), .14), transparent 60%),
+      radial-gradient(90% 60% at 0% 100%, rgba(var(--acc2-rgb), .07), transparent 65%),
+      linear-gradient(180deg, rgba(var(--pt), 1), rgba(var(--pb), 1));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .10), 0 12px 30px rgba(0, 0, 0, .5); }
+  #log::before { content: ''; position: absolute; inset: 0; z-index: 3; border-radius: inherit; padding: 1px; pointer-events: none;
+    background: conic-gradient(from var(--ang), rgba(var(--acc-rgb), 0) 0deg, rgba(var(--acc2-rgb), .9) 55deg, rgba(var(--acc-rgb), 0) 130deg, rgba(var(--acc-rgb), 0) 215deg, rgba(var(--acc-rgb), .75) 285deg, rgba(var(--acc-rgb), 0) 360deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+    animation: angSpin 7s linear infinite; opacity: .85; }
+  /* kurung sudut ala HUD di empat pojok */
+  #log::after { content: ''; position: absolute; inset: 5px; z-index: 3; pointer-events: none; opacity: .55;
+    --c: rgba(var(--acc2-rgb), .85);
+    background:
+      linear-gradient(var(--c), var(--c)) top left / 9px 1px no-repeat, linear-gradient(var(--c), var(--c)) top left / 1px 9px no-repeat,
+      linear-gradient(var(--c), var(--c)) top right / 9px 1px no-repeat, linear-gradient(var(--c), var(--c)) top right / 1px 9px no-repeat,
+      linear-gradient(var(--c), var(--c)) bottom left / 9px 1px no-repeat, linear-gradient(var(--c), var(--c)) bottom left / 1px 9px no-repeat,
+      linear-gradient(var(--c), var(--c)) bottom right / 9px 1px no-repeat, linear-gradient(var(--c), var(--c)) bottom right / 1px 9px no-repeat; }
+
+  /* --- header panel: judul huruf kapital + lencana ONLINE/OFFLINE (ikut status #dot) --- */
+  #logHead { position: relative; padding: 7px 8px 7px 14px; border-bottom: 0;
+    background: linear-gradient(90deg, rgba(var(--acc-rgb), .22), rgba(var(--acc2-rgb), .06) 70%, transparent); }
+  #logHead::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+    background: linear-gradient(90deg, rgba(var(--acc2-rgb), .8), rgba(var(--acc-rgb), .35) 45%, transparent); }
+  #logHead .title { flex: 1; display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
+  #logHead .title b { color: rgb(var(--acc2-rgb)); text-shadow: 0 0 8px rgba(var(--acc2-rgb), .8); animation: starTwinkle 3.2s ease-in-out infinite; }
+  #logHead .title::after { content: ''; width: 7px; height: 7px; border-radius: 50%; flex: none; background: #ff6b7a; box-shadow: 0 0 8px #ff6b7a; }
+  #root:has(#dot.on) #logHead .title::after { background: #4fe3a0; box-shadow: 0 0 8px #4fe3a0; animation: dotpulse 2.6s ease-in-out infinite; }
+  @keyframes starTwinkle { 0%, 100% { opacity: 1; transform: scale(1) rotate(0); } 50% { opacity: .6; transform: scale(1.18) rotate(18deg); } }
+  #logHead .sw { padding: 2px 8px 2px 4px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255, 255, 255, .04); font-size: 11px; transition: border-color .2s, background .2s, color .2s; }
+  #logHead .sw:hover { border-color: rgba(var(--acc-rgb), .6); }
+  #logHead .sw:has(input:checked) { color: #fff; border-color: rgba(var(--acc2-rgb), .75); background: rgba(var(--acc-rgb), .20); }
+  #logHead .ib { border-radius: 9px; transition: transform .15s cubic-bezier(.2, .9, .3, 1.3), background .15s, color .15s; }
+  #logHead .ib:hover { transform: translateY(-1px) scale(1.1); color: rgb(var(--acc2-rgb)); }
+  #logHead #logClose:hover, #logClear:hover { background: rgba(255, 107, 122, .16); border-color: rgba(255, 107, 122, .7); color: #ff8b9a; }
+
+  /* --- isi chat: grid titik halus + tepi atas/bawah memudar saat digulir --- */
+  #logBody { position: relative; gap: 9px; padding: 12px 11px 14px;
+    background: radial-gradient(rgba(var(--acc-rgb), .16) 1px, transparent 1.4px) 0 0 / 14px 14px;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 12px, #000 calc(100% - 14px), transparent 100%);
+            mask-image: linear-gradient(180deg, transparent 0, #000 12px, #000 calc(100% - 14px), transparent 100%); }
+  #logBody::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(var(--acc2-rgb), .6), rgba(var(--acc-rgb), .35)); }
+  #logBody:empty::before { content: '✦  Ketik pertanyaan di bawah, Iris akan menjelaskan.'; color: color-mix(in srgb, rgb(var(--acc-rgb)) 70%, #9fb0cf);
+    letter-spacing: .02em; padding: 10px 16px; border-radius: 12px; border: 1px dashed rgba(var(--acc-rgb), .35); background: rgba(var(--acc-rgb), .06);
+    animation: emptyBreath 3.4s ease-in-out infinite; }
+  @keyframes emptyBreath { 0%, 100% { opacity: .65; } 50% { opacity: 1; } }
+
+  /* --- gelembung pesan: kaca, kilau tepi atas, masuk dari sisi masing-masing --- */
+  .msg { position: relative; padding: 8px 13px 6px; border-radius: 16px; font-size: 13px; line-height: 1.5; letter-spacing: .005em; animation: msgIn .34s cubic-bezier(.2, 1.1, .3, 1.15) backwards; }
+  @keyframes msgIn { from { opacity: 0; filter: blur(3px); transform: translateY(8px) scale(.96); } to { opacity: 1; filter: none; transform: none; } }
+  .msg.user { background: radial-gradient(120% 140% at 0% 0%, rgba(255, 255, 255, .22), transparent 55%), linear-gradient(135deg, var(--bub1), var(--bub2));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 6px 14px -4px var(--bubsh); transform-origin: 100% 100%; }
+  .msg.user::before { content: ''; position: absolute; right: 14px; top: 0; width: 34%; height: 1px; border-radius: 1px; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .85), transparent); }
+  .msg.iris { border: 1px solid rgba(var(--acc-rgb), .25); border-left: 0; transform-origin: 0 100%;
+    background: radial-gradient(110% 120% at 0% 0%, rgba(var(--acc-rgb), .18), transparent 60%), linear-gradient(135deg, rgba(var(--pt), .96), rgba(var(--pb), .98));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .09), 0 6px 14px -6px rgba(0, 0, 0, .6); }
+  .msg.iris::before { content: ''; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 0 3px 3px 0;
+    background: linear-gradient(180deg, rgb(var(--acc2-rgb)), rgb(var(--acc-rgb))); box-shadow: 0 0 10px rgba(var(--acc-rgb), .9); }
+  .msg.iris p { text-shadow: 0 1px 6px rgba(0, 0, 0, .3); }
+  .msg.task { border-radius: 12px; background: linear-gradient(135deg, rgba(var(--acc-rgb), .12), rgba(0, 0, 0, .28)); border: 1px dashed rgba(var(--acc-rgb), .6); }
+  .msg.err { border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), 0 0 0 1px rgba(255, 90, 100, .15); }
+  .msg .ts { font-size: 9.5px; font-variant-numeric: tabular-nums; letter-spacing: .06em; opacity: .5; }
+  .msg .acts { opacity: .55; transition: opacity .18s; }
+  .msg:hover .acts { opacity: 1; }
+  .msg .act { border-radius: 8px; transition: opacity .12s, background .12s, color .12s, transform .15s cubic-bezier(.2, .9, .3, 1.3); }
+  .msg .act:hover { transform: translateY(-1px) scale(1.15); color: rgb(var(--acc2-rgb)); }
+  .msg img { border: 1px solid rgba(var(--acc-rgb), .35); }
+
+  /* --- bar input: kapsul kaca, garis tepi bergradasi (tanpa shadow), garis aktivitas saat agen bekerja --- */
+  #bar { position: relative; isolation: isolate; border-color: transparent;
+    background:
+      radial-gradient(70% 160% at 0% 0%, rgba(var(--acc-rgb), .16), transparent 60%),
+      linear-gradient(180deg, rgba(var(--pt), 1), rgba(var(--pb), 1)); }
+  /* tepi: gradasi diam saat tak fokus, berputar saat mengetik */
+  #bar::before { content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; padding: 1px; pointer-events: none;
+    background: linear-gradient(100deg, rgba(var(--acc-rgb), .75), rgba(var(--acc-rgb), .12) 28%, rgba(var(--acc2-rgb), .5) 55%, rgba(var(--acc-rgb), .12) 78%, rgba(var(--acc-rgb), .7));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+    transition: opacity .25s; }
+  #bar:focus-within::before { background: conic-gradient(from var(--ang), rgba(var(--acc2-rgb), 1), rgba(var(--acc-rgb), .2) 25%, rgba(var(--acc-rgb), 1) 50%, rgba(var(--acc-rgb), .2) 75%, rgba(var(--acc2-rgb), 1));
+    animation: angSpin 4.5s linear infinite; }
+  /* kilau kaca di tepi atas */
+  #bar::after { content: ''; position: absolute; left: 22%; right: 22%; top: 1px; height: 1px; border-radius: 1px; pointer-events: none; z-index: 1;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .55), transparent); opacity: .6; }
+  #bar:focus-within { border-color: transparent; }
+  #input { caret-color: rgb(var(--acc2-rgb)); letter-spacing: .005em; }
+  #input::placeholder { color: #8493b0; }
+  #input:focus::placeholder { opacity: .45; transition: opacity .2s; }
+  #bar .ib { border-radius: 11px; }
+  #bar .ib:hover { background: rgba(var(--acc-rgb), .22); }
+  #grip { border-radius: 11px; }
+  #dot { position: relative; }
+  #dot.on::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 1px solid rgba(79, 227, 160, .65); animation: dotRing 2.6s ease-out infinite; }
+  @keyframes dotRing { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(1.9); opacity: 0; } }
+  /* tombol kirim: bentuk kapsul bergradasi + kilau lewat saat hover */
+  #bar .send { border-radius: 12px; position: relative; overflow: hidden; box-shadow: none; }
+  #bar .send::after { content: ''; position: absolute; top: 0; bottom: 0; left: -60%; width: 40%; transform: skewX(-20deg); background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .45), transparent); transition: left .5s; }
+  #bar .send:hover::after { left: 130%; }
+  /* garis aktivitas di dasar bar saat Iris/agen bekerja (ikut #barWrap.busy dari status) */
+  #barWrap.busy #bar { overflow: hidden; }
+  #barWrap.busy #bar::after { left: 0; right: 0; top: auto; bottom: 0; height: 2px; z-index: 2; opacity: 1; border-radius: 0;
+    background: linear-gradient(90deg, transparent 0, rgba(var(--acc-rgb), .9) 30%, rgb(var(--acc2-rgb)) 50%, rgba(var(--acc-rgb), .9) 70%, transparent 100%) 0 0 / 40% 100% no-repeat;
+    animation: barScan 1.3s cubic-bezier(.4, 0, .2, 1) infinite; }
+  @keyframes barScan { from { background-position: -60% 0; } to { background-position: 160% 0; } }
+
+  /* --- mode hemat / gerak dikurangi --- */
+  #root.lite #log::before, #root.lite #bar::before, #root.lite #bar::after, #root.lite #dot::after { animation: none !important; }
+  #root.lite #logHead .title b, #root.lite #logBody:empty::before, #root.lite .msg { animation: none !important; }
+  @media (prefers-reduced-motion: reduce) {
+    #log::before, #bar::before, #bar::after, #dot::after, #logHead .title b, #logBody:empty::before, .msg { animation: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -679,6 +1155,7 @@
     <button class="mi" data-act="outfit"><span class="e"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4l-6 4 2.5 4L8 11v9h8v-9l2.5 1L21 8l-6-4a3 3 0 0 1-6 0z"/></svg></span>Ganti baju</button>
     <button class="mi" data-act="web"><span class="e"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9S14.5 18.4 12 21M12 3C9.5 5.6 8.2 8.6 8.2 12s1.3 6.4 3.8 9"/></svg></span>Mini-browser</button>
     <button class="mi" data-act="set"><span class="e"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/></svg></span>Pengaturan</button>
+    <button class="mi mmode" data-act="mode" title="Ganti gaya menu: panel atau peta pikiran"><span class="e"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.5"/><circle cx="5" cy="6" r="1.8"/><circle cx="19" cy="6" r="1.8"/><circle cx="5" cy="18" r="1.8"/><circle cx="19" cy="18" r="1.8"/><path d="M10 10.5L6.4 7.3M14 10.5l3.6-3.2M10 13.5l-3.6 3.2M14 13.5l3.6 3.2"/></svg></span><span class="l">Peta pikiran</span></button>
   </div>
   <div id="timerPop" class="pop interactive">
     <h4>Timer</h4>
@@ -758,8 +1235,8 @@
     <div id="dot" title="status koneksi"></div>
     <input id="input" placeholder="Ketik pesan lalu Enter..." autocomplete="off">
     <button id="sendBtn" class="ib send" title="Kirim (Enter)"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
-    <button id="attachBtn" class="ib" title="Lampirkan gambar (atau tempel dengan Ctrl+V, atau seret file gambar ke sini)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-    <input type="file" id="fileIn" accept="image/*" multiple hidden>
+    <button id="attachBtn" class="ib" title="Lampirkan gambar, dokumen (PDF, Word, Excel, PowerPoint, teks / kode), audio, atau video (atau Ctrl+V, atau seret file ke sini)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+    <input type="file" id="fileIn" multiple hidden>
     <button id="micBtn" class="ib" title="Bicara (Ctrl+Alt+G): klik untuk mulai merekam, klik lagi untuk berhenti"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
     <button id="shotBtn" class="ib" title="Screenshot layar (Ctrl+Alt+S)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
     <button id="chatBtn" class="ib" title="Buka chat (Ctrl+Alt+C)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></button>
@@ -1368,7 +1845,7 @@ function animate(now) {
 
 let talk = 0;   // 0..1, naik saat Iris sedang bicara
 // ---- Pengaturan (disimpan di localStorage) + keadaan interaksi; dipakai frame() dan blok 'v6' di bawah ----
-const SET = { tlLang: 'auto', vol: 100, op: 100, follow: true, idle: true, fx: true, sleep: true, sleepMin: 5, sleepMax: 20, arms: false, voiceTimer: true, breakOn: false, breakMin: 60, mood: true, top: true, hourly: false, greetOn: false, shadow: true, sit: false, dragChar: true, dragGrip: true, watchOn: false, watchMin: 5, watchMax: 60, funOn: true, localCmd: true, funMin: 5, funMax: 60, peekHide: 3, fullBody: true, funGen: true, funTopic: '', theme: 'iris', outfitSeason: false, outfitSituasi: false, seasonFx: true, connPill: false, thoughts: true, clipOffer: false };
+const SET = { tlLang: 'auto', vol: 100, op: 100, follow: true, idle: true, fx: true, sleep: true, sleepMin: 5, sleepMax: 20, arms: false, voiceTimer: true, breakOn: false, breakMin: 60, mood: true, top: true, hourly: false, greetOn: false, shadow: true, sit: false, dragChar: true, dragGrip: true, watchOn: false, watchMin: 5, watchMax: 60, funOn: true, localCmd: true, funMin: 5, funMax: 60, peekHide: 3, fullBody: true, funGen: true, funTopic: '', theme: 'iris', outfitSeason: false, outfitSituasi: false, seasonFx: true, connPill: false, thoughts: true, clipOffer: false, menuStyle: 'panel' };
 const SET_DEFAULT = Object.assign({}, SET);
 let clipSelf = '';   // v80: teks yang baru disalin oleh Iris sendiri (tombol salin), tidak ditawarkan lagi
 let peekTalkUntil = 0;   // v35: sampai kapan ucapan otomatis (fun fact, istirahat, jam) boleh keluar dari tepi layar tanpa memunculkan Iris
@@ -2303,6 +2780,7 @@ function placeBubble() {
       for (const id of ['menu', 'setPop', 'timerPop', 'outfitPop', 'clipPop']) {
         const el = document.getElementById(id);
         if (!el || !el.classList.contains('open')) continue;
+        if (id === 'menu' && el.classList.contains('mind')) continue;   // v101c: peta pikiran ditangani terpisah di bawah (kotaknya selebar jendela, bukan kartunya)
         const rm = el.getBoundingClientRect();
         if (rm.width < 20 || rm.bottom <= bt || rm.top >= bb) continue;   // tidak sejajar secara vertikal
         const bl = right - w + dx;
@@ -2311,6 +2789,24 @@ function placeBubble() {
       if (shift > 0) dx = Math.min(dx + shift, Math.max(dx, (V.r - M) - right));
     } catch { /* abaikan */ }
   }
+  // v101c: peta pikiran terbuka: bubble diangkat ke atas kartu / tombol Panel (menyusut kalau perlu), bukan dipudarkan di bawah kartu
+  let fade = false;
+  const mEl = document.getElementById('menu');
+  if (!side && mEl && mEl.classList.contains('open') && mEl.classList.contains('mind')) {
+    try {
+      const menuEl = mEl; let cardTop = Infinity;
+      for (const n of menuEl.querySelectorAll(':scope > .tlgrp, :scope > .mi')) { const r = n.getBoundingClientRect(); if (r.width > 4 && r.top < cardTop) cardTop = r.top; }
+      const bt = top + dy, bb = bt + bubble.offsetHeight;
+      if (cardTop < Infinity && bb > cardTop - 8) {
+        const avail = Math.floor((cardTop - 8) - (V.t + M));
+        if (avail >= 70) {
+          bubble.style.setProperty('--bubble-max', Math.min(avail, parseFloat(getComputedStyle(bubble).maxHeight) || avail) + 'px');
+          dy = (cardTop - 8) - bottom;   // dasar bubble tepat di atas kartu teratas
+        } else fade = true;   // tidak ada ruang di atas kartu: pudarkan seperti sebelumnya
+      }
+    } catch { /* abaikan */ }
+  }
+  bubble.classList.toggle('mindfade', fade);
   bubble.style.setProperty('--bdx', Math.round(dx) + 'px'); bubble.style.setProperty('--bdy', Math.round(dy) + 'px');
   const tail = 146 + dx;   // ekor tetap di bawah kepala: geser relatif ke tepi kanan bubble
   const ok = !side && dy === 0 && tail >= 18 && tail <= w - 34;
@@ -2397,7 +2893,9 @@ function pump() {
   const myGen = gen;
   curMoras = (seg.moras && seg.moras.length) ? seg.moras : null;
   segMaxVol = 0;
-  showBubble(seg.text, seg.jp, seg.emotion, !!seg.error, true, seg.thought);
+  let segTh = seg.thought;
+  if (!segTh && seg.jp && localThought.has(seg.jp)) { segTh = localThought.get(seg.jp); localThought.delete(seg.jp); }   // v105
+  showBubble(seg.text, seg.jp, seg.emotion, !!seg.error, true, segTh);
   reactToSegment(seg.emotion, !!seg.error, seg);
   let typing = false;
   const startTyping = (ms) => { if (typing || myGen !== gen) return; typing = true; typeBubble(seg.text, ms); };
@@ -2843,19 +3341,53 @@ if (window.companion && typeof window.companion.onOpenChat === 'function') {
 const attachEl = document.getElementById('attach');
 const fileIn = document.getElementById('fileIn');
 const MAX_IMAGES = 4, MAX_SIDE = 1280;
+const MAX_ATTACH_FILES = 3, MAX_VIDEO_FRAMES = 6, VIDEO_SIDE = 768, MAX_INLINE_FILE = 8 * 1024 * 1024;
+const DEFAULT_FILE_PROMPT = 'Tolong baca lampiran ini dan rangkum isinya.';
+// v105: jenis file yang bisa dilampirkan (harus sama dengan daftar di server.py). Skrip yang DISERET tetap ke /rea (lihat RISKY_DROP).
+const ATTACH_KINDS = (() => {
+  const m = {};
+  const add = (kind, list) => list.split(' ').forEach((e) => { m[e] = kind; });
+  add('doc', 'pdf docx xlsx xlsm pptx');
+  add('text', 'txt md markdown csv tsv json jsonl xml html htm css log ini cfg conf toml yaml yml srt vtt ass tex bib sql py pyw js mjs ts tsx jsx java kt c h cpp hpp cs go rs php rb swift lua sh bat cmd ps1 vbs gd');
+  add('audio', 'mp3 wav m4a aac ogg oga opus flac wma');
+  add('video', 'mp4 mkv webm mov avi m4v wmv flv mpg mpeg 3gp');
+  return m;
+})();
+const RISKY_DROP = new Set(['bat', 'cmd', 'ps1', 'vbs', 'js', 'mjs', 'sh']);   // diseret = triase /rea (seperti sebelumnya); lewat tombol 📎 dibaca sebagai teks
+const extOf = (f) => ((f && f.name ? f.name : '').split('.').pop() || '').toLowerCase();
+function attachKind(f) {
+  if (!f) return '';
+  if (f.type && f.type.startsWith('image/')) return 'image';
+  const k = ATTACH_KINDS[extOf(f)];
+  if (k) return k;
+  if (f.type && f.type.startsWith('video/')) return 'video';
+  if (f.type && f.type.startsWith('audio/')) return 'audio';
+  return '';
+}
+const FILE_ICON = { pdf: '📕', docx: '📘', xlsx: '📗', xlsm: '📗', pptx: '📙', audio: '🎵', video: '🎞', text: '📄' };
 const DEFAULT_IMG_PROMPT = 'Tolong lihat gambar ini dan ceritakan apa yang kamu lihat.';
 let attachments = [];
 
 function renderAttach() {
-  input.placeholder = attachments.length ? 'Tanya soal gambar ini, lalu Enter...' : 'Ketik pesan lalu Enter...';
+  input.placeholder = attachments.length ? 'Tanya soal lampiran ini, lalu Enter...' : 'Ketik pesan lalu Enter...';
   attachEl.textContent = '';
   attachEl.classList.toggle('has', attachments.length > 0);
   attachments.forEach((a, i) => {
     const d = document.createElement('div'); d.className = 'thumb';
-    const im = document.createElement('img'); im.src = a.url; im.addEventListener('click', () => openImgView(a.url));
-    const x = document.createElement('button'); x.className = 'x'; x.textContent = '✕'; x.title = 'Buang gambar ini';
+    if (a.file && !a.url) {   // dokumen / teks / audio / video tanpa frame: kartu kecil dengan ikon dan nama
+      d.classList.add('file'); d.title = a.file.name;
+      const c = document.createElement('div'); c.className = 'chip';
+      const ic = document.createElement('b'); ic.textContent = FILE_ICON[a.file.name.split('.').pop().toLowerCase()] || FILE_ICON[a.file.kind] || '📄';
+      const nm = document.createElement('span'); nm.textContent = a.file.name;
+      c.append(ic, nm); d.appendChild(c);
+    } else {
+      const im = document.createElement('img'); im.src = a.url; im.addEventListener('click', () => openImgView(a.url));
+      d.appendChild(im);
+      if (a.file) { d.title = a.file.name; const b = document.createElement('div'); b.className = 'badge'; b.textContent = '🎞'; d.appendChild(b); }
+    }
+    const x = document.createElement('button'); x.className = 'x'; x.textContent = '✕'; x.title = 'Buang lampiran ini';
     x.addEventListener('click', () => { attachments.splice(i, 1); renderAttach(); });
-    d.append(im, x);
+    d.appendChild(x);
     attachEl.appendChild(d);
   });
 }
@@ -2871,29 +3403,92 @@ async function fileToJpegDataURL(file) {
   return c.toDataURL('image/jpeg', 0.85);
 }
 // files: ARRAY File (salin dulu dari FileList secara sinkron, FileList dari input/drop dikosongkan setelah event)
-async function addImageFiles(files) {
-  let skipped = 0;
+// v105: gambar, dokumen (PDF, Word, Excel, PowerPoint), teks / kode, audio, dan video. Video: beberapa frame diambil di sini
+// (video + canvas, tanpa ffmpeg), suaranya ditranskrip server. Dokumen / audio / video dikirim sebagai path lokal, bukan isinya.
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1] || '');
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(file);
+  });
+}
+async function videoFrames(file, n = MAX_VIDEO_FRAMES, side = VIDEO_SIDE) {
+  const url = URL.createObjectURL(file);
+  const v = document.createElement('video');
+  v.muted = true; v.preload = 'auto'; v.playsInline = true;
+  try {
+    await new Promise((res, rej) => {
+      const to = setTimeout(() => rej(new Error('timeout')), 15000);
+      v.onloadeddata = () => { clearTimeout(to); res(); };
+      v.onerror = () => { clearTimeout(to); rej(new Error('codec tidak didukung')); };
+      v.src = url;
+    });
+    const dur = isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
+    if (!v.videoWidth || !v.videoHeight) throw new Error('tanpa gambar');
+    const k = Math.min(1, side / Math.max(v.videoWidth, v.videoHeight));
+    const w = Math.max(1, Math.round(v.videoWidth * k)), h = Math.max(1, Math.round(v.videoHeight * k));
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    const count = dur ? Math.max(1, Math.min(n, Math.ceil(dur / 4))) : 1;
+    const frames = [];
+    for (let i = 0; i < count; i++) {
+      const t = dur ? dur * (i + 0.5) / count : 0;
+      if (Math.abs(v.currentTime - t) > 0.05) {
+        await new Promise((res) => { const to = setTimeout(res, 5000); v.onseeked = () => { clearTimeout(to); res(); }; v.currentTime = t; });
+      }
+      g.drawImage(v, 0, 0, w, h);
+      frames.push(c.toDataURL('image/jpeg', 0.8));
+    }
+    return frames;
+  } finally {
+    v.removeAttribute('src'); v.load(); URL.revokeObjectURL(url);
+  }
+}
+async function addAttachFiles(files) {
+  const warn = [];
   for (const f of files) {
-    if (!f || !f.type || !f.type.startsWith('image/') || attachments.length >= MAX_IMAGES) { skipped++; continue; }
-    try { attachments.push({ url: await fileToJpegDataURL(f) }); }
-    catch (err) { console.warn('gambar gagal dibaca:', err); skipped++; }
+    const kind = attachKind(f);
+    if (!kind) { warn.push((f && f.name ? f.name : 'file') + ': format belum didukung'); continue; }
+    if (kind === 'image') {
+      if (attachments.filter((a) => !a.file).length >= MAX_IMAGES) { warn.push('maks ' + MAX_IMAGES + ' gambar'); continue; }
+      try { attachments.push({ url: await fileToJpegDataURL(f) }); }
+      catch (err) { console.warn('gambar gagal dibaca:', err); warn.push(f.name + ': gambar gagal dibaca'); }
+      continue;
+    }
+    if (attachments.filter((a) => a.file).length >= MAX_ATTACH_FILES) { warn.push('maks ' + MAX_ATTACH_FILES + ' file'); continue; }
+    if (kind === 'video' && attachments.some((a) => a.file && a.file.kind === 'video')) { warn.push('satu video per pesan'); continue; }
+    let path = '';
+    try { path = window.companion && typeof window.companion.pathForFile === 'function' ? window.companion.pathForFile(f) : ''; } catch { /* abaikan */ }
+    const file = { name: f.name || 'file', kind, path, size: f.size || 0 };
+    if (!path) {
+      if (kind === 'video' || kind === 'audio') { warn.push(file.name + ': audio / video harus dipilih dari disk (preload.js baru)'); continue; }
+      if (f.size > MAX_INLINE_FILE) { warn.push(file.name + ': terlalu besar untuk ditempel'); continue; }
+      try { file.data = await fileToBase64(f); } catch { warn.push(file.name + ': gagal dibaca'); continue; }
+    } else if (attachments.some((a) => a.file && a.file.path === path)) { continue; }
+    const att = { file, url: '', frames: [] };
+    if (kind === 'video') {
+      try { att.frames = await videoFrames(f); att.url = att.frames[0] || ''; }
+      catch (err) { console.warn('frame video gagal:', err); warn.push(file.name + ': frame tidak bisa diambil di overlay (suara tetap dibaca; ffmpeg di server jadi cadangan)'); }
+    }
+    attachments.push(att);
   }
   renderAttach();
-  if (skipped && !playing) {
-    showBubble('Maksimal ' + MAX_IMAGES + ' gambar, dan filenya harus berupa gambar.', '', 'neutral');
-    hideBubbleLater(3500);
+  if (warn.length && !playing) {
+    showBubble(warn.slice(0, 3).join('. ') + '.', '', 'neutral');
+    hideBubbleLater(5000);
   }
 }
 document.getElementById('attachBtn').addEventListener('click', () => fileIn.click());
-fileIn.addEventListener('change', () => { const fs = Array.from(fileIn.files); fileIn.value = ''; addImageFiles(fs); });
+fileIn.addEventListener('change', () => { const fs = Array.from(fileIn.files); fileIn.value = ''; addAttachFiles(fs); });
 document.addEventListener('paste', (e) => {
   const files = [];
   for (const it of Array.from((e.clipboardData && e.clipboardData.items) || [])) {
-    if (it.kind === 'file' && it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) files.push(f); }
+    if (it.kind === 'file') { const f = it.getAsFile(); if (f && attachKind(f)) files.push(f); }
   }
   if (!files.length) return;                              // tempel teks biasa tetap normal
   e.preventDefault();
-  addImageFiles(files);
+  addAttachFiles(files);
 });
 // Seret file: preventDefault wajib, kalau tidak Electron membuka file itu dan menggantikan seluruh halaman.
 let dragDepth = 0;
@@ -2905,7 +3500,8 @@ document.addEventListener('dragleave', (e) => {
   dragDepth = Math.max(0, dragDepth - 1);
   if (!dragDepth) rootEl.classList.remove('dragging');
 });
-// v99: file yang bukan gambar (exe, dll, apk, jar, zip, folder, dst.) yang diseret ke overlay = /rea cepat (triase lokal, hanya baca, tanpa menjalankan). Gambar tetap jadi lampiran.
+// v99: file yang tidak bisa dilampirkan (exe, dll, apk, jar, zip, folder, dst.) yang diseret ke overlay = /rea cepat (triase lokal, hanya baca, tanpa menjalankan).
+// v105: gambar, dokumen, teks, audio, dan video jadi lampiran analisis. Tahan Shift saat menjatuhkan = semua non-gambar tetap ke /rea; skrip (.bat .ps1 .vbs .js .sh) selalu ke /rea.
 function dropToRea(files) {
   const api = window.companion;
   let p = '';
@@ -2918,9 +3514,10 @@ document.addEventListener('drop', (e) => {
   e.preventDefault();
   dragDepth = 0; rootEl.classList.remove('dragging');
   const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
-  const imgs = files.filter((f) => f && f.type && f.type.startsWith('image/'));
-  const others = files.filter((f) => f && !(f.type && f.type.startsWith('image/')));
-  if (imgs.length || !others.length) addImageFiles(imgs.length ? imgs : files);
+  const toAttach = (f) => { const k = attachKind(f); return !!k && (k === 'image' || (!e.shiftKey && !(k === 'text' && RISKY_DROP.has(extOf(f))))); };
+  const att = files.filter(toAttach);
+  const others = files.filter((f) => !toAttach(f));
+  if (att.length) addAttachFiles(att);
   if (others.length) dropToRea(others);
 });
 
@@ -2971,16 +3568,24 @@ input.addEventListener('keydown', (e) => {
     if (slashCmd(text)) { input.value = ''; return; }
     if (echo && echo.remove) echo.remove();   // bukan perintah lokal (mis. /agen): dikirim ke server dan ditampilkan di bawah
   }
-  const imgs = attachments.map(a => a.url);
-  const body = text || DEFAULT_IMG_PROMPT;
+  const imgs = [], shown = [], files = [];
+  for (const a of attachments) {   // v105: gambar biasa + frame video ke imgs; file ke files (hanya path / data kecil)
+    if (a.file) {
+      files.push({ name: a.file.name, path: a.file.path || undefined, data: a.file.data || undefined, frames: (a.frames || []).length });
+      for (const u of (a.frames || [])) imgs.push(u);
+      if (a.url) shown.push(a.url);
+    } else { imgs.push(a.url); shown.push(a.url); }
+  }
+  const body = text || (files.length ? DEFAULT_FILE_PROMPT : DEFAULT_IMG_PROMPT);
   input.value = '';
   attachments = []; renderAttach();
   stopAll();
-  logUser(body, imgs);
+  logUser(body + files.map((f) => '\n📎 ' + f.name).join(''), shown);
   // Perintah /agen tidak boleh dibungkus awalan "Mode jelaskan", kalau tidak server tidak mengenalinya sebagai tugas
   const isAgentCmd = /^\s*\/(agen|agent|h)\s/i.test(body);
   const msg = { type: 'user', text: (explainChk.checked && !isAgentCmd) ? EXPLAIN_PREFIX + body : body };
   if (imgs.length) msg.images = imgs;                     // tanpa gambar, pesan identik dengan sebelumnya
+  if (files.length) msg.files = files;                    // v105
   send(msg);
 });
 /* v36: menu perintah "/" seperti Telegram. Daftar diambil dari HELP (baris yang diawali "/"), jadi perintah baru otomatis ikut.
@@ -3103,6 +3708,10 @@ function stopLocal() {           // sela kalimat lokal yang sedang diputar (bala
   if (current) { current.pause(); current = null; }
   clearInterval(typeTimer);
 }
+// v105: pikiran batin untuk ucapan lokal (reaksi sentuh / seret / benturan). Disimpan per kalimat Jepang karena lewat server segmen tidak membawa field thought;
+// pump() mengambilnya. LOCAL_THOUGHT_P = peluang tampil (1 = selalu).
+const LOCAL_THOUGHT_P = 0.7;
+const localThought = new Map();
 function say(text, emo = 'neutral', ms = 4000, jp = '', opt = {}) {
   const err = !!opt.err;                              // pesan galat: tidak disaring dan tidak menyela, cukup antre
   if (peeking && !err && !opt.force && !opt.ambient) return;   // v21: di tepi layar Iris diam; galat dan pesan penting (opt.force) tetap lewat dan memunculkannya
@@ -3111,6 +3720,8 @@ function say(text, emo = 'neutral', ms = 4000, jp = '', opt = {}) {
   const now = performance.now();
   if (!err) { if (now - lastLocalAt < 600) return; lastLocalAt = now; }   // cegah klik beruntun menumpuk
   if (opt.ambient && !err && text && ws && ws.readyState === WebSocket.OPEN) send({ type: 'local_say', text: String(text).slice(0, 300) });   // v62: server tahu apa yang barusan Iris ucapkan sendiri (fun fact dll); tidak masuk riwayat chat
+  const thought = (!err && opt.thought && Math.random() < LOCAL_THOUGHT_P) ? String(opt.thought) : '';
+  if (jp) { if (thought) localThought.set(jp, thought); else localThought.delete(jp); }
   const hit = jp && !muted ? voiceCache.get(jp) : null;
   if (!err && playing) stopLocal();
   if (hit && hit.audio) {                            // sudah ada di cache: putar langsung, tanpa lewat server
@@ -3120,10 +3731,10 @@ function say(text, emo = 'neutral', ms = 4000, jp = '', opt = {}) {
   if (jp && !muted && ws && ws.readyState === WebSocket.OPEN && (err || now - lastVoiceAt > 1200)) {
     lastVoiceAt = now;
     send({ type: 'speak', jp, id: text, emotion: emo, error: err });
-    setTimeout(() => { if (lastSegAt < now && !playing) { showBubble(text, '', emo, err); hideBubbleLater(ms); } }, 3500);   // cadangan kalau server belum mendukung 'speak'
+    setTimeout(() => { if (lastSegAt < now && !playing) { showBubble(text, '', emo, err, false, thought); hideBubbleLater(ms); } }, 3500);   // cadangan kalau server belum mendukung 'speak'
     return;
   }
-  showBubble(text, '', emo, err); hideBubbleLater(ms);
+  showBubble(text, '', emo, err, false, thought); hideBubbleLater(ms);
 }
 
 /* ---- efek emoji di atas kepala ---- */
@@ -3186,22 +3797,22 @@ function sayLine(k, ms = 3000) {
   say(t, e, ms, jp);
 }
 const TOUCH_VOICE = {
-  head: [['Ehehe, geli.', 'えへへ、くすぐったい。', 'shy'], ['Elus-elus? Fufu.', 'なでなで？ふふっ。', 'shy'], ['Rambutku jangan diacak-acak~', '髪、ぐしゃぐしゃにしないでよ〜', 'shy']],
-  body: [['Kyaa! Kaget!', 'きゃっ！びっくりした！', 'surprised'], ['Eh? Jangan tiba-tiba dong.', 'えっ？急にはだめだよ。', 'surprised'], ['Hei, itu geli!', 'ちょっと、くすぐったいってば！', 'shy']],
-  arm:  [['Waa, ada apa?', 'わぁ、なあに？', 'happy'], ['Hm? Kenapa, Rover?', 'ん？どうしたの、ローバー？', 'happy']],
-  hand: [['Salaman, ya?', 'はい、握手かな？', 'happy'], ['Hehe, tanganku hangat, kan?', 'えへへ、私の手、あったかいでしょ？', 'happy']],
+  head: [['Ehehe, geli.', 'えへへ、くすぐったい。', 'shy', 'Sebenarnya enak, tapi gengsi bilang.'], ['Elus-elus? Fufu.', 'なでなで？ふふっ。', 'shy', 'Tangannya hangat. Jangan berhenti dulu.'], ['Rambutku jangan diacak-acak~', '髪、ぐしゃぐしゃにしないでよ〜', 'shy', 'Tadi baru kurapikan, awas ya.']],
+  body: [['Kyaa! Kaget!', 'きゃっ！びっくりした！', 'surprised', 'Jantungku loncat. Semoga nggak kedengaran.'], ['Eh? Jangan tiba-tiba dong.', 'えっ？急にはだめだよ。', 'surprised', 'Kalau bilang dulu, mungkin boleh.'], ['Hei, itu geli!', 'ちょっと、くすぐったいってば！', 'shy', 'Pipiku panas. Jangan lihat ke sini.']],
+  arm:  [['Waa, ada apa?', 'わぁ、なあに？', 'happy', 'Kepo, dia mau ngomong apa ya.'], ['Hm? Kenapa, Rover?', 'ん？どうしたの、ローバー？', 'happy', 'Cuma mau dikasih perhatian, kan? Ketahuan.']],
+  hand: [['Salaman, ya?', 'はい、握手かな？', 'happy', 'Tangannya besar juga. Aku nggak merhatiin kok.'], ['Hehe, tanganku hangat, kan?', 'えへへ、私の手、あったかいでしょ？', 'happy', 'Semoga tanganku nggak keringetan.']],
 };
 // v19: reaksi saat diseret dan dilepas (kalimat tetap, disintesis VOICEVOX seperti sentuhan lain)
 const DRAG_VOICE = {
-  pick: [['Eh? Mau dibawa ke mana?', 'えっ？どこに連れていくの？', 'surprised'], ['Waa, aku diangkat!', 'わぁ、持ち上げられた！', 'surprised'], ['Pelan-pelan dong~', 'そっと運んでよ〜', 'shy'], ['Hei, hei, jangan jauh-jauh!', 'ちょっと、遠くに行かないでよ！', 'surprised']],
-  drop: [['Di sini ya? Oke.', 'ここでいいの？うん、わかった。', 'happy'], ['Fiuh, mendarat dengan aman.', 'ふぅ、無事に着地。', 'happy'], ['Tempat baru, ya. Nyaman juga.', '新しい場所だね。悪くないかも。', 'happy']],
+  pick: [['Eh? Mau dibawa ke mana?', 'えっ？どこに連れていくの？', 'surprised', 'Deg-degan, tapi penasaran juga.'], ['Waa, aku diangkat!', 'わぁ、持ち上げられた！', 'surprised', 'Tinggi juga dari sini. Jangan dilepas.'], ['Pelan-pelan dong~', 'そっと運んでよ〜', 'shy', 'Kalau sampai jatuh, kuingat-ingat lho.'], ['Hei, hei, jangan jauh-jauh!', 'ちょっと、遠くに行かないでよ！', 'surprised', 'Jangan sampai aku ketinggalan di pojok sepi.']],
+  drop: [['Di sini ya? Oke.', 'ここでいいの？うん、わかった。', 'happy', 'Lumayan, pemandangannya bagus juga.'], ['Fiuh, mendarat dengan aman.', 'ふぅ、無事に着地。', 'happy', 'Lututku masih lemas. Jangan bilang siapa-siapa.'], ['Tempat baru, ya. Nyaman juga.', '新しい場所だね。悪くないかも。', 'happy', 'Diam-diam suka dipindah-pindah begini.']],
 };
 let lastTouchJp = '';
 function touchVoice(part) {   // setiap sentuhan bersuara (variasi acak, tidak mengulang kalimat yang sama berturut-turut)
   const k = /Arm$/.test(part) ? 'arm' : /Hand$/.test(part) ? 'hand' : part;
   const L = TOUCH_VOICE[k]; if (!L) return;
   let t; do { t = L[Math.floor(Math.random() * L.length)]; } while (L.length > 1 && t[1] === lastTouchJp);
-  lastTouchJp = t[1]; say(t[0], t[2], 3000, t[1]);
+  lastTouchJp = t[1]; say(t[0], t[2], 3000, t[1], { thought: t[3] });   // v105: pikiran batin untuk reaksi lokal
 }
 // Isi cache suara di latar belakang (pelan-pelan, satu kalimat tiap 0,7 detik) supaya reaksi sentuh langsung bersuara tanpa jeda
 function prefetchVoices() {
@@ -3252,12 +3863,12 @@ function now_sulk() { return performance.now() < sulkUntil; }
    main.js mendeteksi kursor (saat Iris diseret) masuk pojok layar dengan kencang atau tertahan di sana, lalu mengirim 'corner-hit'.
    Tiga benturan dalam semenit = ngambek. Sapaan "Di sini ya? Oke." saat dilepas dibungkam beberapa detik setelah benturan. */
 const HIT_VOICE = [
-  ['Aduh! Sakit! Jangan dibenturin ke pojok!', 'いたっ！角にぶつけないでよ！', 'surprised'],
-  ['Aduduh... kepalaku kebentur...', 'いたた…頭ぶつけた…', 'sad'],
-  ['Heh! Itu sakit tahu, Rover!', 'ちょっと！痛いんだからね、ローバー！', 'angry'],
-  ['Ouch! Pojok layar itu keras, tahu!', 'いったーい！画面の角は硬いんだよ！', 'surprised'],
+  ['Aduh! Sakit! Jangan dibenturin ke pojok!', 'いたっ！角にぶつけないでよ！', 'surprised', 'Sengaja nggak, sih? Awas kalau sengaja.'],
+  ['Aduduh... kepalaku kebentur...', 'いたた…頭ぶつけた…', 'sad', 'Mataku berkunang-kunang, bintang semua.'],
+  ['Heh! Itu sakit tahu, Rover!', 'ちょっと！痛いんだからね、ローバー！', 'angry', 'Kesal, tapi nggak tega marah lama-lama.'],
+  ['Ouch! Pojok layar itu keras, tahu!', 'いったーい！画面の角は硬いんだよ！', 'surprised', 'Pojok layar itu musuh bebuyutanku.'],
 ];
-const HIT_SULK = ['Cukup! Aku ngambek, jangan dibentur-benturin lagi!', 'もう！ぶつけるのはやめて、拗ねちゃうからね！', 'angry'];
+const HIT_SULK = ['Cukup! Aku ngambek, jangan dibentur-benturin lagi!', 'もう！ぶつけるのはやめて、拗ねちゃうからね！', 'angry', 'Sepuluh detik ini aku pura-pura nggak dengar apa-apa.'];
 let hitTimes = [], lastHitAt = -1e9, lastHitJp = '';
 function cornerHit(d) {
   const now = performance.now();
@@ -3276,7 +3887,7 @@ function cornerHit(d) {
   else { do { t = HIT_VOICE[Math.floor(Math.random() * HIT_VOICE.length)]; } while (HIT_VOICE.length > 1 && t[1] === lastHitJp); }
   lastHitJp = t[1];
   const wait = Math.max(0, 650 - (now - lastLocalAt));   // say() membuang ucapan yang datang < 600 ms setelah ucapan lokal sebelumnya
-  setTimeout(() => say(t[0], t[2], 3800, t[1]), wait);
+  setTimeout(() => say(t[0], t[2], 3800, t[1], { thought: t[3] }), wait);
 }
 if (window.companion && typeof window.companion.onHit === 'function') window.companion.onHit(cornerHit);
 
@@ -3294,7 +3905,7 @@ function dragVoice(kind) {
   const L = DRAG_VOICE[kind];
   let t; do { t = L[Math.floor(Math.random() * L.length)]; } while (L.length > 1 && t[1] === lastDragJp);
   lastDragJp = t[1]; lastDragVoiceAt = now;
-  say(t[0], t[2], 2800, t[1]);
+  say(t[0], t[2], 2800, t[1], { thought: t[3] });
 }
 function beginDrag() {
   if (peekMode) { peekMode = false; updateMenu(); }   // v21e: diseret keluar dari tepi = mode mengintip mati (nyala lagi kalau dilepas di tepi)
@@ -3350,7 +3961,7 @@ function closePops() { menuEl.classList.remove('open'); setPop.classList.remove(
 /* v53: menu dan popover didekatkan ke karakter. Dulu posisinya tetap di tepi kiri jendela (left: 2px atau di kanan panel /chrome), jadi saat jendela lebar
    (panel /chrome besar terbuka) menu jauh dari karakter. Sekarang: sisi kanan menu menempel di sisi kiri kotak karakter (jarak 6 px). Posisi dari CSS tetap
    jadi batas paling kiri (tidak menimpa panel /chrome), dan kalau ruang di kiri karakter sempit, aturan CSS lama yang dipakai (tidak berubah). */
-window.__irisMenuVer = 'v62';   // penanda untuk memastikan index.html terbaru yang dimuat: ketik window.__irisMenuVer di Console DevTools
+window.__irisMenuVer = 'v101';   // penanda untuk memastikan index.html terbaru yang dimuat: ketik window.__irisMenuVer di Console DevTools
 const MENU_GAP = 6;   // jarak menu ke kotak karakter (px). Kotak karakter punya tepi transparan, jadi nilai negatif (mis. -30) membuat menu lebih rapat ke badan
 function nearChar(el) {
   try {
@@ -3362,7 +3973,103 @@ function nearChar(el) {
     // v53f: posisi sekarang diatur murni oleh CSS (lihat 'v53f' di bagian style); fungsi ini hanya mengisi data diagnosis
   } catch (err) { el.dataset.dbg = 'v53d ERR ' + (err && err.message); }
 }
-function placeFloat(el) { placeFloatBase(el); nearChar(el); }
+/* v100: gaya menu. SET.menuStyle = 'panel' (bawaan) | 'mind' (peta pikiran, karakter di tengah). Tombol .mmode di menu mengganti dan menyimpannya. */
+const MIND = { w: 66, minOff: 118, bulge: 16, colGap: 10, perCol: 5, span: 150, cyF: 0.47, bodyHalf: 52, bodyGrow: 32, endY0: 0.34, endY1: 0.36 };   // v101: bodyHalf/bodyGrow = jarak ujung garis dari tengah badan (atas..bawah), endY0/endY1 = tinggi ujung garis (0..1 tinggi kotak karakter); w = sisi kartu; minOff = jarak tengah kartu ke tengah karakter (cukup lebar supaya tidak menyentuh badan / rok); bulge = lengkung keluar di tengah kolom; colGap = jarak antar kolom kalau satu sisi tidak muat; perCol = kartu per kolom; span = setengah tinggi kolom; cyF = tinggi pusat kolom (0..1 dari tinggi kotak karakter)
+const MENU_ICON_MIND = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.5"/><circle cx="5" cy="6" r="1.8"/><circle cx="19" cy="6" r="1.8"/><circle cx="5" cy="18" r="1.8"/><circle cx="19" cy="18" r="1.8"/><path d="M10 10.5L6.4 7.3M14 10.5l3.6-3.2M10 13.5l-3.6 3.2M14 13.5l3.6 3.2"/></svg>';
+const MENU_ICON_PANEL = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>';
+function clearMind() {
+  for (const k of ['left', 'top', 'width', 'height', 'bottom', 'max-height']) menuEl.style.removeProperty(k);
+  for (const n of menuEl.querySelectorAll('.mi, .tlgrp')) { n.style.left = ''; n.style.top = ''; }
+  menuEl.dataset.mindSig = '';
+  const sv = menuEl.querySelector('.mlines'); if (sv) sv.innerHTML = '';
+}
+function applyMenuStyle() {
+  const on = SET.menuStyle === 'mind', was = menuEl.classList.contains('mind');
+  menuEl.classList.toggle('mind', on);
+  const mm = menuEl.querySelector('[data-act=mode]');
+  if (mm) { mm.querySelector('.e').innerHTML = on ? MENU_ICON_PANEL : MENU_ICON_MIND; mm.querySelector('.l').textContent = on ? 'Panel' : 'Peta pikiran'; }
+  if (was && !on) clearMind();
+  return on;
+}
+function mindCurve(p) {   // kurva mulus (Catmull-Rom) lewat pusat kartu satu kolom
+  if (p.length < 2) return '';
+  let d = 'M' + p[0].x + ' ' + p[0].y;
+  for (let i = 0; i < p.length - 1; i++) {
+    const a = p[i - 1] || p[i], b = p[i], c = p[i + 1], e = p[i + 2] || c;
+    d += ' C' + Math.round(b.x + (c.x - a.x) / 6) + ' ' + Math.round(b.y + (c.y - a.y) / 6) + ' ' + Math.round(c.x - (e.x - b.x) / 6) + ' ' + Math.round(c.y - (e.y - b.y) / 6) + ' ' + c.x + ' ' + c.y;
+  }
+  return d;
+}
+function placeMind() {
+  /* v101: kartu disusun di kolom lengkung di kiri / kanan karakter dengan sudut dan jarak yang sama (dulu y manual per kartu, dan kartu ditarik ke badan kalau jendela sempit).
+     Kalau satu sisi tidak muat, kartu pindah ke kolom di sisi yang muat (bukan menempel ke karakter). Tombol 'Panel' ada di bawah kolom, bukan di atas rok. */
+  try {
+    const m = menuEl, op = m.offsetParent; if (!op) return;
+    const opr = op.getBoundingClientRect(), cr = charBox.getBoundingClientRect();
+    const webx = parseFloat(getComputedStyle(rootEl).getPropertyValue('--webx')) || 0;   // panel /chrome di kiri: kartu tidak boleh masuk ke bawahnya
+    const L0 = Math.max(0, Math.round(webx)), W = Math.round(opr.width - L0), H = Math.round(cr.height), T = Math.round(cr.top - opr.top);
+    const cx = Math.round(cr.left - opr.left - L0 + cr.width / 2), cy = Math.round(H * MIND.cyF), hw = MIND.w / 2, step = MIND.w + MIND.colGap;
+    const set = (k, v) => m.style.setProperty(k, v, 'important');   // !important: menimpa semua aturan posisi panel (left / top / bottom / lebar)
+    set('left', L0 + 'px'); set('top', T + 'px'); set('width', W + 'px'); set('height', H + 'px'); set('bottom', 'auto'); set('max-height', 'none');
+    const items = Array.from(m.querySelectorAll(':scope > .tlgrp, :scope > .mi:not(.mmode)'));
+    const room = { l: cx - hw - 6, r: W - cx - hw - 6 };   // ruang bebas di tiap sisi (tepi luar kartu tetap di dalam jendela)
+    const slots = [];
+    for (let k = 0; k < 4; k++) for (const side of (k === 0 ? ['l', 'r'] : ['r', 'l'])) { const off = MIND.minOff + k * step; if (off <= room[side]) slots.push({ side, off, pts: [] }); }
+    const need = Math.ceil(items.length / MIND.perCol);
+    while (slots.length < need) slots.push({ side: room.r >= room.l ? 'r' : 'l', off: Math.max(hw + 12, Math.min(MIND.minOff, Math.max(room.l, room.r))), pts: [] });   // jendela sangat sempit: terpaksa rapat
+    const span = Math.max(40, Math.min(MIND.span, (H - MIND.w - 44) / 2));
+    items.forEach((n, i) => {
+      const col = slots[Math.floor(i / MIND.perCol)], idx = i % MIND.perCol, cnt = Math.min(MIND.perCol, items.length - Math.floor(i / MIND.perCol) * MIND.perCol);
+      const y = Math.round(cnt === 1 ? cy : cy - span + idx * (2 * span / (cnt - 1))), t = (y - cy) / span;
+      let o = col.off + MIND.bulge * (1 - t * t); o = Math.round(Math.min(o, Math.max(col.off, room[col.side])));
+      const x = col.side === 'l' ? cx - o : cx + o;
+      n.style.left = Math.round(x - hw) + 'px'; n.style.top = Math.round(y - hw) + 'px';
+      if (n.classList.contains('tlgrp')) { n.classList.toggle('out-l', col.side === 'l'); n.classList.toggle('out-r', col.side === 'r'); }   // pilihan bahasa terjemah muncul ke sisi luar
+      col.pts.push({ x, y, side: col.side, t: cnt === 1 ? 0.5 : idx / (cnt - 1) });
+    });
+    const used = slots.filter((c) => c.pts.length);
+    const mm = m.querySelector('.mmode');
+    if (mm) { mm.style.left = Math.round(cx - 48) + 'px'; mm.style.top = '4px'; }   // tombol Panel di atas kepala: area kosong, tidak menutup kartu / bar input
+    let sv = m.querySelector('.mlines');
+    if (!sv) { sv = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); sv.setAttribute('class', 'mlines'); sv.setAttribute('aria-hidden', 'true'); m.appendChild(sv); }
+    const sig = [W, H, cx, used.map((c) => c.pts.map((q) => q.x + ',' + q.y).join(';')).join('|')].join('#');
+    if (m.dataset.mindSig !== sig) {
+      m.dataset.mindSig = sig;
+      sv.setAttribute('width', W); sv.setAttribute('height', H); sv.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+      /* v102: garis saraf bergradasi (kartu -> badan) + paket cahaya yang mengalir + bingkai HUD di sekeliling karakter */
+      const hc = Math.round(H * 0.45), HR = 76, f1 = (n) => n.toFixed(1);
+      const hudArc = (sg, r, a) => 'M' + f1(cx + sg * r * Math.cos(a)) + ' ' + f1(hc - r * Math.sin(a)) + ' A' + r + ' ' + r + ' 0 0 ' + (sg > 0 ? 1 : 0) + ' ' + f1(cx + sg * r * Math.cos(a)) + ' ' + f1(hc + r * Math.sin(a));
+      const hudTick = (sg, a, r) => '<line class="tick" x1="' + f1(cx + sg * (r - 4) * Math.cos(a)) + '" y1="' + f1(hc - (r - 4) * Math.sin(a)) + '" x2="' + f1(cx + sg * (r + 4) * Math.cos(a)) + '" y2="' + f1(hc - (r + 4) * Math.sin(a)) + '"/>';
+      let hud = '<defs><linearGradient id="mlScan" gradientUnits="userSpaceOnUse" x1="' + (cx - HR) + '" y1="0" x2="' + (cx + HR) + '" y2="0"><stop offset="0" style="stop-color:rgb(var(--acc-rgb));stop-opacity:0"/><stop offset=".5" style="stop-color:rgb(var(--acc2-rgb));stop-opacity:.95"/><stop offset="1" style="stop-color:rgb(var(--acc-rgb));stop-opacity:0"/></linearGradient></defs>' +
+        '<circle class="hud2" cx="' + cx + '" cy="' + hc + '" r="' + HR + '"/><circle class="hud3" cx="' + cx + '" cy="' + hc + '" r="' + (HR - 12) + '"/>' +
+        '<path class="hud" d="' + hudArc(-1, HR, 0.75) + '"/><path class="hud" d="' + hudArc(1, HR, 0.75) + '"/>' +
+        [-1, 1].map((sg) => [0, 0.4, -0.4].map((a) => hudTick(sg, a, HR)).join('')).join('') +
+        '<path class="scan" d="M' + (cx - HR) + ' ' + hc + ' H' + (cx + HR) + '"/>';
+      let gi = 0;
+      sv.innerHTML = hud + used.map((c) => c.pts.map((q) => {   // garis tipis dari tiap kartu ke tepi badan (ujungnya bertitik)
+        const l = q.side === 'l', sx = q.x + (l ? hw : -hw), ex = cx + (l ? -1 : 1) * Math.round(MIND.bodyHalf + MIND.bodyGrow * q.t), ey = Math.round(H * (MIND.endY0 + MIND.endY1 * q.t)), mx = Math.round((sx + ex) / 2);
+        const d = 'M' + sx + ' ' + q.y + ' C' + mx + ' ' + q.y + ' ' + mx + ' ' + ey + ' ' + ex + ' ' + ey, id = 'mlg' + (gi++), dl = (gi * 0.37 % 2.2).toFixed(2);
+        return '<defs><linearGradient id="' + id + '" gradientUnits="userSpaceOnUse" x1="' + sx + '" y1="' + q.y + '" x2="' + ex + '" y2="' + ey + '"><stop offset="0" style="stop-color:rgb(var(--acc-rgb));stop-opacity:.35"/><stop offset="1" style="stop-color:rgb(var(--acc2-rgb));stop-opacity:1"/></linearGradient></defs>' +
+          '<path class="nl-base" d="' + d + '"/><path class="nl" style="stroke:url(#' + id + ')" d="' + d + '"/>' +
+          '<circle class="ring" cx="' + ex + '" cy="' + ey + '" r="4" style="animation-delay:' + dl + 's"/><circle class="core" cx="' + ex + '" cy="' + ey + '" r="2.8"/>' +
+          '<circle class="pkt" r="2"><animateMotion dur="2.2s" begin="' + dl + 's" repeatCount="indefinite" path="' + d + '"/></circle>';
+      }).join('')).join('');
+    }
+    if (typeof placeBubbleSoon === 'function') placeBubbleSoon();   // v101c: kartu sudah di posisi akhir
+  } catch { /* abaikan */ }
+}
+try { new MutationObserver(() => placeBubbleSoon()).observe(menuEl, { attributes: true, attributeFilter: ['class'] }); } catch { /* abaikan */ }   // v101c: menu buka / tutup = bubble ditata ulang
+function toggleMenuStyle() {
+  SET.menuStyle = SET.menuStyle === 'mind' ? 'panel' : 'mind'; saveSet();
+  menuEl.classList.remove('open'); void menuEl.offsetWidth;   // mulai ulang animasi masuk
+  menuEl.classList.add('open'); placeFloat(menuEl);
+  setTimeout(replaceOpenFloats, 350);
+  clearTimeout(popT); popT = setTimeout(closePops, 7000);
+}
+function placeFloat(el) {
+  if (el === menuEl && applyMenuStyle()) { placeMind(); return; }
+  placeFloatBase(el); nearChar(el);
+}
 /* v53b: jendela bisa berubah ukuran setelah menu terbuka (panel /chrome baru ditutup dan jendela masih menyempit, karakter bergeser). Tanpa ini menu tertinggal
    di posisi lama yang jauh dari karakter. Susun ulang saat ukuran berubah, dan sekali lagi sebentar setelah terbuka. */
 function replaceOpenFloats() {
@@ -3468,11 +4175,11 @@ menuEl.addEventListener('click', (e) => {
   const tp = e.target.closest('.tlp'); if (tp) { setTlLang(tp.dataset.tl); return; }   // v78: pilih bahasa terjemah, menu tetap terbuka
   const b = e.target.closest('.mi'); if (!b) return;
   const act = b.dataset.act;
-  if (act !== 'timer' && act !== 'set' && act !== 'outfit') closePops();
+  if (act !== 'timer' && act !== 'set' && act !== 'outfit' && act !== 'mode') closePops();
   const acts = {
     chat: openChat, shot: () => shotBtn.click(), translate: () => translateScreen(), clip: askClipboard, export: exportChat, timer: () => openPop(timerPop),
     web: () => { try { window.companion.webState().then((st) => window.companion.webPanel((st && st.open) ? 'chrome sembunyi' : 'chrome')).then((r) => { if (r && r.msg) { openChat(); if (r.ok) logAdd('task', r.msg); else addStamp(logAdd('err', r.msg)); } }).catch(() => {}); } catch { addStamp(logAdd('err', '/chrome butuh main.js dan preload.js versi baru.')); } },   // buka akun terakhir / sembunyikan panel
-    focus: () => setQuiet(!quiet), mute: toggleMute, sleep: () => goSleep(true), peek: () => setPeekMode(!peekMode), set: () => openPop(setPop), outfit: () => openPop(outfitPop),
+    mode: toggleMenuStyle, focus: () => setQuiet(!quiet), mute: toggleMute, sleep: () => goSleep(true), peek: () => setPeekMode(!peekMode), set: () => openPop(setPop), outfit: () => openPop(outfitPop),
   };
   if (acts[act]) acts[act]();
 });
@@ -3688,8 +4395,15 @@ function webPillRender() {
     webPillWas = pillOn;
     requestAnimationFrame(() => requestAnimationFrame(() => { for (const p of [menuEl, setPop, timerPop, outfitPop, clipPop]) { try { if (p && p.classList.contains('open')) placeFloat(p); } catch { /* abaikan */ } } }));
   }
+  if (!webSt || !webSt.open || webSt.closing) {   // v102: animasi keluar dulu (isi pil dipertahankan), baru disembunyikan
+    if (el.classList.contains('show') && !el.classList.contains('leaving')) {
+      el.classList.add('leaving');
+      setTimeout(() => { if (!(webSt && webSt.open && !webSt.closing)) { el.classList.remove('show', 'leaving'); el.textContent = ''; } }, 220);
+    }
+    return;
+  }
+  el.classList.remove('leaving');
   el.textContent = '';
-  if (!webSt || !webSt.open || webSt.closing) { el.classList.remove('show'); return; }
   (webSt.akun || []).forEach((a) => {
     if (!a) return;
     const b = document.createElement('button'), on = a.slot === webSt.slot;
@@ -3701,6 +4415,7 @@ function webPillRender() {
   });
   const hd = document.createElement('button'); hd.dataset.hide = '1'; hd.textContent = '–'; hd.title = 'Sembunyikan panel, tab tetap tersimpan (/chrome sembunyi)'; el.appendChild(hd);
   const x = document.createElement('button'); x.dataset.close = '1'; x.textContent = '✕'; x.title = 'Tutup panel dan buang tab (/chrome tutup)'; el.appendChild(x);
+  if (!el.classList.contains('show')) { el.classList.add('fresh'); setTimeout(() => el.classList.remove('fresh'), 1100); }   // v102b: stagger chip hanya saat pil baru muncul
   el.classList.add('show');
 }
 gid('webpill').addEventListener('click', (e) => {
@@ -5272,7 +5987,7 @@ const HELP = [
   '/ringkas <link video> [fokus]  Hermes mengambil transkrip video lalu merangkumnya (tanpa link = pakai link di clipboard)',
   '/rangkum [halaman|<link>|<path penuh>] [fokus]  rangkum halaman yang terbuka di /chrome (tanpa argumen), halaman web publik, atau file (path berspasi pakai tanda kutip; file hanya di folder yang terjangkau sandbox agen)',
   '/rea [cepat|dalam] <path file atau folder> [fokus]  cepat = triase lokal tanpa Hermes (hash, format, import, string; hitungan detik); standar / dalam = Hermes membedah dengan skill reverse-engineer-anything, dibekali fakta terukur; laporan penuh disimpan di rea-reports',
-  '/rea xref <path file> <nama API | potongan string | alamat fungsi>  (PE x86 / x64) fungsi mana yang memakai API atau string itu; /rea disasm <path file> [entry | 0xAlamat | rva:0x... | off:0x...] [jumlah baris]  disassembly (tanpa pustaka capstone hanya tampilan hex); keduanya lokal, tanpa Hermes. Seret file apa pun (bukan gambar) ke overlay = /rea cepat',
+  '/rea xref <path file> <nama API | potongan string | alamat fungsi>  (PE x86 / x64) fungsi mana yang memakai API atau string itu; /rea disasm <path file> [entry | 0xAlamat | rva:0x... | off:0x...] [jumlah baris]  disassembly (tanpa pustaka capstone hanya tampilan hex); keduanya lokal, tanpa Hermes. Seret gambar, dokumen (PDF, Word, Excel, PowerPoint), teks, audio, atau video ke overlay = lampiran untuk dianalisis; file lain (exe, dll, zip, apk, skrip) atau Shift+seret = /rea cepat',
   '',
   'Klik kanan karakter = menu aksi cepat.',
   'Tahan klik di kepala = elus. Colek berkali-kali = ngambek.',

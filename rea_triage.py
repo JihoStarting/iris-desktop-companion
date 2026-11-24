@@ -12,6 +12,9 @@ API:
     render(rep, compact=False) -> str
     triage_text(path, compact=False) -> str
 
+Penggabungan modul (23 Nov 2026, VERSION tetap): rea_extract.py (v95) dan rea_binary.py (v96) kini menjadi bagian berkas ini, seperti rea_assets.py;
+    berkas terpisahnya tidak diperlukan lagi (lihat bagian "rea_binary.py ... rea_extract.py DIGABUNG" di dekat akhir berkas). CLI lewat --bin / --ex.
+
 v95: modul triase ini TIDAK berubah perilakunya. Ekstraksi / penjelajahan container dipisah ke rea_extract.py
 (ZIP, TAR/gz, GZIP, ISO 9660, ISO PSP). Fungsi tipis di bawah hanya meneruskan ke sana (impor malas, opsional):
     container_text(path, max_chars=0) -> str      daftar isi ringkas untuk laporan / Hermes
@@ -11574,11 +11577,7 @@ def rea_api(request) -> dict:
 
 
 def _has_binary() -> bool:
-    try:
-        import rea_binary  # noqa: F401
-        return True
-    except ImportError:
-        return False
+    return True   # Binary Workbench sudah digabung ke berkas ini (23 Nov 2026)
 
 
 # ---------------------------------------------------------------------------
@@ -11587,11 +11586,8 @@ def _has_binary() -> bool:
 
 
 def _extract_mod():
-    try:
-        import rea_extract
-        return rea_extract
-    except ImportError:
-        return None
+    """Mesin ekstraksi container (dulu rea_extract.py, digabung 23 Nov 2026); fasad dari bagian bawah berkas ini."""
+    return _EX_API
 
 
 def container_text(path, max_chars: int = 0) -> str:
@@ -14734,20 +14730,14 @@ def assets_carve(path, outdir=None) -> dict:
 
 def hex_text(path, offset=0, length: int = 256, encoding: str = "ascii") -> str:
     """Tampilan hex hanya-baca (v96, rea_binary.py). Gagal -> pesan, tidak melempar."""
-    try:
-        import rea_binary
-    except ImportError:
-        return "Binary Workbench (rea_binary.py) tidak ditemukan di folder yang sama."
+    rea_binary = _binary_mod()
     r = rea_binary.hex_view(path, offset, length, encoding=encoding)
     return r["text"] if r.get("status") == "success" else "HEX gagal: %s" % r.get("message", r.get("code"))
 
 
 def compare_text(path_a, path_b) -> str:
     """Ringkasan perbandingan dua berkas / dua folder (v96)."""
-    try:
-        import rea_binary
-    except ImportError:
-        return "Binary Workbench (rea_binary.py) tidak ditemukan di folder yang sama."
+    rea_binary = _binary_mod()
     pa, pb = Path(path_a), Path(path_b)
     r = rea_binary.compare_dirs(pa, pb) if pa.is_dir() else rea_binary.compare_files(pa, pb)
     if r.get("status") != "success":
@@ -14762,6 +14752,3904 @@ def compare_text(path_a, path_b) -> str:
                 L.append("Sisa %d byte hanya ada di berkas %s" % (r["extra_bytes"]["length"], r["extra_bytes"]["in"]))
         return "\n".join(L)
     return "BANDINGKAN FOLDER: +%d baru, -%d hilang, ~%d berubah, %d sama" % (len(r["added"]), len(r["removed"]), len(r["changed"]), r["unchanged_count"])
+
+
+
+# ======================================================================================================
+# rea_binary.py (Binary Workbench v96) dan rea_extract.py (mesin ekstraksi container v95) DIGABUNG ke berkas ini pada 23 Nov 2026
+# (tanpa ubah perilaku, VERSION tetap), sama seperti rea_assets.py. Nama yang bentrok diberi awalan _bn_ (rea_binary) atau _ex_ (rea_extract):
+# VERSION, _clean, _err, main, dan (khusus rea_extract) MAX_ENTRIES, _RESERVED, _entropy, _human, _open_regular, _safe_rel, extract, formats.
+# Akses dari bagian lain lewat _binary_mod() / _extract_mod() (fasad: nama aslinya tetap bisa dipakai, mis. mod.hex_view, mod.open_container).
+# CLI asli tersedia lewat:  python rea_triage.py --bin <hex|inspect|search|compare|patch|undo|history|restore> ...
+#                           python rea_triage.py --ex  <list|extract|formats> ...
+# ======================================================================================================
+
+# ---------------------------------------------------------------------------------------------------
+# Binary Workbench (dulu rea_binary.py)
+# ---------------------------------------------------------------------------------------------------
+_BN_DOC = """rea_binary.py - Binary Workbench untuk REA (v96; jembatan tipis ada di rea_triage.py: hex_text, compare_text).
+
+Hanya pustaka standar. TIDAK menjalankan apa pun dari berkas. Semua fungsi tidak melempar: galat dikembalikan sebagai
+    {"status": "error", "code": "...", "message": "..."}
+dan keberhasilan sebagai {"status": "success", ...}.
+
+Kontrak yang dipakai rea_triage.py (jangan diubah tanpa mengubah pemanggilnya):
+    hex_view(path, offset=0, length=256, encoding="ascii") -> {"status", "text", ...}
+    compare_files(a, b) -> {"status", "a", "b", "size_a", "size_b", "size_delta", "identical", "sha256_a", "sha256_b",
+                            "differing_bytes", "changed_ranges": [{"offset", "length"}], "truncated", "first_diff",
+                            "extra_bytes": {"length", "in"} | None}
+    compare_dirs(a, b)  -> {"status", "added", "removed", "changed", "unchanged_count", ...}
+
+Tambahan (aditif):
+    inspect_at(path, offset)  / inspect_text(...)   inspektor data: int / float / waktu / GUID / IPv4 di satu offset
+    search(path, pattern, mode="auto", ...) / search_text(...)   cari hex (dengan ??), teks, UTF-16, regex
+    patch(path, offset, data, expect=None, dry_run=False)        timpa byte di tempat (panjang tetap) + jurnal undo
+    undo(path, id=None, force=False) / history(path) / restore_original(path)
+
+Patch: HANYA menimpa (tidak menambah / menghapus byte). Sebelum patch pertama, salinan asli disimpan di `<berkas>.rea_orig`
+(kecuali backup=False atau berkas > 1 GiB) dan tiap patch dicatat di `<berkas>.rea_undo.json`.
+
+CLI:  python rea_binary.py hex FILE [OFFSET [LEN]] | inspect FILE OFFSET | search FILE PATTERN [--mode hex|text|utf16|regex] [-i]
+      | compare A B | patch FILE OFFSET HEX [--expect HEX] [--dry-run] | undo FILE [ID] | history FILE | restore FILE
+"""
+
+
+import hashlib
+import json
+import math
+import os
+import re
+import shutil
+import stat
+import struct
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+_bn_VERSION = "96.0"
+
+MAX_HEX = 1 << 20              # byte maksimum per tampilan hex
+MAX_RANGES = 200               # rentang perbedaan yang dicatat saat compare
+MAX_HITS = 500                 # hasil pencarian maksimum
+SEARCH_CHUNK = 4 * 1024 * 1024
+SEARCH_OVERLAP = 4096          # panjang kecocokan maksimum yang dijamin tidak terpotong antar-potongan
+SEARCH_TIME = 30.0             # detik
+COMPARE_CHUNK = 1024 * 1024
+MAX_DIR_FILES = 100_000
+MAX_PATCH = 1024 * 1024
+MAX_BACKUP = 1024 ** 3
+MAX_JOURNAL = 2000
+HASH_LIMIT = 64 * 1024 * 1024  # hash seluruh berkas setelah patch hanya bila <= ini
+
+
+# ---------------------------------------------------------------------------------------------------
+# Dasar
+# ---------------------------------------------------------------------------------------------------
+
+def _bn_err(code: str, message, **kw) -> dict:
+    d = {"status": "error", "code": code, "message": _bn_clean(message, 300)}
+    d.update(kw)
+    return d
+
+
+def _bn_clean(s, n: int = 200) -> str:
+    """Buang karakter kontrol / pemisah baris (anti injeksi ke laporan)."""
+    return "".join(c if c.isprintable() else "?" for c in str(s))[:n]
+
+
+class _NotRegular(OSError):
+    pass
+
+
+def _fail(e: BaseException) -> dict:
+    if isinstance(e, FileNotFoundError):
+        return _bn_err("not_found", "berkas tidak ditemukan: %s" % _bn_clean(getattr(e, "filename", "") or "", 120))
+    if isinstance(e, IsADirectoryError):
+        return _bn_err("is_directory", "path adalah folder, bukan berkas")
+    if isinstance(e, PermissionError):
+        return _bn_err("permission", "tidak punya izin: %s" % _bn_clean(getattr(e, "filename", "") or "", 120))
+    if isinstance(e, _NotRegular):
+        return _bn_err("not_regular", str(e))
+    if isinstance(e, OSError):
+        return _bn_err("io_error", "%s: %s" % (type(e).__name__, e))
+    return _bn_err("failed", "%s: %s" % (type(e).__name__, e))
+
+
+class _Src:
+    """Berkas dibuka SEKALI, lalu fstat: hanya berkas biasa (tolak FIFO / perangkat / folder) tanpa celah TOCTOU."""
+
+    def __init__(self, path, write: bool = False):
+        flags = (os.O_RDWR if write else os.O_RDONLY) | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0)
+        fd = os.open(str(Path(str(path)).expanduser()), flags)
+        try:
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode):
+                raise _NotRegular("bukan berkas biasa (FIFO / perangkat / folder ditolak)")
+            self.fh = os.fdopen(fd, "r+b" if write else "rb")
+        except BaseException:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            raise
+        self.size = st.st_size
+
+    def read_at(self, off: int, n: int) -> bytes:
+        if off < 0 or n <= 0:
+            return b""
+        self.fh.seek(off)
+        return self.fh.read(n)
+
+    def close(self):
+        try:
+            self.fh.close()
+        except OSError:
+            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        self.close()
+
+
+def _to_int(v, name: str = "nilai") -> int:
+    if isinstance(v, bool):
+        raise ValueError("%s tidak valid" % name)
+    if isinstance(v, int):
+        return v
+    try:
+        return int(str(v).strip(), 0)
+    except ValueError:
+        raise ValueError("%s bukan bilangan bulat: %r" % (name, str(v)[:40]))
+
+
+def _norm_offset(off, size: int) -> int:
+    o = _to_int(off, "offset")
+    return max(0, size + o) if o < 0 else o     # offset negatif = dihitung dari akhir berkas
+
+
+def _parse_hex(s, allow_wild: bool = False):
+    """'4D 5A 90', '4d5a90', '0x4D,0x5A', '4D ?? 00' -> list[int | None] (None = wildcard)."""
+    t = re.sub(r"0x", " ", str(s), flags=re.I)
+    toks = [x for x in re.split(r"[\s,;:-]+", t) if x]
+    if len(toks) == 1 and re.fullmatch(r"(?:[0-9A-Fa-f]{2}|\?\?)+", toks[0]) and len(toks[0]) > 2:
+        toks = re.findall(r"[0-9A-Fa-f]{2}|\?\?", toks[0])
+    out = []
+    for tk in toks:
+        if tk in ("?", "??"):
+            if not allow_wild:
+                raise ValueError("wildcard ?? tidak boleh di sini")
+            out.append(None)
+        elif re.fullmatch(r"[0-9A-Fa-f]{1,2}", tk):
+            out.append(int(tk, 16))
+        else:
+            raise ValueError("token hex tidak valid: %r" % tk[:20])
+    if not out:
+        raise ValueError("pola hex kosong")
+    return out
+
+
+def _as_bytes(data) -> bytes:
+    """bytes apa adanya; str: 'text:...' / 'u16:...' atau hex ('90 90')."""
+    if isinstance(data, (bytes, bytearray, memoryview)):
+        return bytes(data)
+    s = str(data)
+    if s.startswith("text:"):
+        return s[5:].encode("utf-8")
+    if s.startswith("u16:"):
+        return s[4:].encode("utf-16-le")
+    return bytes(_parse_hex(s))
+
+
+def _sha256_file(path) -> str:
+    h = hashlib.sha256()
+    with _Src(path) as s:
+        pos = 0
+        while True:
+            b = s.read_at(pos, COMPARE_CHUNK)
+            if not b:
+                break
+            h.update(b)
+            pos += len(b)
+    return h.hexdigest()
+
+
+# ---------------------------------------------------------------------------------------------------
+# Hex view
+# ---------------------------------------------------------------------------------------------------
+
+_LATIN1 = "".join(chr(i) if (0x20 <= i <= 0x7E or (0xA1 <= i <= 0xFF and i != 0xAD)) else "." for i in range(256))
+_bn_ASCII = "".join(chr(i) if 0x20 <= i <= 0x7E else "." for i in range(256))
+
+
+def _ebcdic_table() -> str:
+    t = []
+    for i in range(256):
+        try:
+            c = bytes([i]).decode("cp037")
+        except UnicodeDecodeError:
+            c = "."
+        t.append(c if (0x20 <= ord(c) <= 0x7E) else ".")
+    return "".join(t)
+
+
+_EBCDIC = _ebcdic_table()
+_ENC_ALIASES = {"ascii": "ascii", "latin1": "latin1", "latin-1": "latin1", "iso-8859-1": "latin1", "cp1252": "latin1",
+                "ebcdic": "ebcdic", "cp037": "ebcdic", "utf16": "utf16", "utf-16": "utf16", "utf16le": "utf16", "utf-16le": "utf16"}
+
+
+def _text_column(row: bytes, enc: str) -> str:
+    if enc == "utf16":
+        out = []
+        for i in range(0, len(row) - 1, 2):
+            u = row[i] | (row[i + 1] << 8)
+            c = chr(u) if (0x20 <= u < 0xD800 or 0xE000 <= u < 0xFFFE) else "."
+            out.append(c if c.isprintable() else ".")
+        if len(row) % 2:
+            out.append(".")
+        return "".join(out)
+    table = {"ascii": _bn_ASCII, "latin1": _LATIN1, "ebcdic": _EBCDIC}[enc]
+    return "".join(table[b] for b in row)
+
+
+def hex_view(path, offset=0, length: int = 256, encoding: str = "ascii", width: int = 16) -> dict:
+    """Tampilan hex hanya-baca. offset negatif = dari akhir berkas. length dibatasi MAX_HEX."""
+    try:
+        enc = _ENC_ALIASES.get(str(encoding).lower())
+        if enc is None:
+            return _bn_err("bad_encoding", "encoding tidak didukung: %s (ascii, latin1, ebcdic, utf16)" % _bn_clean(encoding, 20))
+        width = _to_int(width, "width")
+        width = width if width in (8, 16, 32) else 16
+        length = _to_int(length, "length")
+        length = 256 if length <= 0 else min(length, MAX_HEX)
+        with _Src(path) as s:
+            size = s.size
+            off = _norm_offset(offset, size)
+            if size == 0:
+                return {"status": "success", "path": str(path), "size": 0, "offset": 0, "length": 0, "eof": True, "next_offset": None,
+                        "encoding": enc, "text": "HEX %s | berkas kosong (0 byte)" % _bn_clean(Path(str(path)).name, 80)}
+            if off >= size:
+                return _bn_err("offset_out_of_range", "offset 0x%X di luar berkas (ukuran %d byte = 0x%X)" % (off, size, size))
+            data = s.read_at(off, length)
+        aw = 16 if size > 0xFFFFFFFF else 8
+        L = ["HEX %s | ukuran %d (0x%X) | offset 0x%X | %d byte | %s" % (_bn_clean(Path(str(path)).name, 80), size, size, off, len(data), enc)]
+        for i in range(0, len(data), width):
+            row = data[i:i + width]
+            cells = []
+            for j in range(width):
+                cells.append("%02X" % row[j] if j < len(row) else "  ")
+                if j % 8 == 7 and j != width - 1:
+                    cells.append("")
+            L.append("%0*X  %s  |%s|" % (aw, off + i, " ".join(cells), _text_column(row, enc)))
+        end = off + len(data)
+        return {"status": "success", "path": str(path), "size": size, "offset": off, "length": len(data), "eof": end >= size,
+                "next_offset": None if end >= size else end, "encoding": enc, "text": "\n".join(L)}
+    except Exception as e:
+        return _fail(e)
+
+
+# ---------------------------------------------------------------------------------------------------
+# Inspektor data
+# ---------------------------------------------------------------------------------------------------
+
+def _fmt_time(dt) -> str:
+    return dt.strftime("%Y-%m-%d %H:%M:%S") + " UTC"
+
+
+def _plausible(dt) -> bool:
+    return 1990 <= dt.year <= 2100
+
+
+def inspect_at(path, offset=0) -> dict:
+    """Tafsirkan byte di `offset` sebagai berbagai tipe data (little / big endian), waktu, GUID, IPv4, karakter."""
+    try:
+        with _Src(path) as s:
+            off = _norm_offset(offset, s.size)
+            if off >= s.size:
+                return _bn_err("offset_out_of_range", "offset 0x%X di luar berkas (ukuran %d)" % (off, s.size))
+            b = s.read_at(off, 16)
+        n = len(b)
+        v: dict = {}
+        v["byte"] = "0x%02X  u8=%d  i8=%d  bin=%s  char=%r" % (b[0], b[0], b[0] - 256 if b[0] > 127 else b[0], format(b[0], "08b"), chr(b[0]) if 0x20 <= b[0] < 0x7F else ".")
+        for size, code in ((2, "H"), (4, "I"), (8, "Q")):
+            if n >= size:
+                for endian, tag in (("<", "LE"), (">", "BE")):
+                    u = struct.unpack_from(endian + code, b)[0]
+                    i = struct.unpack_from(endian + code.lower(), b)[0]
+                    v["u%d %s" % (size * 8, tag)] = "%d (0x%X)  | i%d=%d" % (u, u, size * 8, i)
+        for size, code in ((4, "f"), (8, "d")):
+            if n >= size:
+                for endian, tag in (("<", "LE"), (">", "BE")):
+                    f = struct.unpack_from(endian + code, b)[0]
+                    v["f%d %s" % (size * 8, tag)] = "nan" if math.isnan(f) else ("%r" % f)
+        if n >= 4:
+            v["IPv4"] = ".".join(str(x) for x in b[:4])
+            t = struct.unpack_from("<I", b)[0]
+            try:
+                dt = datetime.fromtimestamp(t, timezone.utc)
+                if _plausible(dt):
+                    v["Unix time32 LE"] = _fmt_time(dt)
+            except (OverflowError, OSError, ValueError):
+                pass
+            tb = struct.unpack_from(">I", b)[0]
+            try:
+                dt = datetime.fromtimestamp(tb, timezone.utc)
+                if _plausible(dt):
+                    v["Unix time32 BE"] = _fmt_time(dt)
+            except (OverflowError, OSError, ValueError):
+                pass
+            tm, dd = struct.unpack_from("<HH", b)
+            sec, mi, hh = (tm & 31) * 2, (tm >> 5) & 63, tm >> 11
+            da, mo, yr = dd & 31, (dd >> 5) & 15, 1980 + (dd >> 9)
+            if 1 <= da <= 31 and 1 <= mo <= 12 and hh < 24 and mi < 60 and sec < 60 and 1990 <= yr <= 2100:
+                v["DOS date/time"] = "%04d-%02d-%02d %02d:%02d:%02d" % (yr, mo, da, hh, mi, sec)
+        if n >= 8:
+            ft = struct.unpack_from("<Q", b)[0]
+            try:
+                dt = datetime(1601, 1, 1, tzinfo=timezone.utc) + timedelta(microseconds=ft // 10)
+                if _plausible(dt):
+                    v["FILETIME LE"] = _fmt_time(dt)
+            except OverflowError:
+                pass
+            t64 = struct.unpack_from("<Q", b)[0]
+            try:
+                dt = datetime.fromtimestamp(t64, timezone.utc)
+                if _plausible(dt):
+                    v["Unix time64 LE"] = _fmt_time(dt)
+            except (OverflowError, OSError, ValueError):
+                pass
+        if n >= 16:
+            d1, d2, d3 = struct.unpack_from("<IHH", b)
+            v["GUID (mixed-endian)"] = "{%08X-%04X-%04X-%s-%s}" % (d1, d2, d3, b[8:10].hex().upper(), b[10:16].hex().upper())
+        for ln in (4, 3, 2, 1):
+            try:
+                ch = b[:ln].decode("utf-8")
+                if ch and ch.isprintable():
+                    v["UTF-8"] = "%r (U+%04X)" % (ch[0], ord(ch[0]))
+                    break
+            except UnicodeDecodeError:
+                continue
+        if n >= 2:
+            u = b[0] | (b[1] << 8)
+            if 0x20 <= u < 0xD800:
+                v["UTF-16 LE"] = "%r (U+%04X)" % (chr(u), u)
+        return {"status": "success", "path": str(path), "offset": off, "bytes": b.hex(), "values": v}
+    except Exception as e:
+        return _fail(e)
+
+
+def inspect_text(path, offset=0) -> str:
+    r = inspect_at(path, offset)
+    if r.get("status") != "success":
+        return "INSPEKSI gagal: %s" % r.get("message", r.get("code"))
+    L = ["INSPEKTOR DATA %s @ 0x%X | %s" % (_bn_clean(Path(str(path)).name, 80), r["offset"], " ".join(r["bytes"][i:i + 2] for i in range(0, len(r["bytes"]), 2)).upper())]
+    L += ["  %-20s %s" % (k, x) for k, x in r["values"].items()]
+    return "\n".join(L)
+
+
+# ---------------------------------------------------------------------------------------------------
+# Pencarian
+# ---------------------------------------------------------------------------------------------------
+
+def _compile_pattern(pattern, mode: str, ignore_case: bool):
+    p = str(pattern)
+    m = (mode or "auto").lower()
+    if m == "auto":
+        low = p.lower()
+        if low.startswith("hex:"):
+            m, p = "hex", p[4:]
+        elif low.startswith("re:"):
+            m, p = "regex", p[3:]
+        elif low.startswith("u16:"):
+            m, p = "utf16", p[4:]
+        else:
+            m = "text"
+    if not p:
+        raise ValueError("pola kosong")
+    if len(p) > 2000:
+        raise ValueError("pola terlalu panjang (maks 2000 karakter)")
+    flags = re.DOTALL | (re.IGNORECASE if ignore_case else 0)
+    if m == "hex":
+        toks = _parse_hex(p, allow_wild=True)
+        rx = b"".join(b"." if t is None else re.escape(bytes([t])) for t in toks)
+        return m, re.compile(rx, re.DOTALL), len(toks)
+    if m == "text":
+        raw = p.encode("utf-8")
+        return m, re.compile(re.escape(raw), flags), len(raw)
+    if m == "utf16":
+        raw = p.encode("utf-16-le")
+        return m, re.compile(re.escape(raw), re.DOTALL), len(raw)    # huruf besar / kecil UTF-16 tidak dilipat
+    if m == "regex":
+        return m, re.compile(p.encode("latin-1", "replace"), flags), 0
+    raise ValueError("mode pencarian tidak dikenal: %s (auto, hex, text, utf16, regex)" % m[:20])
+
+
+def search(path, pattern, mode: str = "auto", ignore_case: bool = False, start=0, end=None, max_hits: int = 200, context: int = 8) -> dict:
+    """Cari pola di berkas. mode: auto (awalan 'hex:' / 're:' / 'u16:' atau teks biasa) | hex (boleh ??) | text | utf16 | regex (bytes, latin-1).
+    Mode regex memakai mesin `re` Python: pola yang sangat rumit bisa lambat; ada batas waktu antar-potongan (SEARCH_TIME)."""
+    try:
+        m, rx, _plen = _compile_pattern(pattern, mode, ignore_case)
+        max_hits = max(1, min(_to_int(max_hits, "max_hits"), MAX_HITS))
+        context = max(0, min(_to_int(context, "context"), 64))
+        t0 = time.time()
+        hits: list = []
+        truncated = timeout = False
+        with _Src(path) as s:
+            lo = _norm_offset(start, s.size)
+            hi = s.size if end is None else min(s.size, _norm_offset(end, s.size))
+            pos = lo
+            while pos < hi and not truncated:
+                if time.time() - t0 > SEARCH_TIME:
+                    timeout = truncated = True
+                    break
+                chunk = s.read_at(pos, min(SEARCH_CHUNK + SEARCH_OVERLAP, hi - pos))
+                more = pos + SEARCH_CHUNK < hi
+                for mt in rx.finditer(chunk):
+                    a = mt.start()
+                    if more and a >= SEARCH_CHUNK:
+                        break
+                    if mt.end() == a:
+                        continue
+                    hits.append((pos + a, mt.end() - a))
+                    if len(hits) >= max_hits:
+                        truncated = True
+                        break
+                pos += SEARCH_CHUNK
+            out = []
+            for off, ln in hits:
+                ctx = s.read_at(max(0, off - context), ln + 2 * context) if context else b""
+                body = s.read_at(off, min(ln, 48))
+                out.append({"offset": off, "length": ln, "hex": body.hex(" ").upper(), "ascii": "".join(_bn_ASCII[x] for x in body),
+                            "context_ascii": "".join(_bn_ASCII[x] for x in ctx) if context else ""})
+        return {"status": "success", "path": str(path), "mode": m, "pattern": _bn_clean(pattern, 120), "count": len(out), "hits": out,
+                "truncated": truncated, "timeout": timeout, "range": [lo, hi], "elapsed": round(time.time() - t0, 3)}
+    except (ValueError, re.error) as e:
+        return _bn_err("bad_pattern", "%s" % e)
+    except Exception as e:
+        return _fail(e)
+
+
+def search_text(path, pattern, **kw) -> str:
+    r = search(path, pattern, **kw)
+    if r.get("status") != "success":
+        return "CARI gagal: %s" % r.get("message", r.get("code"))
+    L = ["CARI %s [%s] di %s: %d hasil%s" % (r["pattern"], r["mode"], _bn_clean(Path(str(path)).name, 80), r["count"],
+                                           " (DIPOTONG%s)" % (", waktu habis" if r["timeout"] else "") if r["truncated"] else "")]
+    for h in r["hits"][:50]:
+        L.append("  0x%08X  +%d  %s  |%s|" % (h["offset"], h["length"], h["hex"][:48], h["ascii"][:24]))
+    if r["count"] > 50:
+        L.append("  ... +%d hasil lain" % (r["count"] - 50))
+    return "\n".join(L)
+
+
+# ---------------------------------------------------------------------------------------------------
+# Compare
+# ---------------------------------------------------------------------------------------------------
+
+def compare_files(a, b, max_ranges: int = MAX_RANGES) -> dict:
+    """Bandingkan dua berkas byte demi byte (hash dihitung dalam satu lintasan). Rentang berbeda digabung bila bersebelahan."""
+    try:
+        max_ranges = max(1, min(_to_int(max_ranges, "max_ranges"), 5000))
+        with _Src(a) as sa, _Src(b) as sb:
+            size_a, size_b = sa.size, sb.size
+            common = min(size_a, size_b)
+            ha, hb = hashlib.sha256(), hashlib.sha256()
+            ranges: list = []
+            differing = 0
+            first = None
+            truncated = False
+            pos = 0
+            open_end = -1       # akhir rentang terakhir (untuk menggabungkan rentang yang menyambung antar-potongan)
+            while pos < common:
+                n = min(COMPARE_CHUNK, common - pos)
+                ca, cb = sa.read_at(pos, n), sb.read_at(pos, n)
+                if len(ca) != len(cb) or not ca:
+                    break       # berkas berubah saat dibaca
+                ha.update(ca)
+                hb.update(cb)
+                if ca != cb:
+                    i, ln = 0, len(ca)
+                    while i < ln:
+                        if ca[i] == cb[i]:
+                            i += 1
+                            continue
+                        j = i
+                        while j < ln and ca[j] != cb[j]:
+                            j += 1
+                        absolute = pos + i
+                        differing += j - i
+                        if first is None:
+                            first = absolute
+                        if ranges and open_end == absolute:
+                            ranges[-1]["length"] += j - i
+                        elif len(ranges) < max_ranges:
+                            ranges.append({"offset": absolute, "length": j - i})
+                        else:
+                            truncated = True
+                        open_end = absolute + (j - i)
+                        i = j
+                pos += len(ca)
+            extra = None
+            if size_a != size_b:
+                longer, sl, which = (sa, size_a, "A") if size_a > size_b else (sb, size_b, "B")
+                hl = ha if which == "A" else hb
+                p2 = common
+                while p2 < sl:
+                    c = longer.read_at(p2, COMPARE_CHUNK)
+                    if not c:
+                        break
+                    hl.update(c)
+                    p2 += len(c)
+                extra = {"length": abs(size_a - size_b), "in": which}
+                if first is None:
+                    first = common
+            return {"status": "success", "a": str(a), "b": str(b), "size_a": size_a, "size_b": size_b, "size_delta": size_b - size_a,
+                    "identical": size_a == size_b and differing == 0, "sha256_a": ha.hexdigest(), "sha256_b": hb.hexdigest(),
+                    "differing_bytes": differing, "changed_ranges": ranges, "truncated": truncated, "first_diff": first, "extra_bytes": extra}
+    except Exception as e:
+        return _fail(e)
+
+
+def _walk_files(root: Path) -> dict:
+    """{path relatif (posix): (path, ukuran)} untuk berkas biasa; tautan simbolik dan berkas khusus dilewati."""
+    out: dict = {}
+    stack = [root]
+    while stack:
+        d = stack.pop()
+        try:
+            it = list(os.scandir(d))
+        except OSError:
+            continue
+        for e in it:
+            try:
+                if e.is_symlink():
+                    continue
+                if e.is_dir(follow_symlinks=False):
+                    stack.append(Path(e.path))
+                elif e.is_file(follow_symlinks=False):
+                    out[Path(e.path).relative_to(root).as_posix()] = (e.path, e.stat(follow_symlinks=False).st_size)
+                    if len(out) > MAX_DIR_FILES:
+                        raise OverflowError("terlalu banyak berkas (> %d)" % MAX_DIR_FILES)
+            except OSError:
+                continue
+    return out
+
+
+def _same_content(pa: str, pb: str) -> bool:
+    with _Src(pa) as x, _Src(pb) as y:
+        if x.size != y.size:
+            return False
+        pos = 0
+        while pos < x.size:
+            if x.read_at(pos, COMPARE_CHUNK) != y.read_at(pos, COMPARE_CHUNK):
+                return False
+            pos += COMPARE_CHUNK
+    return True
+
+
+def compare_dirs(a, b) -> dict:
+    """Bandingkan dua folder (rekursif, isi berkas dibandingkan langsung). added = hanya di B, removed = hanya di A."""
+    try:
+        pa, pb = Path(str(a)).expanduser(), Path(str(b)).expanduser()
+        for p in (pa, pb):
+            if not p.is_dir():
+                return _bn_err("not_directory", "bukan folder: %s" % _bn_clean(p, 120))
+        fa, fb = _walk_files(pa), _walk_files(pb)
+        added = sorted(set(fb) - set(fa))
+        removed = sorted(set(fa) - set(fb))
+        changed, same = [], 0
+        for k in sorted(set(fa) & set(fb)):
+            (xa, sza), (xb, szb) = fa[k], fb[k]
+            try:
+                eq = sza == szb and _same_content(xa, xb)
+            except OSError:
+                eq = False
+            if eq:
+                same += 1
+            else:
+                changed.append({"path": k, "size_a": sza, "size_b": szb})
+        return {"status": "success", "a": str(a), "b": str(b), "added": added, "removed": removed, "changed": changed, "unchanged_count": same}
+    except Exception as e:
+        return _fail(e)
+
+
+# ---------------------------------------------------------------------------------------------------
+# Patch + undo
+# ---------------------------------------------------------------------------------------------------
+
+def _journal_path(path) -> Path:
+    p = Path(str(path)).expanduser()
+    return p.with_name(p.name + ".rea_undo.json")
+
+
+def _orig_path(path) -> Path:
+    p = Path(str(path)).expanduser()
+    return p.with_name(p.name + ".rea_orig")
+
+
+def _load_journal(path) -> dict:
+    jp = _journal_path(path)
+    if jp.exists():
+        try:
+            j = json.loads(jp.read_text(encoding="utf-8"))
+            if isinstance(j, dict) and isinstance(j.get("entries"), list):
+                return j
+        except (OSError, ValueError):
+            raise ValueError("jurnal undo rusak: %s" % jp.name)
+    return {"version": 1, "target": Path(str(path)).name, "original_sha256": None, "original_size": None, "backup": None, "entries": []}
+
+
+def _save_journal(path, j: dict):
+    jp = _journal_path(path)
+    tmp = jp.with_name(jp.name + ".tmp")
+    tmp.write_text(json.dumps(j, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, jp)
+
+
+def _fsync_write(s: _Src, off: int, data: bytes):
+    s.fh.seek(off)
+    s.fh.write(data)
+    s.fh.flush()
+    try:
+        os.fsync(s.fh.fileno())
+    except OSError:
+        pass
+
+
+def patch(path, offset, data, expect=None, dry_run: bool = False, note: str = "", backup: bool = True) -> dict:
+    """Timpa byte di `offset` (panjang tetap; tidak menambah / menghapus). data: bytes, atau str hex ('90 90') / 'text:...' / 'u16:...'.
+    expect (opsional): byte lama yang diharapkan; tidak cocok -> tidak ada yang ditulis. Setiap patch dicatat di jurnal untuk undo()."""
+    try:
+        new = _as_bytes(data)
+        if not new:
+            return _bn_err("empty_patch", "data patch kosong")
+        if len(new) > MAX_PATCH:
+            return _bn_err("patch_too_large", "patch %d byte melebihi batas %d" % (len(new), MAX_PATCH))
+        exp = _as_bytes(expect) if expect not in (None, "") else None
+        with _Src(path, write=not dry_run) as s:
+            off = _norm_offset(offset, s.size)
+            if off + len(new) > s.size:
+                return _bn_err("out_of_range", "patch 0x%X..0x%X melewati akhir berkas (%d byte); patch hanya menimpa" % (off, off + len(new), s.size))
+            old = s.read_at(off, len(new))
+            if exp is not None and old != exp:
+                return _bn_err("expect_mismatch", "byte lama di 0x%X adalah %s, bukan %s; tidak ada yang ditulis" % (off, old.hex(" ").upper()[:60], exp.hex(" ").upper()[:60]))
+            res = {"status": "success", "path": str(path), "offset": off, "length": len(new), "old_hex": old.hex(" ").upper(), "new_hex": new.hex(" ").upper(),
+                   "dry_run": bool(dry_run), "unchanged": old == new}
+            if dry_run or old == new:
+                return res
+            j = _load_journal(path)
+            if len(j["entries"]) >= MAX_JOURNAL:
+                return _bn_err("journal_full", "jurnal undo penuh (%d entri); pulihkan atau buang jurnal dulu" % MAX_JOURNAL)
+            if not j["entries"] and j.get("original_sha256") is None:
+                if backup and s.size <= MAX_BACKUP and not _orig_path(path).exists():
+                    shutil.copyfile(str(Path(str(path)).expanduser()), str(_orig_path(path)))
+                    j["backup"] = _orig_path(path).name
+                j["original_size"] = s.size
+                j["original_sha256"] = _sha256_file(path) if s.size <= HASH_LIMIT else None
+            nid = max([e["id"] for e in j["entries"]] + [0]) + 1
+            entry = {"id": nid, "time": datetime.now(timezone.utc).isoformat(timespec="seconds"), "offset": off, "old": old.hex(), "new": new.hex(),
+                     "note": _bn_clean(note, 120), "undone": False}
+            j["entries"].append(entry)
+            _save_journal(path, j)          # jurnal lebih dulu: bila crash, perubahan tetap bisa dibalik
+            try:
+                _fsync_write(s, off, new)
+            except BaseException:
+                j["entries"].pop()
+                _save_journal(path, j)
+                raise
+        res["id"] = nid
+        res["sha256_after"] = _sha256_file(path) if Path(str(path)).stat().st_size <= HASH_LIMIT else None
+        res["backup"] = j.get("backup")
+        return res
+    except ValueError as e:
+        return _bn_err("bad_argument", e)
+    except Exception as e:
+        return _fail(e)
+
+
+def history(path) -> dict:
+    try:
+        if not Path(str(path)).expanduser().is_file():
+            return _bn_err("not_found", "berkas tidak ditemukan")
+        j = _load_journal(path)
+        return {"status": "success", "path": str(path), "original_sha256": j.get("original_sha256"), "original_size": j.get("original_size"),
+                "backup": j.get("backup") if _orig_path(path).exists() else None, "entries": j["entries"]}
+    except Exception as e:
+        return _fail(e)
+
+
+def undo(path, id=None, force: bool = False) -> dict:
+    """Balikkan patch terakhir yang belum di-undo (atau `id`). Byte saat ini harus sama dengan byte hasil patch (kecuali force=True)."""
+    try:
+        j = _load_journal(path)
+        live = [e for e in j["entries"] if not e.get("undone")]
+        if not live:
+            return _bn_err("nothing_to_undo", "tidak ada patch yang bisa di-undo")
+        if id is None:
+            e = live[-1]
+        else:
+            tid = _to_int(id, "id")
+            e = next((x for x in live if x["id"] == tid), None)
+            if e is None:
+                return _bn_err("no_such_patch", "patch #%d tidak ada atau sudah di-undo" % tid)
+        new, old = bytes.fromhex(e["new"]), bytes.fromhex(e["old"])
+        with _Src(path, write=True) as s:
+            cur = s.read_at(e["offset"], len(new))
+            if cur != new and not force:
+                return _bn_err("changed_since", "byte di 0x%X sudah berubah sejak patch #%d (sekarang %s); pakai force untuk tetap memulihkan" % (
+                    e["offset"], e["id"], cur.hex(" ").upper()[:60]))
+            _fsync_write(s, e["offset"], old)
+        e["undone"] = True
+        e["undone_time"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        _save_journal(path, j)
+        return {"status": "success", "path": str(path), "id": e["id"], "offset": e["offset"], "length": len(old), "restored_hex": old.hex(" ").upper(),
+                "remaining": len([x for x in j["entries"] if not x.get("undone")])}
+    except ValueError as e:
+        return _bn_err("bad_argument", e)
+    except Exception as e:
+        return _fail(e)
+
+
+def restore_original(path) -> dict:
+    """Kembalikan berkas ke salinan asli (`.rea_orig`) dan tandai semua patch sebagai di-undo. Tidak jalan bila salinan tak ada."""
+    try:
+        op = _orig_path(path)
+        if not op.is_file():
+            return _bn_err("no_backup", "salinan asli (%s) tidak ada" % op.name)
+        j = _load_journal(path)
+        target = Path(str(path)).expanduser()
+        tmp = target.with_name(target.name + ".rea_restore.tmp")
+        shutil.copyfile(str(op), str(tmp))
+        os.replace(tmp, target)
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        for e in j["entries"]:
+            if not e.get("undone"):
+                e["undone"], e["undone_time"] = True, now
+        _save_journal(path, j)
+        return {"status": "success", "path": str(path), "restored_from": op.name,
+                "sha256": _sha256_file(path) if target.stat().st_size <= HASH_LIMIT else None, "original_sha256": j.get("original_sha256")}
+    except Exception as e:
+        return _fail(e)
+
+
+def patch_text(r: dict) -> str:
+    if r.get("status") != "success":
+        return "PATCH gagal: %s" % r.get("message", r.get("code"))
+    tag = "SIMULASI " if r.get("dry_run") else ""
+    L = ["%sPATCH @ 0x%X (%d byte): %s -> %s%s" % (tag, r["offset"], r["length"], r["old_hex"][:60], r["new_hex"][:60], " (tidak ada perubahan)" if r.get("unchanged") else "")]
+    if r.get("id"):
+        L.append("  jurnal #%d | undo: undo(path)%s" % (r["id"], " | salinan asli: %s" % r["backup"] if r.get("backup") else ""))
+    return "\n".join(L)
+
+
+# ---------------------------------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------------------------------
+
+def _opt(argv: list, name: str, default=None, flag: bool = False):
+    if name in argv:
+        i = argv.index(name)
+        if flag:
+            del argv[i]
+            return True
+        v = argv[i + 1] if i + 1 < len(argv) else default
+        del argv[i:i + 2]
+        return v
+    return False if flag else default
+
+
+def _bn_main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv:
+        print(_BN_DOC.split("CLI:")[1].strip() if "CLI:" in _BN_DOC else "pemakaian: lihat dokumentasi modul")
+        return 1
+    cmd, rest = argv[0], argv[1:]
+    if cmd == "hex" and rest:
+        enc = _opt(rest, "--encoding", "ascii")
+        r = hex_view(rest[0], rest[1] if len(rest) > 1 else 0, rest[2] if len(rest) > 2 else 256, encoding=enc)
+        print(r["text"] if r["status"] == "success" else "HEX gagal: %s" % r["message"])
+        return 0 if r["status"] == "success" else 1
+    if cmd == "inspect" and rest:
+        print(inspect_text(rest[0], rest[1] if len(rest) > 1 else 0))
+        return 0
+    if cmd == "search" and len(rest) > 1:
+        mode, ic = _opt(rest, "--mode", "auto"), _opt(rest, "-i", flag=True)
+        print(search_text(rest[0], rest[1], mode=mode, ignore_case=ic))
+        return 0
+    if cmd == "compare" and len(rest) > 1:
+        r = compare_files(rest[0], rest[1]) if not Path(rest[0]).is_dir() else compare_dirs(rest[0], rest[1])
+        print(json.dumps(r, ensure_ascii=False, indent=1))
+        return 0 if r["status"] == "success" else 1
+    if cmd == "patch" and len(rest) > 2:
+        exp, dry = _opt(rest, "--expect"), _opt(rest, "--dry-run", flag=True)
+        r = patch(rest[0], rest[1], rest[2], expect=exp, dry_run=dry)
+        print(patch_text(r))
+        return 0 if r["status"] == "success" else 1
+    if cmd == "undo" and rest:
+        force = _opt(rest, "--force", flag=True)
+        r = undo(rest[0], rest[1] if len(rest) > 1 else None, force=force)
+        print("UNDO patch #%s @ 0x%X dipulihkan (%d byte); sisa %d" % (r["id"], r["offset"], r["length"], r["remaining"]) if r["status"] == "success" else "UNDO gagal: %s" % r["message"])
+        return 0 if r["status"] == "success" else 1
+    if cmd == "history" and rest:
+        print(json.dumps(history(rest[0]), ensure_ascii=False, indent=1))
+        return 0
+    if cmd == "restore" and rest:
+        r = restore_original(rest[0])
+        print("PULIH dari %s" % r["restored_from"] if r["status"] == "success" else "PULIH gagal: %s" % r["message"])
+        return 0 if r["status"] == "success" else 1
+    print("perintah tidak dikenal / argumen kurang; jalankan tanpa argumen untuk bantuan")
+    return 1
+
+# ---------------------------------------------------------------------------------------------------
+# Mesin ekstraksi container (dulu rea_extract.py)
+# ---------------------------------------------------------------------------------------------------
+_EX_DOC = """rea_extract.py - mesin ekstraksi / penjelajahan container untuk REA (v95; dipanggil lewat jembatan tipis di rea_triage.py).
+
+Hanya pustaka standar. TIDAK menjalankan apa pun dari berkas; container hanya dibaca, hasil selalu ditulis ke workspace terpisah.
+Format: ZIP (termasuk APK / JAR / SFX), TAR (+ gz / bz2 / xz), GZIP / BZIP2 / XZ tunggal, ISO 9660 (Joliet / Rock Ridge, sektor 2048 / raw 2352),
+ISO PSP (UMD: membaca PSP_GAME/PARAM.SFO) dan CSO PSP (zlib per blok) yang berisi ISO. ZSO (LZ4) dan 7z / RAR belum didukung (dilaporkan jelas).
+
+Kontrak yang dipakai rea_triage.py (jangan diubah tanpa mengubah pemanggilnya):
+    open_container(path)  -> {"status": "success", "container_id", "format", ...} | {"status": "error", "code", "message"}
+    close_container(container_id)
+    extract_selected(container_id, selector, outdir, scan=False) -> manifest dict
+          selector: None | {"pattern": "*.dll;*.exe" | "re:...", "paths": [...], "exclude": "...", "max_size": N, "max_entries": N}
+          pola TANPA wildcard (* ? [) dicocokkan sebagai potongan nama (huruf besar / kecil diabaikan)
+          manifest: status success | partial | error, entries_extracted / entries_skipped / entries_failed, manifest_path, files, skipped, errors ...
+    describe_container_text(path, max_chars=0) -> str
+
+Tambahan (aditif): list_entries(cid), describe_container(path), extract(path, outdir, pattern=None, scan=False), formats().
+
+Workspace keluaran (outdir): extracted/ (isi), manifests/manifest.json (tidak menimpa; manifest_2.json dst), logs/extract.log.
+
+Pengerasan: path entri dinetralkan (zip-slip, '..', path absolut, huruf drive, nama perangkat Windows, karakter ilegal), tidak menimpa berkas,
+tautan simbolik / berkas khusus TIDAK diekstrak, berkas terenkripsi dilewati, batas jumlah entri / ukuran per berkas / total / rasio kompresi (zip bomb),
+berkas dibuka sekali dengan fstat (tolak FIFO / perangkat / folder), keluaran dibersihkan dari baris baru. Container di dalam container TIDAK diekstrak otomatis.
+
+CLI:  python rea_extract.py list FILE | extract FILE OUTDIR [pola] [--scan] | formats
+"""
+
+
+import bz2
+import fnmatch
+import gzip
+import hashlib
+import io
+import json
+import lzma
+import math
+import os
+import re
+import secrets
+import stat
+import struct
+import sys
+import tarfile
+import threading
+import time
+import zipfile
+import zlib
+from collections import Counter
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+_ex_VERSION = "95.0"
+
+_ex_MAX_ENTRIES = 200_000
+MAX_ENTRY_BYTES = 512 * 1024 * 1024
+MAX_TOTAL_BYTES = 4 * 1024 ** 3
+MAX_RATIO = 200                       # byte keluar per byte terkompresi ...
+RATIO_FLOOR = 64 * 1024 * 1024        # ... baru dianggap mencurigakan setelah melewati ini
+COPY_CHUNK = 1024 * 1024
+LIST_TIME = 60.0                      # detik untuk membuat daftar entri (tar.gz besar)
+MAX_LIST_ROWS = 200
+MAX_OPEN = 16
+MAX_DIR_BYTES = 16 * 1024 * 1024      # satu direktori ISO
+MAX_DEPTH = 64
+SOURCE_HASH_LIMIT = 2 * 1024 ** 3
+
+_EXEC_EXT = {".exe", ".dll", ".scr", ".com", ".bat", ".cmd", ".ps1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".hta", ".lnk", ".msi", ".jar",
+             ".sh", ".elf", ".so", ".pif", ".cpl", ".sys", ".apk", ".dex", ".py", ".pyc"}
+_ARCHIVE_TYPES = {"ZIP", "GZIP", "BZIP2", "XZ", "7z", "RAR", "TAR", "ISO 9660", "CAB", "OLE / Office lama"}
+_ex_RESERVED = {"CON", "PRN", "AUX", "NUL"} | {"COM%d" % i for i in range(1, 10)} | {"LPT%d" % i for i in range(1, 10)}
+
+
+class ContainerError(Exception):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+class _Limit(Exception):
+    pass
+
+
+# ---------------------------------------------------------------------------------------------------
+# Utilitas
+# ---------------------------------------------------------------------------------------------------
+
+def _ex_clean(s, n: int = 200) -> str:
+    """Buang karakter kontrol / pemisah baris (anti injeksi ke laporan)."""
+    return "".join(c if c.isprintable() else "?" for c in str(s))[:n]
+
+
+def _ex_human(n) -> str:
+    if n is None or n < 0:
+        return "?"
+    n = float(n)
+    for u in ("B", "KB", "MB", "GB"):
+        if n < 1024 or u == "GB":
+            return "%d %s" % (n, u) if u == "B" else "%.1f %s" % (n, u)
+        n /= 1024
+    return "%.1f GB" % n
+
+
+def _ex_err(code: str, message, **kw) -> dict:
+    d = {"status": "error", "code": code, "message": _ex_clean(message, 300)}
+    d.update(kw)
+    return d
+
+
+def _ts(t):
+    try:
+        return datetime.fromtimestamp(t, timezone.utc).isoformat(timespec="seconds") if t else None
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _ex_entropy(data: bytes) -> float:
+    if not data:
+        return 0.0
+    n = len(data)
+    return -sum(c / n * math.log2(c / n) for c in Counter(data).values())
+
+
+def _ex_safe_rel(path: str):
+    """Netralkan path entri jadi path relatif aman. Mengembalikan (rel, unsafe: bool). unsafe = ada '..', path absolut, atau huruf drive."""
+    raw = str(path).replace("\\", "/")
+    unsafe = raw.startswith("/") or bool(re.match(r"^[A-Za-z]:", raw)) or any(p == ".." for p in raw.split("/"))
+    parts = []
+    for part in raw.split("/"):
+        if part in ("", ".", ".."):
+            continue
+        part = re.sub(r"[\x00-\x1f\x7f<>:\"|?*]", "_", part).rstrip(". ")
+        if not part:
+            part = "_"
+        if part.split(".")[0].upper() in _ex_RESERVED:
+            part = "_" + part
+        if len(part) > 120:
+            stem, dot, ext = part.rpartition(".")
+            part = (stem[:100] + "." + ext[:15]) if dot and len(ext) <= 15 else part[:120]
+        parts.append(part)
+    parts = parts[-MAX_DEPTH:]
+    rel = "/".join(parts) or "unnamed"
+    return rel[-240:], unsafe
+
+
+def _sniff(head: bytes) -> str:
+    """Jenis berkas dari magic bytes (bukan ekstensi)."""
+    h = head
+    if h[:2] == b"MZ":
+        if len(h) >= 0x40:
+            pe = struct.unpack_from("<I", h, 0x3C)[0]
+            if pe + 4 <= len(h) and h[pe:pe + 4] == b"PE\0\0":
+                return "PE"
+        return "PE" if len(h) < 0x40 else "DOS MZ"
+    if h[:4] == b"\x7fELF":
+        return "ELF"
+    if h[:4] in (b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf", b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"):
+        return "Mach-O / class"
+    if h[:4] in (b"PK\x03\x04", b"PK\x05\x06"):
+        return "ZIP"
+    if h[:2] == b"\x1f\x8b":
+        return "GZIP"
+    if h[:3] == b"BZh":
+        return "BZIP2"
+    if h[:6] == b"\xfd7zXZ\x00":
+        return "XZ"
+    if h[:6] == b"7z\xbc\xaf\x27\x1c":
+        return "7z"
+    if h[:4] == b"Rar!":
+        return "RAR"
+    if h[:4] == b"MSCF":
+        return "CAB"
+    if h[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+        return "OLE / Office lama"
+    if h[:5] == b"%PDF-":
+        return "PDF"
+    if h[:8] == b"\x89PNG\r\n\x1a\n":
+        return "PNG"
+    if h[:3] == b"\xff\xd8\xff":
+        return "JPEG"
+    if h[:6] in (b"GIF87a", b"GIF89a"):
+        return "GIF"
+    if h[:4] == b"RIFF":
+        return "RIFF"
+    if h[:4] == b"OggS":
+        return "OGG"
+    if h[:16] == b"SQLite format 3\0":
+        return "SQLite"
+    if h[:4] == b"\x4c\x00\x00\x00" and h[4:20] == b"\x01\x14\x02\x00\x00\x00\x00\x00\xc0\x00\x00\x00\x00\x00\x00\x46":
+        return "LNK"
+    if h[:4] == b"\x00PBP":
+        return "PSP PBP"
+    if h[:4] == b"~PSP":
+        return "PSP PRX terenkripsi"
+    if h[:4] == b"\x00PSF":
+        return "PSP SFO"
+    if h[:4] == b"CISO":
+        return "CSO"
+    if h[:4] == b"\x7fSCE":
+        return "SCE"
+    if h[257:262] == b"ustar":
+        return "TAR"
+    if h[:2] == b"#!":
+        return "skrip (shebang)"
+    if len(h) > 32769 and h[32769:32774] == b"CD001":
+        return "ISO 9660"
+    if h and all(c in b"\t\r\n\x0b\x0c" or 0x20 <= c < 0x7F or c >= 0x80 for c in h[:512]) and b"\x00" not in h[:512]:
+        return "teks"
+    return "data"
+
+
+# ---------------------------------------------------------------------------------------------------
+# Entri dan pembaca citra
+# ---------------------------------------------------------------------------------------------------
+
+class Entry:
+    __slots__ = ("index", "path", "size", "packed", "kind", "mtime", "encrypted", "ref", "note")
+
+    def __init__(self, index, path, size=0, packed=0, kind="file", mtime=None, encrypted=False, ref=None, note=""):
+        self.index, self.path, self.size, self.packed, self.kind = index, path, size, packed, kind
+        self.mtime, self.encrypted, self.ref, self.note = mtime, encrypted, ref, note
+
+    def as_dict(self) -> dict:
+        return {"index": self.index, "path": _ex_clean(self.path, 300), "size": self.size, "packed": self.packed, "kind": self.kind,
+                "mtime": _ts(self.mtime), "encrypted": self.encrypted, "note": self.note}
+
+
+class _FileImg:
+    """Akses acak ke berkas yang sudah dibuka (satu fh, dikunci)."""
+
+    def __init__(self, fh, size):
+        self.fh, self.size, self.lock = fh, size, threading.Lock()
+
+    def read_at(self, off: int, n: int) -> bytes:
+        if off < 0 or n <= 0:
+            return b""
+        with self.lock:
+            self.fh.seek(off)
+            return self.fh.read(n)
+
+
+class _CsoImg:
+    """CSO / CISO PSP: indeks u32 per blok (bit 31 = blok tidak terkompresi), blok = raw deflate. Menyajikan citra ISO penuh."""
+
+    def __init__(self, base: _FileImg):
+        self.base = base
+        hdr = base.read_at(0, 24)
+        if len(hdr) < 24:
+            raise ContainerError("corrupt", "header CSO terpotong")
+        _m, hsz, total, bsz, ver, align = struct.unpack("<4sIQIBB2x", hdr)
+        if ver > 1 and ver != 2:
+            raise ContainerError("unsupported_format", "versi CSO %d tidak dikenal" % ver)
+        if bsz < 512 or bsz > (1 << 20) or (bsz & (bsz - 1)):
+            raise ContainerError("corrupt", "ukuran blok CSO tidak valid: %d" % bsz)
+        if total == 0 or total > (1 << 37):
+            raise ContainerError("corrupt", "ukuran total CSO tidak valid: %d" % total)
+        n = (total + bsz - 1) // bsz
+        raw = base.read_at(24, (n + 1) * 4)
+        if len(raw) < (n + 1) * 4:
+            raise ContainerError("corrupt", "indeks CSO terpotong")
+        self.index = struct.unpack("<%dI" % (n + 1), raw)
+        self.bsz, self.align, self.size, self.nblocks = bsz, align, total, n
+        self._cache: dict = {}
+        self._lock = threading.Lock()
+
+    def _block(self, i: int) -> bytes:
+        with self._lock:
+            b = self._cache.get(i)
+        if b is not None:
+            return b
+        idx, nxt = self.index[i], self.index[i + 1]
+        pos, end = (idx & 0x7FFFFFFF) << self.align, (nxt & 0x7FFFFFFF) << self.align
+        if end < pos or end - pos > self.bsz * 2 + 1024 or pos >= self.base.size:
+            raise ContainerError("corrupt", "indeks blok CSO %d tidak masuk akal" % i)
+        data = self.base.read_at(pos, end - pos)
+        if idx & 0x80000000:
+            b = data[:self.bsz]
+        else:
+            try:
+                b = zlib.decompressobj(-15).decompress(data, self.bsz)
+            except zlib.error as e:
+                raise ContainerError("corrupt", "blok CSO %d rusak: %s" % (i, e))
+        with self._lock:
+            if len(self._cache) > 16:
+                self._cache.clear()
+            self._cache[i] = b
+        return b
+
+    def read_at(self, off: int, n: int) -> bytes:
+        if off < 0 or n <= 0 or off >= self.size:
+            return b""
+        n = min(n, self.size - off)
+        out = []
+        while n > 0:
+            i, w = divmod(off, self.bsz)
+            blk = self._block(i)[w:w + n]
+            if not blk:
+                break
+            out.append(blk)
+            off += len(blk)
+            n -= len(blk)
+        return b"".join(out)
+
+
+# ---------------------------------------------------------------------------------------------------
+# Handler
+# ---------------------------------------------------------------------------------------------------
+
+class _Handler:
+    fmt = "?"
+    label = "?"
+    sequential = False      # True: data hanya bisa dibaca berurutan (tar terkompresi) -> iter_data()
+
+    def __init__(self):
+        self.entries: list[Entry] = []
+        self.truncated = False
+        self.info: dict = {}
+        self.notes: list[str] = []
+
+    def open_entry(self, e: Entry):
+        raise NotImplementedError
+
+    def iter_data(self, wanted: set):
+        raise NotImplementedError
+
+    def close(self):
+        pass
+
+
+class _ZipHandler(_Handler):
+    fmt, label = "zip", "ZIP"
+
+    def __init__(self, fh, size, name):
+        super().__init__()
+        try:
+            self.zf = zipfile.ZipFile(fh)
+        except (zipfile.BadZipFile, EOFError, OSError, ValueError) as e:
+            raise ContainerError("corrupt", "ZIP rusak: %s" % e)
+        t0 = time.time()
+        for i, zi in enumerate(self.zf.infolist()):
+            if i >= _ex_MAX_ENTRIES or (i % 2000 == 0 and time.time() - t0 > LIST_TIME):
+                self.truncated = True
+                break
+            mode = (zi.external_attr >> 16) & 0xFFFF if zi.create_system == 3 else 0
+            if zi.filename.endswith("/") or zi.is_dir():
+                kind = "dir"
+            elif stat.S_ISLNK(mode):
+                kind = "symlink"
+            elif mode and not stat.S_ISREG(mode) and stat.S_IFMT(mode):
+                kind = "other"
+            else:
+                kind = "file"
+            try:
+                mt = datetime(*zi.date_time, tzinfo=timezone.utc).timestamp()
+            except (ValueError, OverflowError):
+                mt = None
+            self.entries.append(Entry(i, zi.filename.rstrip("/") if kind == "dir" else zi.filename, zi.file_size, zi.compress_size, kind, mt, bool(zi.flag_bits & 0x1), zi))
+        if self.zf.comment:
+            self.info["comment"] = _ex_clean(self.zf.comment.decode("utf-8", "replace"), 200)
+        if any(e.path.endswith(("classes.dex", "AndroidManifest.xml")) for e in self.entries):
+            self.info["hint"] = "APK / paket Android: gunakan analisis APK di rea_triage untuk manifest dan DEX"
+        elif any(e.path == "META-INF/MANIFEST.MF" for e in self.entries):
+            self.info["hint"] = "JAR (Java)"
+
+    def open_entry(self, e):
+        return self.zf.open(e.ref)
+
+    def close(self):
+        try:
+            self.zf.close()
+        except Exception:
+            pass
+
+
+class _TarHandler(_Handler):
+    fmt, label, sequential = "tar", "TAR", True
+
+    def __init__(self, fh, size, name, mode: str = "r:*", comp: str = ""):
+        super().__init__()
+        self.fh = fh
+        self.comp = comp
+        fh.seek(0)
+        try:
+            tf = tarfile.open(fileobj=fh, mode=mode)
+        except tarfile.TarError as e:
+            raise ContainerError("not_tar", "bukan TAR: %s" % e)
+        except (OSError, EOFError, zlib.error, lzma.LZMAError) as e:
+            raise ContainerError("corrupt", "arsip rusak: %s" % e)
+        t0 = time.time()
+        try:
+            for i, m in enumerate(tf):
+                if i >= _ex_MAX_ENTRIES or (i % 2000 == 0 and time.time() - t0 > LIST_TIME):
+                    self.truncated = True
+                    break
+                kind = "dir" if m.isdir() else "file" if m.isreg() else "symlink" if (m.issym() or m.islnk()) else "other"
+                self.entries.append(Entry(i, m.name, m.size if kind == "file" else 0, 0, kind, m.mtime, False, None,
+                                          ("-> " + _ex_clean(m.linkname, 80)) if kind == "symlink" else ""))
+        except (tarfile.TarError, OSError, EOFError, zlib.error, lzma.LZMAError) as e:
+            if not self.entries:
+                raise ContainerError("corrupt", "arsip rusak: %s" % e)
+            self.truncated = True
+            self.notes.append("arsip terpotong / rusak setelah %d entri: %s" % (len(self.entries), _ex_clean(e, 100)))
+        finally:
+            tf.close()
+        if comp:
+            self.label = "TAR + %s" % comp
+            self.fmt = "tar." + {"gzip": "gz", "bzip2": "bz2", "xz": "xz"}.get(comp, comp)
+            self.packed_total = size
+
+    def iter_data(self, wanted: set):
+        self.fh.seek(0)
+        tf = tarfile.open(fileobj=self.fh, mode="r:*")
+        try:
+            last = max(wanted) if wanted else -1
+            for i, m in enumerate(tf):
+                if i > last:
+                    break
+                if i in wanted:
+                    yield self.entries[i], tf.extractfile(m)
+        finally:
+            tf.close()
+
+
+class _SingleHandler(_Handler):
+    """GZIP / BZIP2 / XZ yang bukan tar: satu berkas di dalamnya."""
+
+    def __init__(self, fh, size, name, comp: str):
+        super().__init__()
+        self.fh, self.comp, self.size_c = fh, comp, size
+        self.fmt, self.label = {"gzip": ("gzip", "GZIP"), "bzip2": ("bzip2", "BZIP2"), "xz": ("xz", "XZ")}[comp]
+        inner, mt, usize = None, None, -1
+        if comp == "gzip":
+            hdr = self._gz_header()
+            if hdr is None:
+                raise ContainerError("corrupt", "header GZIP tidak valid")
+            inner, mt = hdr
+            if size > 22:
+                fh.seek(size - 4)
+                usize = struct.unpack("<I", fh.read(4))[0]
+                self.notes.append("ukuran dari trailer gzip (modulo 2^32)")
+        if not inner:
+            stem = Path(name).name
+            for suf in (".gz", ".bz2", ".xz", ".tgz", ".gzip", ".bzip2"):
+                if stem.lower().endswith(suf):
+                    stem = stem[:-len(suf)]
+                    break
+            inner = stem if stem and stem != Path(name).name else (stem or "data") + ".out"
+        # uji bahwa aliran memang bisa didekompresi
+        try:
+            s = self.open_entry(None)
+            s.read(16)
+            s.close()
+        except (OSError, EOFError, zlib.error, lzma.LZMAError) as e:
+            raise ContainerError("corrupt", "aliran %s rusak: %s" % (self.label, e))
+        self.entries.append(Entry(0, inner, usize, size, "file", mt))
+
+    def _gz_header(self):
+        fh = self.fh
+        fh.seek(0)
+        h = fh.read(10)
+        if len(h) < 10 or h[:2] != b"\x1f\x8b":
+            return None
+        flg, mt = h[3], struct.unpack("<I", h[4:8])[0]
+        if flg & 4:
+            xl = fh.read(2)
+            if len(xl) < 2:
+                return None
+            fh.read(struct.unpack("<H", xl)[0])
+        name = None
+        if flg & 8:
+            buf = b""
+            while len(buf) < 512:
+                c = fh.read(1)
+                if not c or c == b"\0":
+                    break
+                buf += c
+            name = buf.decode("latin-1") if buf else None
+        return name, (mt or None)
+
+    def open_entry(self, e):
+        self.fh.seek(0)
+        return {"gzip": lambda: gzip.GzipFile(fileobj=self.fh, mode="rb"), "bzip2": lambda: bz2.BZ2File(self.fh, "rb"),
+                "xz": lambda: lzma.LZMAFile(self.fh, "rb")}[self.comp]()
+
+
+# --- ISO 9660 / PSP -------------------------------------------------------------------------------
+
+_ISO_LAYOUTS = ((2048, 0), (2352, 16), (2352, 24), (2336, 8))
+
+
+def _find_iso_layout(img):
+    for ss, doff in _ISO_LAYOUTS:
+        if img.read_at(16 * ss + doff, 6) == b"\x01CD001":
+            return ss, doff
+    return None
+
+
+def _parse_sfo(b: bytes) -> dict:
+    if b[:4] != b"\x00PSF" or len(b) < 20:
+        return {}
+    out: dict = {}
+    try:
+        _v, kt, dt, n = struct.unpack_from("<4I", b, 4)
+        for i in range(min(n, 256)):
+            ko, fmt, ln, _mx, do = struct.unpack_from("<HHIII", b, 20 + 16 * i)
+            end = b.index(b"\0", kt + ko)
+            key = b[kt + ko:end].decode("ascii", "replace")
+            raw = b[dt + do:dt + do + ln]
+            out[key] = struct.unpack("<I", raw[:4].ljust(4, b"\0"))[0] if fmt == 0x0404 else raw.split(b"\0")[0].decode("utf-8", "replace")
+    except (struct.error, ValueError):
+        pass
+    return out
+
+
+class _ExtentStream:
+    def __init__(self, h, extents):
+        self.h, self.ext, self.i, self.off = h, [x for x in extents if x[1] > 0], 0, 0
+
+    def read(self, n: int = -1) -> bytes:
+        if n is None or n < 0:
+            n = 1 << 30
+        out = []
+        while n > 0 and self.i < len(self.ext):
+            lba, sz = self.ext[self.i]
+            rem = sz - self.off
+            if rem <= 0:
+                self.i += 1
+                self.off = 0
+                continue
+            b = self.h.lread(lba * self.h.lbs + self.off, min(n, rem))
+            if not b:
+                raise EOFError("citra ISO terpotong di LBA %d" % lba)
+            out.append(b)
+            n -= len(b)
+            self.off += len(b)
+        return b"".join(out)
+
+    def close(self):
+        pass
+
+
+class _IsoHandler(_Handler):
+    fmt, label = "iso9660", "ISO 9660"
+
+    def __init__(self, img, ss: int, doff: int, wrapper: str = ""):
+        super().__init__()
+        self.img, self.ss, self.doff, self.lbs = img, ss, doff, 2048
+        if wrapper:
+            self.info["wrapper"] = wrapper
+        self._parse()
+
+    def lread(self, lo: int, n: int) -> bytes:
+        if self.ss == 2048 and self.doff == 0:
+            return self.img.read_at(lo, n)
+        out = []
+        while n > 0:
+            sec, w = divmod(lo, 2048)
+            take = min(n, 2048 - w)
+            b = self.img.read_at(sec * self.ss + self.doff + w, take)
+            if not b:
+                break
+            out.append(b)
+            lo += len(b)
+            n -= len(b)
+        return b"".join(out)
+
+    @staticmethod
+    def _date7(b: bytes):
+        try:
+            tz = b[6] - 256 if b[6] > 127 else b[6]
+            return datetime(1900 + b[0], b[1], b[2], b[3], b[4], b[5], tzinfo=timezone(timedelta(minutes=15 * tz))).timestamp()
+        except (ValueError, OverflowError, IndexError):
+            return None
+
+    def _parse(self):
+        pvd = joliet = None
+        for sec in range(16, 16 + 32):
+            d = self.lread(sec * 2048, 2048)
+            if len(d) < 2048 or d[1:6] != b"CD001":
+                break
+            if d[0] == 1 and pvd is None:
+                pvd = d
+            elif d[0] == 2 and joliet is None and d[88:91] in (b"%/@", b"%/C", b"%/E"):
+                joliet = d
+            elif d[0] == 255:
+                break
+        if pvd is None and joliet is None:
+            raise ContainerError("corrupt", "descriptor volume ISO 9660 tidak ditemukan")
+        vd = joliet or pvd
+        use_joliet = joliet is not None
+        lbs = struct.unpack_from("<H", vd, 128)[0]
+        self.lbs = lbs if lbs in (512, 1024, 2048, 4096) else 2048
+        if pvd is not None:
+            self.info["volume_id"] = _ex_clean(pvd[40:72].decode("latin-1").strip(), 40)
+            self.info["system_id"] = _ex_clean(pvd[8:40].decode("latin-1").strip(), 40)
+            vs = struct.unpack_from("<I", pvd, 80)[0]
+            self.info["volume_size"] = vs * self.lbs
+            cd = pvd[813:827].decode("ascii", "replace")
+            if cd.isdigit() and cd != "0" * 14:
+                self.info["created"] = "%s-%s-%s %s:%s:%s" % (cd[0:4], cd[4:6], cd[6:8], cd[8:10], cd[10:12], cd[12:14])
+        self.info["names"] = "Joliet" if use_joliet else "ISO 9660"
+        root = vd[156:190]
+        stack = [(struct.unpack_from("<I", root, 2)[0], struct.unpack_from("<I", root, 10)[0], "", 0)]
+        seen = set()
+        t0 = time.time()
+        rr_seen = False
+        while stack:
+            lba, dsize, prefix, depth = stack.pop()
+            if lba in seen or depth > MAX_DEPTH or dsize <= 0 or dsize > MAX_DIR_BYTES:
+                continue
+            seen.add(lba)
+            data = self.lread(lba * self.lbs, dsize)
+            pos, pend, pname = 0, None, None
+            while pos < len(data):
+                l = data[pos]
+                if l == 0:
+                    pos = (pos // 2048 + 1) * 2048
+                    continue
+                rec = data[pos:pos + l]
+                pos += l
+                if l < 34 or len(rec) < l:
+                    continue
+                nlen = rec[32]
+                fi = rec[33:33 + nlen]
+                if nlen == 0 or fi in (b"\x00", b"\x01"):
+                    continue
+                flags = rec[25]
+                elba, esz = struct.unpack_from("<I", rec, 2)[0], struct.unpack_from("<I", rec, 10)[0]
+                mt = self._date7(rec[18:25])
+                if use_joliet:
+                    name = fi.decode("utf-16-be", "replace")
+                else:
+                    name = fi.decode("latin-1")
+                su = rec[33 + nlen + (1 if nlen % 2 == 0 else 0):]
+                rr_name, is_link = self._susp(su)
+                if rr_name and not use_joliet:
+                    name, rr_seen = rr_name, True
+                else:
+                    name = re.sub(r";\d+$", "", name)
+                    if len(name) > 1 and name.endswith("."):
+                        name = name[:-1]
+                is_dir = bool(flags & 0x02)
+                if not is_dir and (flags & 0x80):        # multi-extent: kumpulkan sampai rekaman terakhir
+                    pend = (pend or []) + [(elba, esz)]
+                    pname = pname or name
+                    continue
+                if pend is not None:
+                    exts, name, pend, pname = pend + [(elba, esz)], pname or name, None, None
+                else:
+                    exts = [(elba, esz)]
+                path = prefix + name
+                if is_dir:
+                    self.entries.append(Entry(len(self.entries), path, 0, 0, "dir", mt))
+                    stack.append((elba, esz, path + "/", depth + 1))
+                else:
+                    self.entries.append(Entry(len(self.entries), path, sum(x[1] for x in exts), 0, "symlink" if is_link else "file", mt, False, exts))
+                if len(self.entries) >= _ex_MAX_ENTRIES or time.time() - t0 > LIST_TIME:
+                    self.truncated = True
+                    stack.clear()
+                    break
+        if rr_seen:
+            self.info["names"] = "ISO 9660 + Rock Ridge"
+        if not self.entries:
+            self.notes.append("ISO tanpa entri berkas yang terbaca")
+        self._psp()
+
+    @staticmethod
+    def _susp(su: bytes):
+        """Rock Ridge: NM (nama) dan PX/SL (deteksi tautan simbolik). Mengembalikan (nama | None, tautan?)."""
+        name, link, p = b"", False, 0
+        while p + 4 <= len(su):
+            sig, ln = su[p:p + 2], su[p + 2]
+            if ln < 4 or p + ln > len(su):
+                break
+            body = su[p + 4:p + ln]
+            if sig == b"NM" and body:
+                name += body[1:]
+            elif sig == b"SL":
+                link = True
+            elif sig == b"PX" and len(body) >= 4 and stat.S_ISLNK(struct.unpack_from("<I", body, 0)[0]):
+                link = True
+            p += ln
+        return (name.decode("utf-8", "replace") if name else None), link
+
+    def _psp(self):
+        up = {e.path.upper(): e for e in self.entries}
+        if not any(k.startswith("PSP_GAME/") or k == "PSP_GAME" for k in up):
+            return
+        self.fmt, self.label = "iso-psp", "ISO PSP (UMD)"
+        sfo = up.get("PSP_GAME/PARAM.SFO")
+        if sfo is not None and sfo.kind == "file" and 0 < sfo.size <= 65536:
+            try:
+                kv = _parse_sfo(_ExtentStream(self, sfo.ref).read(sfo.size))
+                for k in ("TITLE", "DISC_ID", "DISC_VERSION", "APP_VER", "CATEGORY", "PSP_SYSTEM_VER", "PARENTAL_LEVEL", "REGION"):
+                    if k in kv:
+                        self.info["psp_" + k.lower()] = _ex_clean(kv[k], 100)
+            except (EOFError, OSError, ContainerError):
+                self.notes.append("PARAM.SFO tidak terbaca")
+        eb = up.get("PSP_GAME/SYSDIR/EBOOT.BIN")
+        if eb is not None and eb.kind == "file" and eb.size >= 4:
+            try:
+                magic = _ExtentStream(self, eb.ref).read(4)
+                self.info["eboot"] = "terenkripsi (~PSP): tidak bisa dianalisis statis tanpa dekripsi" if magic == b"~PSP" else (
+                    "ELF / PRX tidak terenkripsi" if magic == b"\x7fELF" else "PBP" if magic == b"\x00PBP" else "magic %s" % magic.hex())
+            except (EOFError, OSError):
+                pass
+
+    def open_entry(self, e):
+        return _ExtentStream(self, e.ref)
+
+
+# ---------------------------------------------------------------------------------------------------
+# Deteksi format
+# ---------------------------------------------------------------------------------------------------
+
+def _ex_open_regular(path):
+    """Buka SEKALI, lalu fstat: hanya berkas biasa (tolak FIFO / perangkat / folder) tanpa celah TOCTOU."""
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0)
+    try:
+        fd = os.open(str(Path(str(path)).expanduser()), flags)
+    except FileNotFoundError:
+        raise ContainerError("not_found", "berkas tidak ditemukan: %s" % _ex_clean(path, 120))
+    except IsADirectoryError:
+        raise ContainerError("is_directory", "path adalah folder, bukan berkas")
+    except PermissionError:
+        raise ContainerError("permission", "tidak punya izin membaca: %s" % _ex_clean(path, 120))
+    except OSError as e:
+        raise ContainerError("io_error", "%s: %s" % (type(e).__name__, e))
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise ContainerError("not_regular", "bukan berkas biasa (FIFO / perangkat / folder ditolak)")
+        return os.fdopen(fd, "rb"), st.st_size
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
+
+
+def _make_handler(fh, size: int, name: str) -> _Handler:
+    if size == 0:
+        raise ContainerError("empty", "berkas kosong (0 byte)")
+    base = _FileImg(fh, size)
+    head = base.read_at(0, 8)
+    if head[:4] == b"CISO":
+        cso = _CsoImg(base)
+        lay = _find_iso_layout(cso)
+        if lay is None:
+            raise ContainerError("unsupported_format", "CSO tidak berisi ISO 9660 yang valid")
+        h = _IsoHandler(cso, lay[0], lay[1], wrapper="CSO (zlib per blok, blok %d byte, ukuran asli %s)" % (cso.bsz, _ex_human(cso.size)))
+        return h
+    if head[:4] == b"ZISO":
+        raise ContainerError("unsupported_format", "ZSO (LZ4 PSP) belum didukung; ubah ke ISO / CSO dengan ciso / maxcso")
+    lay = _find_iso_layout(base)
+    if lay:
+        return _IsoHandler(base, lay[0], lay[1])
+    for magic, comp, mode in ((b"\x1f\x8b", "gzip", "r:gz"), (b"BZh", "bzip2", "r:bz2"), (b"\xfd7zXZ\x00", "xz", "r:xz")):
+        if head.startswith(magic):
+            try:
+                return _TarHandler(fh, size, name, mode, comp)
+            except ContainerError as e:
+                if e.code != "not_tar":
+                    raise
+            return _SingleHandler(fh, size, name, comp)
+    if head[:2] == b"PK" or zipfile.is_zipfile(fh):
+        return _ZipHandler(fh, size, name)
+    try:
+        return _TarHandler(fh, size, name, "r:", "")
+    except ContainerError:
+        pass
+    if head[:6] == b"7z\xbc\xaf\x27\x1c" or head[:4] == b"Rar!":
+        raise ContainerError("unsupported_format", "7z / RAR belum didukung di rea_extract (pakai `unpack7z` di rea_triage bila 7-Zip terpasang)")
+    raise ContainerError("unsupported_format", "format container tidak dikenal (didukung: ZIP, TAR, GZIP, BZIP2, XZ, ISO 9660, ISO PSP, CSO)")
+
+
+def _ex_formats() -> list:
+    return [{"name": "zip", "about": "ZIP / APK / JAR / SFX, tanpa kata sandi"},
+            {"name": "tar", "about": "TAR, TAR.GZ / .BZ2 / .XZ (sekuensial)"},
+            {"name": "gzip / bzip2 / xz", "about": "aliran terkompresi tunggal"},
+            {"name": "iso9660", "about": "ISO 9660 (Joliet, Rock Ridge, sektor 2048 / raw 2352 / 2336, multi-extent)"},
+            {"name": "iso-psp", "about": "ISO UMD PSP: info PARAM.SFO / EBOOT"},
+            {"name": "cso", "about": "CSO PSP (zlib per blok) berisi ISO"}]
+
+
+# ---------------------------------------------------------------------------------------------------
+# Registri container terbuka
+# ---------------------------------------------------------------------------------------------------
+
+class _Container:
+    def __init__(self, cid, path, fh, size, handler):
+        self.id, self.path, self.fh, self.size, self.h = cid, path, fh, size, handler
+        self.lock = threading.RLock()
+        self.t = time.time()
+
+    def close(self):
+        with self.lock:
+            try:
+                self.h.close()
+            finally:
+                try:
+                    self.fh.close()
+                except OSError:
+                    pass
+
+
+_OPEN: dict = {}
+_OPEN_LOCK = threading.Lock()
+
+
+def open_container(path) -> dict:
+    """Buka container (hanya-baca) dan daftar isinya. Tutup dengan close_container()."""
+    fh = None
+    try:
+        fh, size = _ex_open_regular(path)
+        name = Path(str(path)).name
+        h = _make_handler(fh, size, name)
+        cid = "c" + secrets.token_hex(6)
+        c = _Container(cid, Path(str(path)).expanduser(), fh, size, h)
+        with _OPEN_LOCK:
+            while len(_OPEN) >= MAX_OPEN:                      # buang yang tertua supaya tidak bocor
+                old = min(_OPEN.values(), key=lambda x: x.t)
+                _OPEN.pop(old.id, None)
+                old.close()
+            _OPEN[cid] = c
+        files = sum(1 for e in h.entries if e.kind == "file")
+        return {"status": "success", "container_id": cid, "format": h.fmt, "label": h.label, "path": str(c.path), "size": size,
+                "entries": len(h.entries), "files": files, "truncated": h.truncated, "info": dict(h.info), "notes": list(h.notes)}
+    except ContainerError as e:
+        if fh:
+            fh.close()
+        return _ex_err(e.code, e)
+    except Exception as e:
+        if fh:
+            try:
+                fh.close()
+            except OSError:
+                pass
+        return _ex_err("open_failed", "%s: %s" % (type(e).__name__, e))
+
+
+def close_container(container_id) -> dict:
+    with _OPEN_LOCK:
+        c = _OPEN.pop(str(container_id), None)
+    if c is None:
+        return _ex_err("no_such_container", "container_id tidak dikenal / sudah ditutup")
+    c.close()
+    return {"status": "success"}
+
+
+def _get(cid):
+    with _OPEN_LOCK:
+        c = _OPEN.get(str(cid))
+    if c:
+        c.t = time.time()
+    return c
+
+
+def list_entries(container_id, limit: int = 0) -> dict:
+    c = _get(container_id)
+    if c is None:
+        return _ex_err("no_such_container", "container_id tidak dikenal / sudah ditutup")
+    es = c.h.entries if limit <= 0 else c.h.entries[:limit]
+    return {"status": "success", "format": c.h.fmt, "total": len(c.h.entries), "truncated": c.h.truncated, "entries": [e.as_dict() for e in es]}
+
+
+# ---------------------------------------------------------------------------------------------------
+# Pemilih entri
+# ---------------------------------------------------------------------------------------------------
+
+def _compile_selector(sel):
+    """-> (predikat(Entry) -> bool, max_entries | None). selector: None | str (pola) | dict."""
+    if sel in (None, "", {}):
+        return (lambda e: True), None
+    if isinstance(sel, str):
+        sel = {"pattern": sel}
+    if not isinstance(sel, dict):
+        raise ValueError("selector harus dict / string / None")
+    pats = []
+
+    def add(spec, bucket):
+        for s in re.split(r"[;,\n]", str(spec)) if not str(spec).startswith("re:") else [str(spec)]:
+            s = s.strip()
+            if not s:
+                continue
+            if s.startswith("re:"):
+                if len(s) > 400:
+                    raise ValueError("regex terlalu panjang")
+                bucket.append(("re", re.compile(s[3:], re.I)))
+            elif any(ch in s for ch in "*?["):
+                bucket.append(("glob", s.lower()))
+            else:
+                bucket.append(("sub", s.lower()))
+
+    inc, exc = [], []
+    if sel.get("pattern"):
+        add(sel["pattern"], inc)
+    if sel.get("exclude"):
+        add(sel["exclude"], exc)
+    paths = {str(p).replace("\\", "/").strip("/").lower() for p in (sel.get("paths") or [])}
+    max_size = sel.get("max_size")
+    max_size = int(max_size) if max_size not in (None, "") else None
+    max_entries = sel.get("max_entries")
+    max_entries = int(max_entries) if max_entries not in (None, "") else None
+
+    def hit(e, bucket):
+        full = e.path.replace("\\", "/").lower()
+        base = full.rsplit("/", 1)[-1]
+        for kind, p in bucket:
+            if kind == "re" and p.search(e.path):
+                return True
+            if kind == "glob" and (fnmatch.fnmatchcase(full, p) or fnmatch.fnmatchcase(base, p)):
+                return True
+            if kind == "sub" and p in full:
+                return True
+        return False
+
+    def pred(e):
+        full = e.path.replace("\\", "/").strip("/").lower()
+        if paths and full not in paths:
+            return False
+        if inc and not hit(e, inc):
+            return False
+        if exc and hit(e, exc):
+            return False
+        if max_size is not None and e.size is not None and e.size > max_size:
+            return False
+        return True
+
+    return pred, max_entries
+
+
+# ---------------------------------------------------------------------------------------------------
+# Ekstraksi
+# ---------------------------------------------------------------------------------------------------
+
+def _unique_path(root: Path, rel: str):
+    target = (root / rel).resolve()
+    if root != target and root not in target.parents:
+        return None
+    return target
+
+
+def _sha256_stream(fh, size) -> str | None:
+    if size > SOURCE_HASH_LIMIT:
+        return None
+    h = hashlib.sha256()
+    fh.seek(0)
+    while True:
+        b = fh.read(COPY_CHUNK)
+        if not b:
+            break
+        h.update(b)
+    return h.hexdigest()
+
+
+def _scan_flags(rel: str, typ: str, entropy: float, size: int) -> list:
+    flags = []
+    name = rel.rsplit("/", 1)[-1].lower()
+    ext = os.path.splitext(name)[1]
+    exe_type = typ in ("PE", "DOS MZ", "ELF", "Mach-O / class", "LNK", "skrip (shebang)", "PSP PRX terenkripsi")
+    if exe_type:
+        flags.append("berisi kode yang bisa dieksekusi (%s)" % typ)
+    if exe_type and ext and ext not in _EXEC_EXT:
+        flags.append("jenis %s menyamar dengan ekstensi %s" % (typ, ext))
+    if re.search(r"\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|gif|txt|mp3|mp4|zip|rar)\.(exe|scr|com|bat|cmd|js|vbs|lnk|pif|hta)$", name):
+        flags.append("ekstensi ganda menyesatkan")
+    if typ in _ARCHIVE_TYPES and typ != "TAR":
+        flags.append("container bersarang (%s): belum diekstrak otomatis" % typ)
+    if entropy >= 7.5 and size >= 4096 and typ not in _ARCHIVE_TYPES and typ not in ("PNG", "JPEG", "GIF", "OGG", "RIFF", "PDF"):
+        flags.append("entropi tinggi %.2f (terkompresi / terenkripsi / packed?)" % entropy)
+    return flags
+
+
+def extract_selected(container_id, selector=None, outdir=None, scan: bool = False) -> dict:
+    """Ekstraksi selektif ke workspace `outdir`. Mengembalikan manifest (dict). Tidak pernah melempar."""
+    try:
+        c = _get(container_id)
+        if c is None:
+            return _ex_err("no_such_container", "container_id tidak dikenal / sudah ditutup")
+        if not outdir:
+            return _ex_err("no_outdir", "outdir wajib diisi")
+        with c.lock:
+            return _do_extract(c, selector, Path(str(outdir)).expanduser(), bool(scan))
+    except ValueError as e:
+        return _ex_err("bad_selector", e)
+    except re.error as e:
+        return _ex_err("bad_selector", "regex tidak valid: %s" % e)
+    except Exception as e:
+        return _ex_err("extract_failed", "%s: %s" % (type(e).__name__, e))
+
+
+def _do_extract(c: _Container, selector, outdir: Path, scan: bool) -> dict:
+    h = c.h
+    pred, max_entries = _compile_selector(selector)
+    outdir.mkdir(parents=True, exist_ok=True)
+    root = outdir.resolve()
+    ext_root, man_root, log_root = root / "extracted", root / "manifests", root / "logs"
+    for d in (ext_root, man_root, log_root):
+        d.mkdir(parents=True, exist_ok=True)
+    ext_root = ext_root.resolve()
+    log: list = []
+
+    def L(msg):
+        log.append("%s %s" % (datetime.now(timezone.utc).strftime("%H:%M:%S"), _ex_clean(msg, 300)))
+
+    L("buka %s (%s, %d entri)" % (_ex_clean(c.path.name, 80), h.label, len(h.entries)))
+    matched = [e for e in h.entries if e.kind != "dir" and pred(e)]
+    notes: list = []
+    if max_entries is not None and len(matched) > max_entries:
+        notes.append("dibatasi max_entries=%d dari %d entri yang cocok" % (max_entries, len(matched)))
+        matched = matched[:max_entries]
+    files: list = []
+    skipped: list = []
+    errors: list = []
+    warnings: list = []
+    state = {"total": 0}
+    todo: list = []
+    for e in matched:
+        if e.kind != "file":
+            skipped.append({"path": _ex_clean(e.path, 200), "reason": "%s tidak diekstrak (kebijakan keamanan)%s" % ("tautan simbolik" if e.kind == "symlink" else "berkas khusus", " " + e.note if e.note else ""), "benign": True})
+        elif e.encrypted:
+            skipped.append({"path": _ex_clean(e.path, 200), "reason": "terenkripsi (kata sandi tidak didukung)", "benign": False})
+        elif e.size is not None and e.size > MAX_ENTRY_BYTES:
+            skipped.append({"path": _ex_clean(e.path, 200), "size": e.size, "reason": "melebihi batas ukuran per berkas (%s)" % _ex_human(MAX_ENTRY_BYTES), "benign": False})
+        else:
+            todo.append(e)
+
+    used: set = set()
+
+    def new_target(rel: str):
+        t = _unique_path(ext_root, rel)
+        if t is None:
+            return None
+        stem, suf, k = t.stem, t.suffix, 1
+        while str(t).lower() in used or t.exists():
+            k += 1
+            t = t.with_name("%s_%d%s" % (stem, k, suf))
+        used.add(str(t).lower())
+        return t
+
+    def write_one(e: Entry, stream):
+        rel, unsafe = _ex_safe_rel(e.path)
+        if unsafe:
+            warnings.append("path berbahaya dinetralkan: %s -> %s" % (_ex_clean(e.path, 120), rel))
+            L("netralkan path berbahaya: %s" % _ex_clean(e.path, 120))
+        tgt = new_target(rel)
+        if tgt is None:
+            skipped.append({"path": _ex_clean(e.path, 200), "reason": "path di luar workspace", "benign": False})
+            return
+        try:
+            tgt.parent.mkdir(parents=True, exist_ok=True)
+        except (FileExistsError, NotADirectoryError):
+            errors.append("%s: konflik nama (induk adalah berkas)" % _ex_clean(e.path, 120))
+            return
+        sha, written, head = hashlib.sha256(), 0, b""
+        ratio_cap = max(RATIO_FLOOR, e.packed * MAX_RATIO) if e.packed and e.packed > 0 else None
+        try:
+            with open(tgt, "xb") as out:
+                while True:
+                    b = stream.read(COPY_CHUNK)
+                    if not b:
+                        break
+                    written += len(b)
+                    if written > MAX_ENTRY_BYTES:
+                        raise _Limit("melebihi batas ukuran per berkas (%s)" % _ex_human(MAX_ENTRY_BYTES))
+                    if state["total"] + written > MAX_TOTAL_BYTES:
+                        raise _Limit("melebihi batas total ekstraksi (%s)" % _ex_human(MAX_TOTAL_BYTES))
+                    if ratio_cap and written > ratio_cap:
+                        raise _Limit("rasio kompresi mencurigakan (zip bomb?)")
+                    if len(head) < 1 << 20:
+                        head += b[:(1 << 20) - len(head)]
+                    sha.update(b)
+                    out.write(b)
+        except _Limit as x:
+            _rm(tgt)
+            skipped.append({"path": _ex_clean(e.path, 200), "reason": str(x), "benign": False})
+            L("lewati %s: %s" % (_ex_clean(e.path, 100), x))
+            return
+        except Exception as x:
+            _rm(tgt)
+            errors.append("%s: %s: %s" % (_ex_clean(e.path, 120), type(x).__name__, _ex_clean(x, 120)))
+            L("gagal %s: %s" % (_ex_clean(e.path, 100), type(x).__name__))
+            return
+        state["total"] += written
+        if e.mtime:
+            try:
+                os.utime(tgt, (e.mtime, e.mtime))
+            except (OSError, OverflowError, ValueError):
+                pass
+        typ = _sniff(head[:2048] if written < 32774 else head[:32800])
+        rec = {"path": tgt.relative_to(root).as_posix(), "source": _ex_clean(e.path, 300), "size": written, "sha256": sha.hexdigest(), "type": typ,
+               "mtime": _ts(e.mtime), "note": "path dinetralkan" if (unsafe or rel != e.path.replace("\\", "/")) else ""}
+        if scan:
+            rec["entropy"] = round(_ex_entropy(head[:1 << 20]), 3)
+            fl = _scan_flags(rel, typ, rec["entropy"], written)
+            if unsafe:
+                fl.insert(0, "path traversal / absolut di dalam arsip")
+            if fl:
+                rec["flags"] = fl
+        files.append(rec)
+
+    if todo:
+        wanted = {e.index for e in todo}
+        by_index = {e.index: e for e in todo}
+        if h.sequential:
+            try:
+                for e, stream in h.iter_data(wanted):
+                    if stream is None:
+                        errors.append("%s: tidak bisa dibuka" % _ex_clean(e.path, 120))
+                        continue
+                    try:
+                        write_one(e, stream)
+                    finally:
+                        _close(stream)
+            except Exception as x:
+                errors.append("arsip berhenti di tengah jalan: %s: %s" % (type(x).__name__, _ex_clean(x, 120)))
+                L("arsip berhenti: %s" % type(x).__name__)
+        else:
+            for e in todo:
+                try:
+                    stream = h.open_entry(e)
+                except Exception as x:
+                    errors.append("%s: %s: %s" % (_ex_clean(e.path, 120), type(x).__name__, _ex_clean(x, 120)))
+                    continue
+                try:
+                    write_one(by_index[e.index], stream)
+                finally:
+                    _close(stream)
+
+    # ---- manifest
+    benign_only = all(s.get("benign") for s in skipped)
+    if not matched:
+        status, code, msg = "error", "no_match", "tidak ada entri berkas yang cocok dengan selector (total %d entri)" % len(h.entries)
+    elif not files:
+        status, code, msg = "error", "nothing_extracted", "tidak ada yang berhasil diekstrak" + (": " + errors[0] if errors else (": " + skipped[0]["reason"] if skipped else ""))
+    elif errors or not benign_only:
+        status, code, msg = "partial", None, None
+    else:
+        status, code, msg = "success", None, None
+    scan_info = None
+    if scan:
+        by_type = Counter(f["type"] for f in files)
+        scan_info = {"files_scanned": len(files), "by_type": dict(by_type.most_common()),
+                     "flagged": [{"path": f["path"], "reasons": f["flags"]} for f in files if f.get("flags")]}
+    man = {"status": status, "version": _ex_VERSION, "format": h.fmt, "format_label": h.label, "source": str(c.path), "source_size": c.size,
+           "source_sha256": _sha256_stream(c.fh, c.size), "outdir": str(root),
+           "workspace": {"extracted": str(ext_root), "manifests": str(man_root), "logs": str(log_root)},
+           "time": datetime.now(timezone.utc).isoformat(timespec="seconds"), "selector": selector if isinstance(selector, (dict, str)) else None,
+           "entries_total": len(h.entries), "entries_matched": len(matched), "entries_extracted": len(files), "entries_skipped": len(skipped),
+           "entries_failed": len(errors), "bytes_extracted": state["total"], "container_truncated": h.truncated,
+           "container_info": dict(h.info), "files": files, "skipped": skipped, "errors": errors, "warnings": warnings + notes + list(h.notes), "scan": scan_info}
+    if code:
+        man["code"], man["message"] = code, msg
+    L("selesai: status=%s diekstrak=%d dilewati=%d gagal=%d" % (status, len(files), len(skipped), len(errors)))
+    try:
+        lp = _free_name(log_root, "extract", ".log")
+        lp.write_text("\n".join(log) + "\n", encoding="utf-8")
+        man["log_path"] = str(lp)
+        mp = _free_name(man_root, "manifest", ".json")
+        man["manifest_path"] = str(mp)
+        mp.write_text(json.dumps(man, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    except OSError as x:
+        man["warnings"].append("manifest / log tidak bisa ditulis: %s" % _ex_clean(x, 100))
+        man.pop("manifest_path", None)
+    return man
+
+
+def _free_name(folder: Path, stem: str, suffix: str) -> Path:
+    p, k = folder / (stem + suffix), 1
+    while p.exists():
+        k += 1
+        p = folder / ("%s_%d%s" % (stem, k, suffix))
+    return p
+
+
+def _rm(p: Path):
+    try:
+        p.unlink()
+    except OSError:
+        pass
+
+
+def _close(s):
+    try:
+        s.close()
+    except Exception:
+        pass
+
+
+def _ex_extract(path, outdir, pattern=None, scan: bool = False) -> dict:
+    """Pembungkus: buka -> ekstrak -> tutup."""
+    r = open_container(path)
+    if r.get("status") != "success":
+        return r
+    try:
+        return extract_selected(r["container_id"], {"pattern": pattern} if pattern else None, outdir, scan=scan)
+    finally:
+        close_container(r["container_id"])
+
+
+# ---------------------------------------------------------------------------------------------------
+# Deskripsi
+# ---------------------------------------------------------------------------------------------------
+
+def _entry_flags(e: Entry) -> list:
+    f = []
+    rel, unsafe = _ex_safe_rel(e.path)
+    if unsafe:
+        f.append("PATH-BERBAHAYA")
+    if e.encrypted:
+        f.append("ENKRIPSI")
+    if e.kind == "symlink":
+        f.append("TAUTAN")
+    elif e.kind == "other":
+        f.append("KHUSUS")
+    if e.kind == "file":
+        ext = os.path.splitext(e.path.lower())[1]
+        if ext in _EXEC_EXT:
+            f.append("EKSEKUSI")
+        if re.search(r"\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|gif|txt|mp3|mp4|zip|rar)\.(exe|scr|com|bat|cmd|js|vbs|lnk|pif|hta)$", e.path.lower()):
+            f.append("EKSTENSI-GANDA")
+        if e.packed and e.size and e.packed > 0 and e.size > 10 * 1024 * 1024 and e.size / e.packed > 1000:
+            f.append("RASIO-TINGGI")
+    return f
+
+
+def describe_container(path) -> dict:
+    r = open_container(path)
+    if r.get("status") != "success":
+        return r
+    try:
+        c = _get(r["container_id"])
+        h = c.h
+        files = [e for e in h.entries if e.kind == "file"]
+        total = sum(e.size for e in files if e.size and e.size > 0)
+        packed = sum(e.packed for e in files if e.packed)
+        exts = Counter(os.path.splitext(e.path.lower())[1] or "(tanpa ekstensi)" for e in files)
+        flagged = [(e, _entry_flags(e)) for e in h.entries]
+        flagged = [(e, f) for e, f in flagged if f]
+        return {"status": "success", "format": h.fmt, "label": h.label, "path": str(c.path), "size": c.size, "entries_total": len(h.entries),
+                "files": len(files), "dirs": sum(1 for e in h.entries if e.kind == "dir"), "total_size": total, "packed_total": packed,
+                "info": dict(h.info), "notes": list(h.notes), "truncated": h.truncated, "top_extensions": dict(exts.most_common(8)),
+                "flagged": [{"path": _ex_clean(e.path, 200), "flags": f} for e, f in flagged[:100]],
+                "entries": [e.as_dict() for e in h.entries[:MAX_LIST_ROWS]]}
+    finally:
+        close_container(r["container_id"])
+
+
+def describe_container_text(path, max_chars: int = 0) -> str:
+    """Daftar isi ringkas untuk laporan / Hermes. Tidak melempar."""
+    try:
+        d = describe_container(path)
+        if d.get("status") != "success":
+            return "CONTAINER gagal dibuka: %s" % d.get("message", d.get("code"))
+        head = "CONTAINER: %s | %d entri (%d berkas, %d folder) | isi %s%s" % (
+            d["label"], d["entries_total"], d["files"], d["dirs"], _ex_human(d["total_size"]),
+            " (terkompresi %s, rasio %.1fx)" % (_ex_human(d["packed_total"]), d["total_size"] / d["packed_total"]) if d["packed_total"] else "")
+        L = [head, "  Berkas: %s (%s)%s" % (_ex_clean(Path(str(path)).name, 100), _ex_human(d["size"]), " | DAFTAR DIPOTONG (batas entri / waktu)" if d["truncated"] else "")]
+        info = d["info"]
+        if info.get("wrapper"):
+            L.append("  Pembungkus: %s" % info["wrapper"])
+        if info.get("volume_id") or info.get("names"):
+            L.append("  Volume: %s | sistem: %s | nama: %s%s" % (info.get("volume_id", "?") or "-", info.get("system_id", "?") or "-", info.get("names", "?"),
+                                                                 " | dibuat %s" % info["created"] if info.get("created") else ""))
+        if info.get("psp_title") or info.get("psp_disc_id"):
+            L.append("  PSP: judul %s | ID %s | versi disc %s | app %s | kategori %s | firmware %s" % (
+                info.get("psp_title", "?"), info.get("psp_disc_id", "?"), info.get("psp_disc_version", "?"), info.get("psp_app_ver", "?"),
+                info.get("psp_category", "?"), info.get("psp_psp_system_ver", "?")))
+        if info.get("eboot"):
+            L.append("  EBOOT.BIN: %s" % info["eboot"])
+        for k in ("hint", "comment"):
+            if info.get(k):
+                L.append("  %s: %s" % ("Petunjuk" if k == "hint" else "Komentar", info[k]))
+        L += ["  Catatan: %s" % n for n in d["notes"]]
+        if d["top_extensions"]:
+            L.append("  Ekstensi: " + ", ".join("%s x%d" % (k, v) for k, v in d["top_extensions"].items()))
+        if d["flagged"]:
+            L.append("  PERHATIAN: %d entri mencurigakan" % len(d["flagged"]))
+            L += ["    %s  [%s]" % (x["path"], ", ".join(x["flags"])) for x in d["flagged"][:12]]
+            if len(d["flagged"]) > 12:
+                L.append("    ... +%d lagi" % (len(d["flagged"]) - 12))
+        L.append("  Isi:")
+        for e in d["entries"][:80]:
+            fl = _entry_flags_from_dict(e)
+            L.append("   %s %10s  %s%s" % ("d" if e["kind"] == "dir" else "l" if e["kind"] == "symlink" else "-", "" if e["kind"] == "dir" else _ex_human(e["size"]),
+                                          e["path"] + ("/" if e["kind"] == "dir" else ""), "  [%s]" % ", ".join(fl) if fl else ""))
+        if d["entries_total"] > 80:
+            L.append("   ... +%d entri lagi (gunakan extract / list_entries untuk daftar penuh)" % (d["entries_total"] - 80))
+        text = "\n".join(L)
+        if max_chars and len(text) > max_chars:
+            text = text[:max_chars - 30] + "\n[...dipangkas supaya muat...]"
+        return text
+    except Exception as e:
+        return "CONTAINER gagal dibaca (%s: %s)." % (type(e).__name__, _ex_clean(e, 120))
+
+
+def _entry_flags_from_dict(e: dict) -> list:
+    return _entry_flags(Entry(0, e["path"], e["size"], e["packed"], e["kind"], None, e["encrypted"]))
+
+
+# ---------------------------------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------------------------------
+
+def _ex_main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv:
+        print(_EX_DOC.split("CLI:")[1].strip())
+        return 1
+    cmd, rest = argv[0], argv[1:]
+    if cmd == "formats":
+        for f in _ex_formats():
+            print("%-18s %s" % (f["name"], f["about"]))
+        return 0
+    if cmd == "list" and rest:
+        print(describe_container_text(rest[0]))
+        return 0
+    if cmd == "extract" and len(rest) >= 2:
+        scan = "--scan" in rest
+        pos = [x for x in rest if not x.startswith("--")]
+        m = _ex_extract(pos[0], pos[1], pattern=pos[2] if len(pos) > 2 else None, scan=scan)
+        print("status=%s diekstrak=%s dilewati=%s gagal=%s | manifest: %s%s" % (m.get("status"), m.get("entries_extracted"), m.get("entries_skipped"),
+                                                                            m.get("entries_failed"), m.get("manifest_path"), (" | " + m["message"]) if m.get("message") else ""))
+        for f in (m.get("scan") or {}).get("flagged", [])[:20]:
+            print("  PERHATIAN %s: %s" % (f["path"], "; ".join(f["reasons"])))
+        return 0 if m.get("status") == "success" else 1
+    print("pemakaian: python rea_extract.py list FILE | extract FILE OUTDIR [pola] [--scan] | formats")
+    return 1
+
+_BN_PUBLIC = frozenset(['COMPARE_CHUNK', 'HASH_LIMIT', 'MAX_BACKUP', 'MAX_DIR_FILES', 'MAX_HEX', 'MAX_HITS', 'MAX_JOURNAL', 'MAX_PATCH', 'MAX_RANGES', 'SEARCH_CHUNK', 'SEARCH_OVERLAP', 'SEARCH_TIME', 'VERSION', '_ASCII', '_EBCDIC', '_ENC_ALIASES', '_LATIN1', '_NotRegular', '_Src', '_as_bytes', '_clean', '_compile_pattern', '_ebcdic_table', '_err', '_fail', '_fmt_time', '_fsync_write', '_journal_path', '_load_journal', '_norm_offset', '_opt', '_orig_path', '_parse_hex', '_plausible', '_same_content', '_save_journal', '_sha256_file', '_text_column', '_to_int', '_walk_files', 'compare_dirs', 'compare_files', 'hex_view', 'history', 'inspect_at', 'inspect_text', 'main', 'patch', 'patch_text', 'restore_original', 'search', 'search_text', 'undo'])
+_BN_RENAMED = {'_ASCII': '_bn_ASCII', 'VERSION': '_bn_VERSION', 'main': '_bn_main', '_err': '_bn_err', '_clean': '_bn_clean'}
+_EX_PUBLIC = frozenset(['COPY_CHUNK', 'ContainerError', 'Entry', 'LIST_TIME', 'MAX_DEPTH', 'MAX_DIR_BYTES', 'MAX_ENTRIES', 'MAX_ENTRY_BYTES', 'MAX_LIST_ROWS', 'MAX_OPEN', 'MAX_RATIO', 'MAX_TOTAL_BYTES', 'RATIO_FLOOR', 'SOURCE_HASH_LIMIT', 'VERSION', '_ARCHIVE_TYPES', '_Container', '_CsoImg', '_EXEC_EXT', '_ExtentStream', '_FileImg', '_Handler', '_ISO_LAYOUTS', '_IsoHandler', '_Limit', '_OPEN', '_OPEN_LOCK', '_RESERVED', '_SingleHandler', '_TarHandler', '_ZipHandler', '_clean', '_close', '_compile_selector', '_do_extract', '_entropy', '_entry_flags', '_entry_flags_from_dict', '_err', '_find_iso_layout', '_free_name', '_get', '_human', '_make_handler', '_open_regular', '_parse_sfo', '_rm', '_safe_rel', '_scan_flags', '_sha256_stream', '_sniff', '_ts', '_unique_path', 'close_container', 'describe_container', 'describe_container_text', 'extract', 'extract_selected', 'formats', 'list_entries', 'main', 'open_container'])
+_EX_RENAMED = {'extract': '_ex_extract', 'formats': '_ex_formats', '_human': '_ex_human', '_RESERVED': '_ex_RESERVED', 'main': '_ex_main', '_entropy': '_ex_entropy', '_err': '_ex_err', '_clean': '_ex_clean', 'VERSION': '_ex_VERSION', '_open_regular': '_ex_open_regular', 'MAX_ENTRIES': '_ex_MAX_ENTRIES', '_safe_rel': '_ex_safe_rel'}
+
+
+class _ModAPI:
+    """Fasad pengganti `import rea_binary` / `import rea_extract`: hanya nama publik modul asal yang bisa diakses (nama bentrok dipetakan ke _bn_* / _ex_*)."""
+    __slots__ = ("_pub", "_ren")
+
+    def __init__(self, pub, ren):
+        object.__setattr__(self, "_pub", pub)
+        object.__setattr__(self, "_ren", ren)
+
+    def __getattr__(self, name):
+        if name not in self._pub:
+            raise AttributeError(name)
+        return globals()[self._ren.get(name, name)]
+
+
+_BN_API = _ModAPI(_BN_PUBLIC, _BN_RENAMED)
+_EX_API = _ModAPI(_EX_PUBLIC, _EX_RENAMED)
+
+
+def _binary_mod():
+    """Binary Workbench (dulu rea_binary.py)."""
+    return _BN_API
+
+
+
+# ===================================================================================================
+# GAMELAB (digabung dari gamelab.py): pak (UnrealPak) | re (ELF/Mach-O ARM) | unity (UnityFS/SerializedFile)
+# Dependensi opsional dimuat lazy hanya saat grupnya dipakai: lief+capstone (re), lz4/pillow/texture2ddecoder/UnityPy (unity).
+# ===================================================================================================
+import argparse
+import bisect
+import collections
+import json
+import lzma
+import math
+import os
+import re
+import struct
+import subprocess
+import sys
+import uuid
+import base64
+
+try:
+    import lz4.block as lz4block
+except ImportError:
+    lz4block = None
+
+lief = None   # dimuat lazy oleh _init_re()
+cs = None
+
+
+def _init_re():
+    global lief, cs
+    try:
+        import lief as _lief
+    except ImportError:
+        sys.exit("Grup 're' butuh LIEF: pip install lief")
+    lief = _lief
+    try:
+        import capstone as _cs
+        cs = _cs
+    except ImportError:
+        cs = None
+    try:
+        lief.logging.set_level(lief.logging.LEVEL.ERROR)
+    except Exception:
+        pass
+
+
+RE_DOC = '\nre_lab.py - RE Lab untuk ELF dan Mach-O (ARM / ARM64 / Thumb)\n\nDependensi:  pip install lief capstone\n\nSubcommand:\n  triage   ringkasan cepat: format, arsitektur, proteksi, lib, indikator anti-debug/hook\n  sections daftar section/segment + entropi (deteksi packed/encrypted)\n  symbols  daftar simbol (filter --grep, --imports, --exports)\n  strings  string ASCII/UTF-16LE + alamat virtual\n  funcs    penemuan fungsi (simbol + heuristik prolog untuk binary stripped)\n  disasm   disassemble per alamat / simbol (ARM, Thumb, ARM64)\n  xrefs    cross-reference BL/B ke alamat/simbol, dan ref string via ADRP+ADD (ARM64)\n  objc     (Mach-O) class/selector Objective-C dari section __objc_*\n  jni      (ELF) fungsi JNI: JNI_OnLoad dan Java_* + RegisterNatives\n  carve    dump byte dari range alamat virtual ke file\n\nContoh:\n  python re_lab.py triage libgame.so\n  python re_lab.py disasm libgame.so --sym Java_com_x_Native_init --count 40\n  python re_lab.py xrefs  libgame.so --str "license"\n  python re_lab.py funcs  GameApp --slice 0 --limit 50\n'
+UNITY_DOC = '\nunity_parser.py - Parser UnityFS bundle + SerializedFile (mandiri, berbasis TypeTree)\n\nDependensi : pip install lz4\nOpsional   : pip install pillow texture2ddecoder   (ekspor PNG + dekode DXT/BC/ETC/ASTC/PVRTC)\n             pip install UnityPy                    (fallback TypeTree untuk file yang TypeTree-nya di-strip)\n\nFitur\n  - Bundle UnityFS (LZ4 / LZ4HC / LZMA / tanpa kompresi), blocks-info di awal atau di akhir\n  - SerializedFile v13-v22+ (header, TypeTree blob, object table, externals, ref types)\n  - Pembaca TypeTree generik -> dict Python (semua class yang TypeTree-nya ada)\n  - Ekstraktor: Texture2D -> PNG, Mesh -> OBJ, AnimationClip -> JSON, TextAsset -> file mentah\n  - Resource eksternal (.resS / StreamingInfo) di dalam bundle maupun sebelah file .assets\n\nPerintah\n  info     FILE                     ringkasan bundle / serialized file\n  ls       FILE [--type T]          daftar object (path_id, class, nama, ukuran)\n  dump     FILE --id PATH_ID        dump TypeTree object sebagai JSON\n  extract  FILE -o DIR [--types Texture2D,Mesh,AnimationClip,TextAsset] [--name REGEX]\n  unpack   FILE -o DIR              tulis semua node bundle hasil dekompresi\n\nBatasan (jujur)\n  - Bundle terenkripsi/custom (UnityCN, header dimodifikasi) tidak didukung.\n  - Build rilis sering membuang TypeTree; pakai --fallback (butuh UnityPy) atau\n    cocokkan dengan TypeTree dari tooling lain.\n  - Mesh terkompresi (m_MeshCompression != 0) dan tekstur swizzle konsol belum didukung.\n  - Animasi mecanim di-dump sebagai keyframe mentah + binding (bukan retarget penuh).\n'
+PAK_DOC = '\npakbuild.py - Pembuat pak Unreal (Oodle/Zstd + enkripsi AES-256) lewat UnrealPak\n\nSubcommand:\n  gen-key   buat key AES-256 + GUID -> Crypto.json dan Crypto.json.ini.snippet\n  filelist  buat filelist.txt dari folder Saved/Cooked/<Platform>/<Project>\n  build     jalankan UnrealPak: kompres + enkripsi\n  list      daftar isi pak (butuh Crypto.json bila terenkripsi)\n\nContoh:\n  python pakbuild.py gen-key --out Crypto.json\n  python pakbuild.py filelist --cooked D:/P/Saved/Cooked/Windows/MyGame --project MyGame\n  python pakbuild.py build --unrealpak "C:/UE_5.4/Engine/Binaries/Win64/UnrealPak.exe" \\\n        --out MyDLC.pak --format Oodle --keys Crypto.json\n'
+
+
+
+# =========================================================================== #
+# GRUP: pak (Unreal pak builder)
+# =========================================================================== #
+
+CPP_H = r'''#pragma once
+#include "CoreMinimal.h"
+
+class FPakKeyLoader
+{
+public:
+    // Daftarkan key AES (base64) lalu mount pak. Mengembalikan true jika berhasil.
+    static bool RegisterKeyAndMount(const FGuid& KeyGuid, const FString& Base64Key,
+                                    const FString& PakPath, int32 PakOrder = 100);
+};
+'''
+
+CPP_CPP = r'''#include "PakKeyLoader.h"
+#include "Misc/CoreDelegates.h"
+#include "Misc/AES.h"
+#include "Misc/Base64.h"
+
+bool FPakKeyLoader::RegisterKeyAndMount(const FGuid& KeyGuid, const FString& Base64Key,
+                                        const FString& PakPath, int32 PakOrder)
+{
+    TArray<uint8> KeyBytes;
+    if (!FBase64::Decode(Base64Key, KeyBytes) || KeyBytes.Num() != 32)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Key AES tidak valid (harus 32 byte)."));
+        return false;
+    }
+
+    FAES::FAESKey Key;
+    FMemory::Memcpy(Key.Key, KeyBytes.GetData(), 32);
+    FCoreDelegates::GetRegisterEncryptionKeyMulticastDelegate().Broadcast(KeyGuid, Key);
+
+    if (!FCoreDelegates::MountPak.IsBound())
+    {
+        UE_LOG(LogTemp, Error, TEXT("Delegate MountPak belum terikat."));
+        return false;
+    }
+    return FCoreDelegates::MountPak.Execute(PakPath, PakOrder) != nullptr;
+}
+'''
+
+
+def cmd_emitcpp(a):
+    os.makedirs(a.out, exist_ok=True)
+    for name, txt in (("PakKeyLoader.h", CPP_H), ("PakKeyLoader.cpp", CPP_CPP)):
+        with open(os.path.join(a.out, name), "w", newline="\n") as f:
+            f.write(txt)
+        print(os.path.join(a.out, name))
+
+
+def cmd_genkey(a):
+    key = base64.b64encode(os.urandom(32)).decode()
+    guid = str(uuid.uuid4()).upper()
+    with open(a.out, "w") as f:
+        json.dump({"EncryptionKey": {"Name": a.name, "Guid": guid, "Key": key}}, f, indent=2)
+    ini = a.out + ".ini.snippet"
+    with open(ini, "w") as f:
+        f.write("[/Script/CryptoKeys.CryptoKeysSettings]\n"
+                "bEnablePakIndexEncryption=True\nbEnablePakIniEncryption=True\n"
+                "bEnablePakUAssetEncryption=True\nbEnablePakFullAssetEncryption=False\n"
+                f"bDataCryptoRequired=True\nEncryptionKey={key}\n")
+    print(f"Guid: {guid}\nKey tersimpan di {a.out} dan {ini}")
+    print("JANGAN commit file key ke repo publik.")
+
+
+def cmd_filelist(a):
+    root = os.path.abspath(a.cooked)
+    exts = tuple(e.strip().lower() for e in a.ext.split(",")) if a.ext else None
+    n = 0
+    with open(a.out, "w") as f:
+        for dp, _, files in os.walk(root):
+            for fn in sorted(files):
+                if exts and not fn.lower().endswith(exts):
+                    continue
+                full = os.path.join(dp, fn)
+                rel = os.path.relpath(full, root).replace("\\", "/")
+                f.write(f'"{full}" "../../../{a.project}/{rel}"\n')
+                n += 1
+    print(f"{n} file -> {a.out}")
+
+
+def _exe(a):
+    exe = a.unrealpak or os.environ.get("UNREALPAK")
+    if not exe:
+        sys.exit("Tentukan --unrealpak atau set env UNREALPAK")
+    return exe
+
+
+def _run(cmd):
+    print(" ".join(f'"{c}"' if " " in c else c for c in cmd))
+    sys.exit(subprocess.call(cmd))
+
+
+def cmd_build(a):
+    cmd = [_exe(a), a.out, f"-create={a.filelist}"]
+    if a.format.lower() != "none":
+        cmd += ["-compress", f"-compressionformats={a.format}"]
+    if not a.no_encrypt:
+        if not a.keys:
+            sys.exit("Enkripsi butuh --keys Crypto.json (atau pakai --no-encrypt)")
+        cmd += [f"-cryptokeys={a.keys}", "-encrypt", "-encryptindex"]
+    _run(cmd)
+
+
+def cmd_list(a):
+    cmd = [_exe(a), a.pak, "-List"]
+    if a.keys:
+        cmd.append(f"-cryptokeys={a.keys}")
+    _run(cmd)
+
+
+def main_pak():
+    p = argparse.ArgumentParser(description="Unreal pak builder",
+                                formatter_class=argparse.RawDescriptionHelpFormatter, epilog=PAK_DOC)
+    sp = p.add_subparsers(dest="cmd", required=True)
+    s = sp.add_parser("gen-key"); s.set_defaults(fn=cmd_genkey)
+    s.add_argument("--out", default="Crypto.json"); s.add_argument("--name", default="MyKey")
+    s = sp.add_parser("filelist"); s.set_defaults(fn=cmd_filelist)
+    s.add_argument("--cooked", required=True); s.add_argument("--project", required=True)
+    s.add_argument("--out", default="filelist.txt")
+    s.add_argument("--ext", help="filter ekstensi, mis. .uasset,.uexp,.umap,.ubulk")
+    s = sp.add_parser("build"); s.set_defaults(fn=cmd_build)
+    s.add_argument("--unrealpak"); s.add_argument("--out", required=True)
+    s.add_argument("--filelist", default="filelist.txt")
+    s.add_argument("--format", default="Oodle", help="Oodle | Zstd | Zlib | LZ4 | none")
+    s.add_argument("--keys"); s.add_argument("--no-encrypt", action="store_true")
+    s = sp.add_parser("emit-cpp"); s.set_defaults(fn=cmd_emitcpp)
+    s.add_argument("--out", default="UnrealLoader")
+    s = sp.add_parser("list"); s.set_defaults(fn=cmd_list)
+    s.add_argument("pak"); s.add_argument("--unrealpak"); s.add_argument("--keys")
+    a = p.parse_args()
+    a.fn(a)
+
+
+
+
+# =========================================================================== #
+# GRUP: re (ELF / Mach-O ARM)
+# =========================================================================== #
+# --------------------------------------------------------------------------- #
+# Loader
+# --------------------------------------------------------------------------- #
+class Target:
+    def __init__(self, path, slice_idx=None):
+        self.path = path
+        with open(path, "rb") as f:
+            self.raw = f.read()
+        self.fmt = None
+        self.bin = None
+        self.arch = "other"
+        self.thumb_default = False
+        self._load(slice_idx)
+        self._sym_cache = None
+
+    def _load(self, slice_idx):
+        if lief.is_elf(self.path):
+            self.fmt = "elf"
+            self.bin = lief.ELF.parse(self.path)
+            m = str(self.bin.header.machine_type).upper()
+            if "AARCH64" in m:
+                self.arch = "arm64"
+            elif "ARM" in m:
+                self.arch = "arm"
+        elif lief.is_macho(self.path):
+            self.fmt = "macho"
+            fat = lief.MachO.parse(self.path)
+            bins = list(fat)
+            if not bins:
+                sys.exit("Mach-O kosong")
+            self.slices = bins
+            if slice_idx is None:
+                slice_idx = 0
+                for i, b in enumerate(bins):  # prefer arm64
+                    if "ARM64" in str(b.header.cpu_type).upper():
+                        slice_idx = i
+                        break
+            if len(bins) > 1:
+                print(f"[i] Fat binary: {len(bins)} slice, pakai slice {slice_idx}",
+                      file=sys.stderr)
+            self.bin = bins[slice_idx]
+            c = str(self.bin.header.cpu_type).upper()
+            if "ARM64" in c:
+                self.arch = "arm64"
+            elif "ARM" in c:
+                self.arch = "arm"
+            # raw offset slice -> hanya untuk strings; fat offset ditangani LIEF
+        else:
+            sys.exit("Bukan ELF atau Mach-O")
+
+    # ----- sections -----
+    def sections(self):
+        out = []
+        for s in self.bin.sections:
+            if self.fmt == "macho":
+                name = f"{s.segment_name},{s.name}"
+            else:
+                name = s.name
+            out.append((name, s.virtual_address, s.offset, s.size, s))
+        return out
+
+    def is_exec(self, name, sec):
+        if self.fmt == "macho":
+            return name.endswith(("__text", "__stubs", "__stub_helper", "__auth_stubs"))
+        try:
+            return lief.ELF.Section.FLAGS.EXECINSTR in sec.flags_list
+        except Exception:
+            return name in (".text", ".plt", ".init", ".fini")
+
+    def sec_bytes(self, sec):
+        return bytes(sec.content)
+
+    # ----- memory -----
+    def read_va(self, va, size):
+        try:
+            return bytes(self.bin.get_content_from_virtual_address(va, size))
+        except Exception:
+            return b""
+
+    def va_of_offset(self, off):
+        try:
+            return self.bin.offset_to_virtual_address(off)
+        except Exception:
+            return None
+
+    # ----- symbols -----
+    def symbols(self):
+        """list of dict(name, addr, size, thumb, func, imported, exported)"""
+        if self._sym_cache is not None:
+            return self._sym_cache
+        seen, out = set(), []
+        for s in self.bin.symbols:
+            name = s.name
+            val = s.value
+            if not name:
+                continue
+            thumb = False
+            func = True
+            imported = exported = False
+            if self.fmt == "elf":
+                func = str(s.type).upper().endswith("FUNC")
+                imported = bool(getattr(s, "imported", False))
+                exported = bool(getattr(s, "exported", False))
+                if self.arch == "arm" and (val & 1) and func:
+                    thumb, val = True, val & ~1
+            else:
+                imported = val == 0
+                exported = bool(getattr(s, "is_external", False)) and val != 0
+            key = (name, val)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(dict(name=name, addr=val, size=getattr(s, "size", 0) or 0,
+                            thumb=thumb, func=func, imported=imported, exported=exported))
+        self._sym_cache = out
+        return out
+
+    def sym_index(self):
+        syms = sorted((s for s in self.symbols() if s["addr"] and s["func"]),
+                      key=lambda x: x["addr"])
+        return syms, [s["addr"] for s in syms]
+
+    def name_at(self, addr):
+        syms, addrs = self.sym_index()
+        i = bisect.bisect_right(addrs, addr) - 1
+        if i >= 0:
+            s = syms[i]
+            d = addr - s["addr"]
+            if d == 0:
+                return s["name"]
+            if (s["size"] and d < s["size"]) or (not s["size"] and d < 0x400):
+                return f"{s['name']}+0x{d:x}"
+        return None
+
+    def resolve(self, ref):
+        """ref bisa nama simbol atau alamat hex. Return (addr, thumb)"""
+        try:
+            return int(ref, 0) & ~1 if self.arch == "arm" else int(ref, 0), \
+                (self.arch == "arm" and bool(int(ref, 0) & 1))
+        except ValueError:
+            pass
+        for s in self.symbols():
+            if s["name"] == ref and s["addr"]:
+                return s["addr"], s["thumb"]
+        sys.exit(f"Simbol tidak ditemukan: {ref}")
+
+    # ----- capstone -----
+    def md(self, thumb=False):
+        if cs is None:
+            sys.exit("Butuh capstone: pip install capstone")
+        if self.arch == "arm64":
+            md = cs.Cs(cs.CS_ARCH_ARM64, cs.CS_MODE_ARM)
+        elif self.arch == "arm":
+            md = cs.Cs(cs.CS_ARCH_ARM, cs.CS_MODE_THUMB if thumb else cs.CS_MODE_ARM)
+        else:
+            sys.exit(f"Arsitektur non-ARM tidak didukung untuk disasm "
+                     f"({self.arch})")
+        md.detail = False
+        return md
+
+
+# --------------------------------------------------------------------------- #
+# Util
+# --------------------------------------------------------------------------- #
+def entropy(data):
+    if not data:
+        return 0.0
+    c = collections.Counter(data)
+    n = len(data)
+    return -sum((v / n) * math.log2(v / n) for v in c.values())
+
+
+def hexs(n):
+    return f"0x{n:x}"
+
+
+def extract_strings(data, minlen=5, utf16=False):
+    if utf16:
+        pat = re.compile(rb"(?:[\x20-\x7e]\x00){%d,}" % minlen)
+    else:
+        pat = re.compile(rb"[\x20-\x7e]{%d,}" % minlen)
+    for m in pat.finditer(data):
+        txt = m.group().decode("utf-16le" if utf16 else "ascii", "replace")
+        yield m.start(), txt
+
+
+def target_of(insn_text):
+    m = re.search(r"#(0x[0-9a-fA-F]+)", insn_text)
+    return int(m.group(1), 16) if m else None
+
+
+def disasm_range(t, addr, size, thumb=False):
+    data = t.read_va(addr, size)
+    if not data:
+        return []
+    return list(t.md(thumb).disasm(data, addr))
+
+
+def exec_sections(t):
+    return [(n, va, off, sz, s) for n, va, off, sz, s in t.sections()
+            if sz and t.is_exec(n, s)]
+
+
+# --------------------------------------------------------------------------- #
+# Commands
+# --------------------------------------------------------------------------- #
+SUSPICIOUS_IMPORTS = {
+    "ptrace": "anti-debug", "fork": "anti-debug/child", "prctl": "anti-debug/seccomp",
+    "dlopen": "dynamic load", "dlsym": "dynamic resolve", "mprotect": "memory patch",
+    "mmap": "memory map", "syscall": "raw syscall", "inotify_add_watch": "file watch",
+    "sysctl": "anti-debug (macOS/iOS)", "task_get_exception_ports": "anti-debug (iOS)",
+    "dladdr": "hook check", "_dyld_image_count": "dylib enumeration (jailbreak/hook check)",
+    "_dyld_get_image_name": "dylib enumeration", "SecTaskCopyValueForEntitlement": "entitlement check",
+    "RegisterNatives": "JNI dynamic registration", "__system_property_get": "device check",
+}
+SUSPICIOUS_STRINGS = [
+    "frida", "xposed", "substrate", "cydia", "magisk", "/proc/self/maps",
+    "TracerPid", "/system/bin/su", "libhook", "gum-js", "re.frida", "Jailbreak",
+    "/Applications/Cydia.app", "/usr/sbin/sshd", "DYLD_INSERT_LIBRARIES",
+]
+
+
+def cmd_triage(t, a):
+    b = t.bin
+    print(f"File      : {t.path}")
+    print(f"Format    : {t.fmt.upper()}   Arch: {t.arch}")
+    imports = {s["name"] for s in t.symbols() if s["imported"]}
+    flags = []
+
+    if t.fmt == "elf":
+        h = b.header
+        print(f"Type      : {h.file_type}   Entry: {hexs(h.entrypoint)}")
+        print(f"PIE       : {getattr(b, 'is_pie', '?')}   NX: {getattr(b, 'has_nx', '?')}")
+        print(f"Stripped  : {b.get_section('.symtab') is None}")
+        print(f"Canary    : {'__stack_chk_fail' in imports}")
+        try:
+            print(f"Needed    : {', '.join(b.libraries)}")
+        except Exception:
+            pass
+        try:
+            print(f"Interp    : {b.interpreter}")
+        except Exception:
+            pass
+        has_text_rel = any("TEXTREL" in str(e.tag) for e in b.dynamic_entries)
+        if has_text_rel:
+            flags.append("TEXTREL (relokasi di code segment)")
+    else:
+        h = b.header
+        print(f"Filetype  : {h.file_type}   Flags: {[str(f).split('.')[-1] for f in h.flags_list]}")
+        print(f"PIE       : {getattr(b, 'is_pie', '?')}   NX: {getattr(b, 'has_nx', '?')}")
+        print(f"Dylibs    : {', '.join(d.name for d in b.libraries)}")
+        print(f"CodeSign  : {b.has_code_signature}")
+        if getattr(b, "has_encryption_info", False):
+            ei = b.encryption_info
+            state = "TERENKRIPSI (FairPlay) - butuh dump terdekripsi" if ei.crypt_id else "tidak terenkripsi"
+            print(f"CryptID   : {ei.crypt_id} -> {state}")
+            if ei.crypt_id:
+                flags.append("Binary FairPlay-encrypted; analisis statis terbatas")
+        print(f"Canary    : {'___stack_chk_fail' in imports}")
+
+    # entropi
+    print("\nEntropi section (>7.2 = kemungkinan packed/encrypted):")
+    for n, va, off, sz, s in t.sections():
+        if sz < 256:
+            continue
+        e = entropy(t.sec_bytes(s))
+        mark = "  <-- tinggi" if e > 7.2 else ""
+        print(f"  {n:<28} {hexs(va):>12} {sz:>10}  H={e:.2f}{mark}")
+        if e > 7.2 and t.is_exec(n, s):
+            flags.append(f"Section kode {n} berentropi tinggi (packed/encrypted?)")
+
+    # import mencurigakan
+    hits = [(i, SUSPICIOUS_IMPORTS[i.lstrip('_')] if i.lstrip('_') in SUSPICIOUS_IMPORTS
+             else SUSPICIOUS_IMPORTS[i]) for i in imports
+            if i in SUSPICIOUS_IMPORTS or i.lstrip("_") in SUSPICIOUS_IMPORTS]
+    if hits:
+        print("\nImport menarik:")
+        for n, why in sorted(hits):
+            print(f"  {n:<36} {why}")
+
+    # string indikator
+    found = collections.defaultdict(list)
+    for off, s in extract_strings(t.raw, 4):
+        for k in SUSPICIOUS_STRINGS:
+            if k.lower() in s.lower():
+                found[k].append(s)
+    if found:
+        print("\nString indikator deteksi root/jailbreak/hook:")
+        for k, v in found.items():
+            print(f"  {k:<28} x{len(v)}  contoh: {v[0][:60]!r}")
+
+    if t.fmt == "elf":
+        jni = [s["name"] for s in t.symbols() if s["name"].startswith("Java_") or s["name"] == "JNI_OnLoad"]
+        if jni:
+            print(f"\nJNI: {len(jni)} entri (jalankan: jni)")
+    if t.fmt == "macho":
+        print("\nTip: jalankan 'objc' untuk class/selector Objective-C.")
+    if flags:
+        print("\nCatatan:")
+        for f in flags:
+            print(f"  - {f}")
+
+
+def cmd_sections(t, a):
+    print(f"{'NAMA':<30}{'VA':>14}{'OFFSET':>12}{'SIZE':>12}  {'ENT':>5}  X")
+    for n, va, off, sz, s in t.sections():
+        e = entropy(t.sec_bytes(s)) if sz else 0
+        print(f"{n:<30}{hexs(va):>14}{hexs(off):>12}{hexs(sz):>12}  {e:5.2f}  "
+              f"{'x' if t.is_exec(n, s) else ''}")
+    if t.fmt == "elf":
+        print("\nSegments:")
+        for sg in t.bin.segments:
+            print(f"  {str(sg.type).split('.')[-1]:<14} va={hexs(sg.virtual_address):<12} "
+                  f"off={hexs(sg.file_offset):<10} filesz={hexs(sg.physical_size):<10} "
+                  f"memsz={hexs(sg.virtual_size):<10} flags={sg.flags}")
+    else:
+        print("\nSegments:")
+        for sg in t.bin.segments:
+            print(f"  {sg.name:<14} va={hexs(sg.virtual_address):<12} "
+                  f"off={hexs(sg.file_offset):<10} size={hexs(sg.virtual_size)}")
+
+
+def cmd_symbols(t, a):
+    n = 0
+    for s in sorted(t.symbols(), key=lambda x: x["addr"]):
+        if a.imports and not s["imported"]:
+            continue
+        if a.exports and not s["exported"]:
+            continue
+        if a.grep and not re.search(a.grep, s["name"], re.I):
+            continue
+        tag = "I" if s["imported"] else ("E" if s["exported"] else " ")
+        th = "T" if s["thumb"] else " "
+        print(f"{hexs(s['addr']):>12} {s['size']:>6} {tag}{th} {s['name']}")
+        n += 1
+        if a.limit and n >= a.limit:
+            break
+    print(f"-- {n} simbol", file=sys.stderr)
+
+
+def cmd_strings(t, a):
+    n = 0
+    for off, s in extract_strings(t.raw if t.fmt == "elf" else t.raw, a.min, a.utf16):
+        if a.grep and not re.search(a.grep, s, re.I):
+            continue
+        va = t.va_of_offset(off)
+        print(f"{hexs(va) if va is not None else '-':>12}  {hexs(off):>10}  {s}")
+        n += 1
+        if a.limit and n >= a.limit:
+            break
+
+
+def find_prologues(t, sec_name, va, data):
+    """Heuristik fungsi pada binary stripped."""
+    md = t.md(thumb=False)
+    funcs = []
+    if t.arch == "arm64":
+        prev = None
+        for i in md.disasm(data, va):
+            op = i.op_str.replace(" ", "")
+            if i.mnemonic == "stp" and op.startswith("x29,x30,[sp"):
+                funcs.append(i.address)
+            elif i.mnemonic == "sub" and op.startswith("sp,sp,#") and prev is None:
+                pass
+            elif i.mnemonic in ("paciasp", "bti"):
+                funcs.append(i.address)
+            prev = i
+    else:  # ARM32: push {..., lr}
+        for i in md.disasm(data, va):
+            if i.mnemonic in ("push", "stmdb") and "lr" in i.op_str:
+                funcs.append(i.address)
+    return funcs
+
+
+def cmd_funcs(t, a):
+    known = {}
+    for s in t.symbols():
+        if s["func"] and s["addr"] and not s["imported"]:
+            known[s["addr"]] = s["name"]
+    print(f"[i] {len(known)} fungsi dari simbol", file=sys.stderr)
+    guessed = {}
+    if a.heuristic or not known:
+        for n, va, off, sz, s in exec_sections(t):
+            if n.endswith(("stubs", "plt")) or "stub" in n:
+                continue
+            for f in find_prologues(t, n, va, t.sec_bytes(s)):
+                if f not in known:
+                    guessed[f] = f"sub_{f:x}"
+        print(f"[i] {len(guessed)} kandidat dari heuristik prolog", file=sys.stderr)
+    allf = sorted({**known, **guessed}.items())
+    for k, (addr, name) in enumerate(allf):
+        if a.limit and k >= a.limit:
+            break
+        print(f"{hexs(addr):>12}  {name}")
+
+
+def pretty_insn(t, i):
+    line = f"{i.mnemonic:<8}{i.op_str}"
+    tgt = target_of(f"{i.op_str}")
+    if tgt is not None and i.mnemonic in ("bl", "blx", "b", "cbz", "cbnz", "tbz", "tbnz") \
+            or (tgt is not None and i.mnemonic.startswith("b")):
+        nm = t.name_at(tgt)
+        if nm:
+            line += f"    ; {nm}"
+    return line
+
+
+def cmd_disasm(t, a):
+    if a.sym:
+        addr, thumb = t.resolve(a.sym)
+    else:
+        addr, thumb = t.resolve(a.addr)
+    if a.thumb:
+        thumb = True
+    size = a.size
+    if not size:
+        size = 4 * a.count
+    insns = disasm_range(t, addr, size, thumb)
+    if not insns:
+        sys.exit("Gagal baca bytes pada alamat itu")
+    nm = t.name_at(addr)
+    if nm:
+        print(f"{nm}:")
+    for k, i in enumerate(insns):
+        if a.count and not a.size and k >= a.count:
+            break
+        print(f"  {hexs(i.address):>10}:  {i.bytes.hex():<10}  {pretty_insn(t, i)}")
+
+
+def build_xref_maps(t):
+    """Return (calls: target->[caller], strrefs: addr->[site]) dari semua section exec."""
+    calls = collections.defaultdict(list)
+    strrefs = collections.defaultdict(list)
+    for n, va, off, sz, s in exec_sections(t):
+        data = t.sec_bytes(s)
+        modes = [False] if t.arch == "arm64" else [False, True]
+        for thumb in modes:
+            md = t.md(thumb)
+            pages = {}
+            for i in md.disasm(data, va):
+                ops = i.op_str
+                tg = target_of(ops)
+                if i.mnemonic in ("bl", "blx", "b") and tg is not None:
+                    calls[tg].append(i.address)
+                if t.arch == "arm64":
+                    mm = re.match(r"(x\d+), #(0x[0-9a-f]+)$", ops)
+                    if i.mnemonic == "adrp" and mm:
+                        pages[mm.group(1)] = int(mm.group(2), 16)
+                    elif i.mnemonic == "add":
+                        mm = re.match(r"(x\d+), (x\d+), #(0x[0-9a-f]+)$", ops)
+                        if mm and mm.group(2) in pages:
+                            strrefs[pages[mm.group(2)] + int(mm.group(3), 16)].append(i.address)
+                    elif i.mnemonic in ("ldr", "ldrb"):
+                        mm = re.match(r"\w+, \[(x\d+), #(0x[0-9a-f]+)\]$", ops)
+                        if mm and mm.group(1) in pages:
+                            strrefs[pages[mm.group(1)] + int(mm.group(2), 16)].append(i.address)
+    return calls, strrefs
+
+
+def cmd_xrefs(t, a):
+    calls, strrefs = build_xref_maps(t)
+    if a.str:
+        rx = re.compile(a.str, re.I)
+        found = 0
+        for off, s in extract_strings(t.raw, 4):
+            if not rx.search(s):
+                continue
+            va = t.va_of_offset(off)
+            if va is None:
+                continue
+            refs = strrefs.get(va, [])
+            print(f"{hexs(va)}  {s[:80]!r}")
+            for r in refs:
+                print(f"      <- {hexs(r)}  {t.name_at(r) or ''}")
+            found += 1
+        if not found:
+            print("Tidak ada string cocok")
+        elif t.arch != "arm64":
+            print("[!] Xref string (ADRP) hanya didukung ARM64", file=sys.stderr)
+        return
+    addr, _ = t.resolve(a.addr or a.sym)
+    callers = calls.get(addr, [])
+    print(f"Call/branch ke {hexs(addr)} ({t.name_at(addr) or '?'}): {len(callers)}")
+    for c in sorted(callers):
+        print(f"  {hexs(c):>10}  dari {t.name_at(c) or '?'}")
+
+
+def cstr_list(sec):
+    return [x.decode("utf-8", "replace") for x in bytes(sec.content).split(b"\x00") if x]
+
+
+def cmd_objc(t, a):
+    if t.fmt != "macho":
+        sys.exit("Perintah objc khusus Mach-O")
+    for label, name in (("Classes", "__objc_classname"), ("Selectors", "__objc_methname"),
+                        ("Method types", "__objc_methtype")):
+        sec = t.bin.get_section(name)
+        if not sec:
+            continue
+        items = cstr_list(sec)
+        if a.grep:
+            items = [x for x in items if re.search(a.grep, x, re.I)]
+        if label == "Method types" and not a.types:
+            continue
+        print(f"== {label} ({len(items)}) ==")
+        for x in items[: a.limit or None]:
+            print("  " + x)
+    if hasattr(t.bin, "objc_metadata") or True:
+        try:
+            md = t.bin.objc_metadata
+            if md:
+                print("\n== objc_metadata (LIEF) ==")
+                for c in md.classes:
+                    print(f"  @interface {c.name}")
+                    for m in c.methods:
+                        print(f"     {'+' if m.is_static else '-'}[{m.name}]  imp={hexs(m.address)}")
+        except Exception:
+            pass
+
+
+def cmd_jni(t, a):
+    if t.fmt != "elf":
+        sys.exit("Perintah jni khusus ELF")
+    syms = [s for s in t.symbols() if s["name"].startswith("Java_") or s["name"] == "JNI_OnLoad"]
+    print(f"== Entri JNI statis ({len(syms)}) ==")
+    for s in sorted(syms, key=lambda x: x["addr"]):
+        print(f"  {hexs(s['addr']):>10}  {s['name']}")
+    imports = {s["name"] for s in t.symbols() if s["imported"]}
+    print("\nRegisterNatives diimpor:", "RegisterNatives" in imports or "ya (via JNIEnv vtable, offset 0x6B8 pada arm64)")
+    print("Petunjuk: pada JNI_OnLoad, cari 'ldr xN, [xM, #0x6b8]' (arm64) / '#0x35c' (arm32) "
+          "lalu 'blr' = panggilan RegisterNatives; tabel JNINativeMethod = {name, sig, fnPtr}.")
+    rx = re.compile(rb"\(([\[BCDFIJSZL][\w/;\[]*)\)[\[BCDFIJSVZL][\w/;]*")
+    sigs = {m.group().decode() for m in rx.finditer(t.raw)}
+    if sigs:
+        print(f"\nKandidat signature JNI di binary: {len(sigs)}")
+        for s in sorted(sigs)[:40]:
+            print("  " + s)
+
+
+def cmd_carve(t, a):
+    addr, _ = t.resolve(a.addr)
+    data = t.read_va(addr, a.size)
+    if not data:
+        sys.exit("Gagal baca")
+    with open(a.out, "wb") as f:
+        f.write(data)
+    print(f"{len(data)} byte dari {hexs(addr)} -> {a.out}")
+
+
+# --------------------------------------------------------------------------- #
+def main_re():
+    p = argparse.ArgumentParser(description="RE Lab ELF/Mach-O ARM & ARM64",
+                                formatter_class=argparse.RawDescriptionHelpFormatter,
+                                epilog=RE_DOC)
+    p.add_argument("binary")
+    p.add_argument("--slice", type=int, default=None, help="indeks slice untuk fat Mach-O")
+    sp = p.add_subparsers(dest="cmd", required=True)
+
+    sp.add_parser("triage").set_defaults(fn=cmd_triage)
+    sp.add_parser("sections").set_defaults(fn=cmd_sections)
+
+    s = sp.add_parser("symbols"); s.set_defaults(fn=cmd_symbols)
+    s.add_argument("--grep"); s.add_argument("--imports", action="store_true")
+    s.add_argument("--exports", action="store_true"); s.add_argument("--limit", type=int, default=0)
+
+    s = sp.add_parser("strings"); s.set_defaults(fn=cmd_strings)
+    s.add_argument("--min", type=int, default=5); s.add_argument("--grep")
+    s.add_argument("--utf16", action="store_true"); s.add_argument("--limit", type=int, default=0)
+
+    s = sp.add_parser("funcs"); s.set_defaults(fn=cmd_funcs)
+    s.add_argument("--heuristic", action="store_true", help="tambah deteksi prolog")
+    s.add_argument("--limit", type=int, default=0)
+
+    s = sp.add_parser("disasm"); s.set_defaults(fn=cmd_disasm)
+    s.add_argument("addr", nargs="?"); s.add_argument("--sym")
+    s.add_argument("--count", type=int, default=32); s.add_argument("--size", type=lambda x: int(x, 0), default=0)
+    s.add_argument("--thumb", action="store_true")
+
+    s = sp.add_parser("xrefs"); s.set_defaults(fn=cmd_xrefs)
+    s.add_argument("addr", nargs="?"); s.add_argument("--sym"); s.add_argument("--str")
+
+    s = sp.add_parser("objc"); s.set_defaults(fn=cmd_objc)
+    s.add_argument("--grep"); s.add_argument("--types", action="store_true")
+    s.add_argument("--limit", type=int, default=0)
+
+    sp.add_parser("jni").set_defaults(fn=cmd_jni)
+
+    s = sp.add_parser("carve"); s.set_defaults(fn=cmd_carve)
+    s.add_argument("addr"); s.add_argument("size", type=lambda x: int(x, 0)); s.add_argument("out")
+
+    a = p.parse_args()
+    _init_re()
+    t = Target(a.binary, a.slice)
+    if a.cmd == "disasm" and not (a.addr or a.sym):
+        sys.exit("disasm butuh alamat atau --sym")
+    if a.cmd == "xrefs" and not (a.addr or a.sym or a.str):
+        sys.exit("xrefs butuh alamat, --sym, atau --str")
+    a.fn(t, a)
+
+
+
+
+# =========================================================================== #
+# GRUP: unity (UnityFS / SerializedFile)
+# =========================================================================== #
+# --------------------------------------------------------------------------- #
+# Konstanta
+# --------------------------------------------------------------------------- #
+_COMMON_LIST = (
+    "AABB AnimationClip AnimationCurve AnimationState Array Base BitField bitset bool char ColorRGBA "
+    "Component data deque double dynamic_array FastPropertyName first float Font GameObject "
+    "Generic_Mono GradientNEW GUID GUIStyle int list long_long map Matrix4x4f MdFour MonoBehaviour "
+    "MonoScript m_ByteSize m_Curve m_EditorClassIdentifier m_EditorHideFlags m_Enabled m_ExtensionPtr "
+    "m_GameObject m_Index m_IsArray m_IsStatic m_MetaFlag m_Name m_ObjectHideFlags m_PrefabInternal "
+    "m_PrefabParentObject m_Script m_StaticEditorFlags m_Type m_Version Object pair PPtr<Component> "
+    "PPtr<GameObject> PPtr<Material> PPtr<MonoBehaviour> PPtr<MonoScript> PPtr<Object> PPtr<Prefab> "
+    "PPtr<Sprite> PPtr<TextAsset> PPtr<Texture> PPtr<Texture2D> PPtr<Transform> Prefab Quaternionf "
+    "Rectf RectInt RectOffset second set short size SInt16 SInt32 SInt64 SInt8 staticvector string "
+    "TextAsset TextMesh Texture Texture2D Transform TypelessData UInt16 UInt32 UInt64 UInt8 "
+    "unsigned_int unsigned_long_long unsigned_short vector Vector2f Vector3f Vector4f "
+    "m_ScriptingClassIdentifier Gradient Type* int2_storage int3_storage BoundsInt "
+    "m_CorrespondingSourceObject m_PrefabInstance m_PrefabAsset FileSize Hash128"
+).split()
+COMMON = {}
+_gl_o = 0
+for _s in _COMMON_LIST:
+    _s = _s.replace("_", " ") if _s in ("Generic_Mono", "long_long", "unsigned_int",
+                                        "unsigned_long_long", "unsigned_short") else _s
+    COMMON[_gl_o] = _s
+    _gl_o += len(_s) + 1
+
+CLASS_IDS = {
+    1: "GameObject", 4: "Transform", 20: "Camera", 21: "Material", 23: "MeshRenderer",
+    28: "Texture2D", 33: "MeshFilter", 43: "Mesh", 48: "Shader", 49: "TextAsset",
+    74: "AnimationClip", 82: "AudioSource", 83: "AudioClip", 90: "Avatar",
+    91: "AnimatorController", 95: "Animator", 111: "Animation", 114: "MonoBehaviour",
+    115: "MonoScript", 128: "Font", 137: "SkinnedMeshRenderer", 142: "AssetBundle",
+    150: "PreloadData", 198: "ParticleSystem", 213: "Sprite", 224: "RectTransform",
+    687078895: "SpriteAtlas",
+}
+
+PRIMS = {
+    "SInt8": "b", "UInt8": "B", "char": "B", "bool": "?", "short": "h", "SInt16": "h",
+    "UInt16": "H", "unsigned short": "H", "int": "i", "SInt32": "i", "UInt32": "I",
+    "unsigned int": "I", "Type*": "I", "long long": "q", "SInt64": "q", "UInt64": "Q",
+    "unsigned long long": "Q", "FileSize": "Q", "float": "f", "double": "d",
+}
+
+
+# --------------------------------------------------------------------------- #
+# Reader biner
+# --------------------------------------------------------------------------- #
+class Reader:
+    def __init__(self, data, endian=">", pos=0):
+        self.d = data
+        self.e = endian
+        self.pos = pos
+
+    def _u(self, fmt, n):
+        v = struct.unpack_from(self.e + fmt, self.d, self.pos)[0]
+        self.pos += n
+        return v
+
+    def u8(self): return self._u("B", 1)
+    def i8(self): return self._u("b", 1)
+    def u16(self): return self._u("H", 2)
+    def i16(self): return self._u("h", 2)
+    def u32(self): return self._u("I", 4)
+    def i32(self): return self._u("i", 4)
+    def u64(self): return self._u("Q", 8)
+    def i64(self): return self._u("q", 8)
+    def f32(self): return self._u("f", 4)
+
+    def bytes(self, n):
+        b = self.d[self.pos:self.pos + n]
+        if len(b) != n:
+            raise EOFError("data kurang")
+        self.pos += n
+        return b
+
+    def cstr(self):
+        end = self.d.index(b"\x00", self.pos)
+        s = self.d[self.pos:end].decode("utf-8", "replace")
+        self.pos = end + 1
+        return s
+
+    def align(self, n=4):
+        self.pos += (-self.pos) % n
+
+
+# --------------------------------------------------------------------------- #
+# Dekompresi
+# --------------------------------------------------------------------------- #
+def lzma_unity(data, usize):
+    props = data[0]
+    dict_size = struct.unpack_from("<I", data, 1)[0]
+    lc = props % 9
+    props //= 9
+    lp, pb = props % 5, props // 5
+    flt = [{"id": lzma.FILTER_LZMA1, "dict_size": dict_size, "lc": lc, "lp": lp, "pb": pb}]
+    return lzma.LZMADecompressor(lzma.FORMAT_RAW, filters=flt).decompress(data[5:], max_length=usize)
+
+
+def decompress(data, mode, usize):
+    if mode == 0:
+        return data
+    if mode == 1:
+        return lzma_unity(data, usize)
+    if mode in (2, 3):
+        if lz4block is None:
+            sys.exit("Butuh lz4: pip install lz4")
+        return lz4block.decompress(data, uncompressed_size=usize)
+    raise ValueError(f"Kompresi tidak dikenal: {mode}")
+
+
+# --------------------------------------------------------------------------- #
+# UnityFS
+# --------------------------------------------------------------------------- #
+class Bundle:
+    def __init__(self, data):
+        r = Reader(data, ">")
+        self.signature = r.cstr()
+        if self.signature != "UnityFS":
+            raise ValueError(f"Signature {self.signature!r} tidak didukung (hanya UnityFS)")
+        self.version = r.u32()
+        self.player_version = r.cstr()
+        self.revision = r.cstr()
+        self.size = r.i64()
+        csize, usize, self.flags = r.u32(), r.u32(), r.u32()
+        if self.version >= 7:
+            r.align(16)
+        if self.flags & 0x80:  # blocks info di akhir file
+            save = r.pos
+            r.pos = len(data) - csize
+            raw = r.bytes(csize)
+            r.pos = save
+        else:
+            raw = r.bytes(csize)
+        info = decompress(raw, self.flags & 0x3F, usize)
+        if self.flags & 0x200:
+            r.align(16)
+
+        ir = Reader(info, ">")
+        ir.bytes(16)  # hash
+        blocks = [(ir.u32(), ir.u32(), ir.u16()) for _ in range(ir.i32())]
+        nodes = []
+        for _ in range(ir.i32()):
+            off, sz, fl = ir.i64(), ir.i64(), ir.u32()
+            nodes.append((off, sz, fl, ir.cstr()))
+
+        out = bytearray()
+        for u, c, fl in blocks:
+            out += decompress(r.bytes(c), fl & 0x3F, u)
+        self.blob = bytes(out)
+        self.nodes = [dict(path=p, offset=o, size=s, flags=f) for o, s, f, p in nodes]
+
+    def node_data(self, n):
+        return self.blob[n["offset"]:n["offset"] + n["size"]]
+
+    def find(self, basename):
+        for n in self.nodes:
+            if os.path.basename(n["path"]) == basename:
+                return n
+        return None
+
+
+# --------------------------------------------------------------------------- #
+# TypeTree
+# --------------------------------------------------------------------------- #
+class TNode:
+    __slots__ = ("level", "type", "name", "is_array", "byte_size", "index", "meta", "ref_hash")
+
+
+def parse_typetree_blob(r, version):
+    count = r.i32()
+    buf_size = r.i32()
+    raw = []
+    for _ in range(count):
+        r.u16()  # node version
+        level, flags = r.u8(), r.u8()
+        t_off, n_off = r.u32(), r.u32()
+        bsize, idx, meta = r.i32(), r.i32(), r.i32()
+        ref = r.u64() if version >= 19 else 0
+        raw.append((level, flags, t_off, n_off, bsize, idx, meta, ref))
+    buf = r.bytes(buf_size)
+
+    def gs(off):
+        if off & 0x80000000:
+            return COMMON.get(off & 0x7FFFFFFF, f"?{off & 0x7FFFFFFF}")
+        end = buf.index(b"\x00", off)
+        return buf[off:end].decode("utf-8", "replace")
+
+    nodes = []
+    for level, flags, t_off, n_off, bsize, idx, meta, ref in raw:
+        n = TNode()
+        n.level, n.is_array = level, bool(flags & 1)
+        n.type, n.name = gs(t_off), gs(n_off)
+        n.byte_size, n.index, n.meta, n.ref_hash = bsize, idx, meta, ref
+        nodes.append(n)
+    ends = [len(nodes)] * len(nodes)
+    for i, n in enumerate(nodes):
+        j = i + 1
+        while j < len(nodes) and nodes[j].level > n.level:
+            j += 1
+        ends[i] = j
+    return nodes, ends
+
+
+def read_value(r, nodes, ends, i):
+    """Baca satu node TypeTree (rekursif) menjadi nilai Python."""
+    n = nodes[i]
+    t = n.type
+    e = r.e
+    fmt = PRIMS.get(t)
+    if fmt:
+        sz = struct.calcsize(fmt)
+        v = struct.unpack_from(e + fmt, r.d, r.pos)[0]
+        r.pos += sz
+    elif t == "string":
+        ln = r.i32()
+        v = r.bytes(ln).decode("utf-8", "surrogateescape")
+    elif t == "TypelessData":
+        ln = r.i32()
+        v = r.bytes(ln)
+    elif n.is_array and t == "Array":
+        size = r.i32()
+        di = i + 2
+        dn = nodes[di]
+        pf = PRIMS.get(dn.type)
+        if dn.type in ("UInt8", "char", "SInt8") and not (dn.meta & 0x4000):
+            v = r.bytes(size)
+        elif pf and not (dn.meta & 0x4000):
+            sz = struct.calcsize(pf)
+            v = list(struct.unpack_from(f"{e}{size}{pf}", r.d, r.pos))
+            r.pos += sz * size
+        else:
+            v = [read_value(r, nodes, ends, di) for _ in range(size)]
+    else:
+        v = {}
+        j = i + 1
+        end = ends[i]
+        kids = []
+        while j < end:
+            kids.append(j)
+            j = ends[j]
+        for k in kids:
+            v[nodes[k].name] = read_value(r, nodes, ends, k)
+        if len(kids) == 1 and nodes[kids[0]].type == "Array":
+            v = v[nodes[kids[0]].name]
+    if n.meta & 0x4000:
+        r.align(4)
+    return v
+
+
+# --------------------------------------------------------------------------- #
+# SerializedFile
+# --------------------------------------------------------------------------- #
+class TypeInfo:
+    pass
+
+
+class ObjInfo:
+    def __init__(self):
+        self.path_id = self.byte_start = self.byte_size = self.type_id = self.class_id = 0
+        self.type = None
+
+
+class SerializedFile:
+    def __init__(self, data, name="", container=None):
+        self.data, self.name, self.container = data, name, container
+        r = Reader(data, ">")
+        meta_size, file_size, self.version, data_offset = r.u32(), r.u32(), r.u32(), r.u32()
+        self.endian = ">"
+        if self.version >= 9:
+            self.endian = ">" if r.u8() else "<"
+            r.bytes(3)
+        else:
+            raise ValueError("SerializedFile < v9 tidak didukung")
+        if self.version >= 22:
+            meta_size, file_size, data_offset = r.u32(), r.i64(), r.i64()
+            r.i64()
+        self.data_offset = data_offset
+        r.e = self.endian
+        self.unity_version = r.cstr() if self.version >= 7 else ""
+        self.platform = r.i32() if self.version >= 8 else 0
+        self.has_typetree = bool(r.u8()) if self.version >= 13 else True
+        if self.version < 13:
+            raise ValueError("SerializedFile < v13 tidak didukung")
+
+        self.types = [self._read_type(r, False) for _ in range(r.i32())]
+
+        big_id = self.version >= 14
+        self.objects = {}
+        for _ in range(r.i32()):
+            o = ObjInfo()
+            if big_id:
+                r.align(4)
+                o.path_id = r.i64()
+            else:
+                o.path_id = r.i32()
+            o.byte_start = r.i64() if self.version >= 22 else r.u32()
+            o.byte_size = r.u32()
+            o.type_id = r.i32()
+            if self.version < 16:
+                o.class_id = r.u16()
+                o.type = next((t for t in self.types if t.class_id == o.type_id), None)
+            else:
+                o.type = self.types[o.type_id]
+                o.class_id = o.type.class_id
+            if self.version < 11:
+                r.u16()
+            if 11 <= self.version < 17:
+                r.i16()
+            if 15 <= self.version < 17:
+                r.u8()
+            self.objects[o.path_id] = o
+
+        if self.version >= 11:
+            for _ in range(r.i32()):
+                r.i32()
+                if self.version < 14:
+                    r.i32()
+                else:
+                    r.align(4)
+                    r.i64()
+        self.externals = []
+        for _ in range(r.i32()):
+            if self.version >= 6:
+                r.cstr()
+            if self.version >= 5:
+                r.bytes(16)
+            r.i32()
+            self.externals.append(r.cstr())
+        if self.version >= 20:
+            self.ref_types = [self._read_type(r, True) for _ in range(r.i32())]
+
+    def _read_type(self, r, is_ref):
+        t = TypeInfo()
+        t.class_id = r.i32()
+        if self.version >= 16:
+            r.u8()  # stripped
+        script_idx = r.i16() if self.version >= 17 else -1
+        t.nodes = t.ends = None
+        if self.version >= 13:
+            if (is_ref and script_idx >= 0) or (self.version < 16 and t.class_id < 0) or \
+                    (self.version >= 16 and t.class_id == 114):
+                r.bytes(16)
+            r.bytes(16)
+        if self.has_typetree:
+            if self.version < 12 and self.version != 10:
+                raise ValueError("TypeTree legacy tidak didukung")
+            t.nodes, t.ends = parse_typetree_blob(r, self.version)
+            if self.version >= 21:
+                if is_ref:
+                    r.cstr(); r.cstr(); r.cstr()
+                else:
+                    for _ in range(r.i32()):
+                        r.i32()
+        return t
+
+    # ---- akses object ----
+    def class_name(self, o):
+        if o.type and o.type.nodes:
+            return o.type.nodes[0].type
+        return CLASS_IDS.get(o.class_id, f"Class{o.class_id}")
+
+    def read(self, o):
+        """Baca object -> dict. Fallback ke UnityPy jika TypeTree tidak ada."""
+        if o.type and o.type.nodes:
+            r = Reader(self.data, self.endian, self.data_offset + o.byte_start)
+            return read_value(r, o.type.nodes, o.type.ends, 0)
+        if self.container and self.container.fallback:
+            d = self.container.unitypy_tree(self, o)
+            if d is not None:
+                return d
+        raise RuntimeError(f"TypeTree tidak ada untuk {self.class_name(o)} (path_id={o.path_id}); "
+                           f"coba --fallback (butuh UnityPy)")
+
+    def peek_name(self, o):
+        if not (o.type and o.type.nodes):
+            return ""
+        try:
+            nodes, ends = o.type.nodes, o.type.ends
+            r = Reader(self.data, self.endian, self.data_offset + o.byte_start)
+            j, end = 1, ends[0]
+            while j < end:
+                if nodes[j].name == "m_Name":
+                    return read_value(r, nodes, ends, j)
+                read_value(r, nodes, ends, j)
+                j = ends[j]
+        except Exception:
+            pass
+        return ""
+
+
+# --------------------------------------------------------------------------- #
+# Container: bundle atau file serialized tunggal
+# --------------------------------------------------------------------------- #
+class Container:
+    def __init__(self, path, fallback=False):
+        self.path = path
+        self.fallback = fallback
+        self._up = None
+        with open(path, "rb") as f:
+            data = f.read()
+        self.bundle = None
+        self.files = []
+        if data[:7] == b"UnityFS":
+            self.bundle = Bundle(data)
+            for n in self.bundle.nodes:
+                if n["flags"] & 4:
+                    sf = SerializedFile(self.bundle.node_data(n), os.path.basename(n["path"]), self)
+                    self.files.append(sf)
+        elif data[:5] in (b"Unity", b"Unity") and data[:8] != b"UnityFS\x00":
+            raise ValueError("Format UnityWeb/UnityRaw/UnityArchive tidak didukung")
+        else:
+            self.files.append(SerializedFile(data, os.path.basename(path), self))
+
+    def resource(self, stream_path, offset, size):
+        base = os.path.basename(stream_path)
+        if self.bundle:
+            n = self.bundle.find(base)
+            if n:
+                return self.bundle.node_data(n)[offset:offset + size]
+        p = os.path.join(os.path.dirname(os.path.abspath(self.path)), base)
+        if os.path.exists(p):
+            with open(p, "rb") as f:
+                f.seek(offset)
+                return f.read(size)
+        raise FileNotFoundError(f"Resource {stream_path} tidak ditemukan")
+
+    def unitypy_tree(self, sf, o):
+        try:
+            import UnityPy
+        except ImportError:
+            return None
+        if self._up is None:
+            self._up = UnityPy.load(self.path)
+        for ob in self._up.objects:
+            if ob.path_id == o.path_id and getattr(ob.assets_file, "name", "") in (sf.name, ""):
+                try:
+                    return ob.read_typetree()
+                except Exception:
+                    return None
+        return None
+
+    def all_objects(self):
+        for sf in self.files:
+            for o in sf.objects.values():
+                yield sf, o
+
+
+def to_bytes(x):
+    if isinstance(x, (bytes, bytearray)):
+        return bytes(x)
+    if isinstance(x, list):
+        return bytes(x)
+    return b""
+
+
+def safe_name(s, fallback):
+    s = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", s or "").strip()
+    return s or fallback
+
+
+# --------------------------------------------------------------------------- #
+# Texture2D
+# --------------------------------------------------------------------------- #
+ASTC = {48: (4, 4), 49: (5, 5), 50: (6, 6), 51: (8, 8), 52: (10, 10), 53: (12, 12),
+        54: (4, 4), 55: (5, 5), 56: (6, 6), 57: (8, 8), 58: (10, 10), 59: (12, 12)}
+TEX_BLOCK8 = {10: "bc1", 26: "bc4", 34: "etc1", 45: "etc2", 41: "eac_r", 42: "eac_r_signed"}
+TEX_BLOCK16 = {12: "bc3", 27: "bc5", 25: "bc7", 24: "bc6h", 47: "etc2a8", 43: "eac_rg",
+               44: "eac_rg_signed"}
+TEX_UNCOMP = {1: 1, 2: 2, 3: 3, 4: 4, 5: 4, 7: 2, 13: 2, 14: 4, 62: 2, 63: 1}
+
+
+def decode_texture(d, container):
+    w, h, fmt = d["m_Width"], d["m_Height"], d["m_TextureFormat"]
+    img = to_bytes(d.get("image data"))
+    sd = d.get("m_StreamData") or {}
+    if not img and sd.get("size"):
+        img = container.resource(sd["path"], sd["offset"], sd["size"])
+    if not img:
+        raise ValueError("data gambar kosong")
+    try:
+        from PIL import Image
+    except ImportError:
+        raise RuntimeError("Butuh Pillow: pip install pillow")
+
+    if fmt in TEX_UNCOMP:
+        img = img[:w * h * TEX_UNCOMP[fmt]]
+        if fmt == 1 or fmt == 63:
+            im = Image.frombytes("L", (w, h), img)
+        elif fmt == 3:
+            im = Image.frombytes("RGB", (w, h), img, "raw", "RGB")
+        elif fmt == 4:
+            im = Image.frombytes("RGBA", (w, h), img, "raw", "RGBA")
+        elif fmt == 5:
+            im = Image.frombytes("RGBA", (w, h), img, "raw", "ARGB")
+        elif fmt == 14:
+            im = Image.frombytes("RGBA", (w, h), img, "raw", "BGRA")
+        elif fmt == 7:
+            px = struct.unpack(f"<{w * h}H", img)
+            out = bytearray()
+            for p in px:
+                out += bytes(((p >> 11) * 255 // 31, ((p >> 5) & 63) * 255 // 63, (p & 31) * 255 // 31))
+            im = Image.frombytes("RGB", (w, h), bytes(out))
+        elif fmt in (2, 13):
+            px = struct.unpack(f"<{w * h}H", img)
+            out = bytearray()
+            for p in px:
+                n = [(p >> s) & 15 for s in (12, 8, 4, 0)]
+                a, r_, g, b = n if fmt == 2 else (n[3], n[0], n[1], n[2])
+                out += bytes((r_ * 17, g * 17, b * 17, a * 17))
+            im = Image.frombytes("RGBA", (w, h), bytes(out))
+        elif fmt == 62:
+            im = Image.frombytes("LA", (w, h), img)
+        return im.transpose(Image.FLIP_TOP_BOTTOM)
+
+    try:
+        import texture2ddecoder as t2d
+    except ImportError:
+        raise RuntimeError("Format terkompresi butuh: pip install texture2ddecoder")
+    if fmt in (28, 29, 64, 65):
+        if not hasattr(t2d, "unpack_crunch"):
+            raise RuntimeError("Crunch tidak didukung versi texture2ddecoder ini")
+        raw = t2d.unpack_crunch(img)
+        fmt = {28: 10, 29: 12, 64: 34, 65: 47}[fmt]
+        img = raw
+    if fmt in TEX_BLOCK8:
+        img = img[:((w + 3) // 4) * ((h + 3) // 4) * 8]
+        bgra = getattr(t2d, "decode_" + TEX_BLOCK8[fmt])(img, w, h)
+    elif fmt in TEX_BLOCK16:
+        img = img[:((w + 3) // 4) * ((h + 3) // 4) * 16]
+        bgra = getattr(t2d, "decode_" + TEX_BLOCK16[fmt])(img, w, h)
+    elif fmt in ASTC:
+        bw, bh = ASTC[fmt]
+        img = img[:((w + bw - 1) // bw) * ((h + bh - 1) // bh) * 16]
+        bgra = t2d.decode_astc(img, w, h, bw, bh)
+    elif fmt in (30, 31, 32, 33):
+        bgra = t2d.decode_pvrtc(img, w, h, fmt in (30, 31))
+    else:
+        raise RuntimeError(f"TextureFormat {fmt} belum didukung")
+    im = Image.frombytes("RGBA", (w, h), bytes(bgra), "raw", "BGRA")
+    return im.transpose(Image.FLIP_TOP_BOTTOM)
+
+
+# --------------------------------------------------------------------------- #
+# Mesh
+# --------------------------------------------------------------------------- #
+# format channel (Unity 2019+): (ukuran, kode struct, pembagi normalisasi)
+FMT_NEW = {0: (4, "f", 0), 1: (2, "e", 0), 2: (1, "B", 255.0), 3: (1, "b", 127.0),
+           4: (2, "H", 65535.0), 5: (2, "h", 32767.0), 6: (1, "B", 0), 7: (1, "b", 0),
+           8: (2, "H", 0), 9: (2, "h", 0), 10: (4, "I", 0), 11: (4, "i", 0)}
+FMT_OLD = {0: (4, "f", 0), 1: (2, "e", 0), 2: (1, "B", 255.0), 3: (1, "B", 0), 4: (4, "i", 0)}
+
+
+def version_tuple(s):
+    m = re.match(r"(\d+)\.(\d+)\.(\d+)", s or "")
+    return tuple(int(x) for x in m.groups()) if m else (0, 0, 0)
+
+
+def decode_mesh(d, uver):
+    if d.get("m_MeshCompression", 0):
+        raise RuntimeError("Mesh terkompresi belum didukung")
+    vd = d.get("m_VertexData")
+    if not vd or "m_Channels" not in vd:
+        raise RuntimeError("Layout mesh pra-2017 belum didukung")
+    count = vd["m_VertexCount"]
+    chans = vd["m_Channels"]
+    vdata = to_bytes(vd.get("m_DataSize"))
+    new = uver >= (2018, 0, 0)
+    fmts = FMT_NEW if uver >= (2017, 4, 0) else FMT_OLD
+    names = {0: "pos", 1: "normal", 2: "tangent", 3: "color", 4: "uv0", 5: "uv1", 6: "uv2", 7: "uv3",
+             8: "uv4", 9: "uv5", 10: "uv6", 11: "uv7", 12: "weights", 13: "bones"} if new else \
+        {0: "pos", 1: "normal", 2: "color", 3: "uv0", 4: "uv1", 5: "tangent"}
+
+    # stride & offset tiap stream
+    streams = {}
+    for c in chans:
+        dim = c["dimension"] & 0xF
+        if dim:
+            streams.setdefault(c["stream"], []).append((c, dim))
+    stride, soff, off = {}, {}, 0
+    for s in sorted(streams):
+        stride[s] = sum(dim * fmts[c["format"]][0] for c, dim in streams[s])
+        soff[s] = off
+        off += stride[s] * count
+        off += (-off) % 16
+
+    out = {}
+    for ci, c in enumerate(chans):
+        dim = c["dimension"] & 0xF
+        if not dim:
+            continue
+        size, code, norm = fmts[c["format"]]
+        fmtstr = "<" + code * dim
+        base = soff[c["stream"]] + c["offset"]
+        st = stride[c["stream"]]
+        rows = []
+        for v in range(count):
+            vals = struct.unpack_from(fmtstr, vdata, base + v * st)
+            if norm:
+                vals = tuple(max(x / norm, -1.0) for x in vals)
+            rows.append(vals)
+        out[names.get(ci, f"ch{ci}")] = rows
+
+    ib = to_bytes(d.get("m_IndexBuffer"))
+    use32 = d.get("m_IndexFormat", 0 if d.get("m_Use16BitIndices", 1) else 1) == 1
+    isz = 4 if use32 else 2
+    idx = struct.unpack(f"<{len(ib) // isz}{'I' if use32 else 'H'}", ib[:len(ib) // isz * isz])
+
+    subs = []
+    for sm in d.get("m_SubMeshes", []):
+        first = sm["firstByte"] // isz
+        seg = idx[first:first + sm["indexCount"]]
+        base = sm.get("baseVertex", 0)
+        topo = sm.get("topology", 0)
+        tris = []
+        if topo == 0:
+            tris = [(seg[i] + base, seg[i + 1] + base, seg[i + 2] + base)
+                    for i in range(0, len(seg) - 2, 3)]
+        elif topo == 1:
+            for i in range(len(seg) - 2):
+                a, b, c = seg[i], seg[i + 1], seg[i + 2]
+                if a == b or b == c or a == c:
+                    continue
+                tris.append((a + base, b + base, c + base) if i % 2 == 0 else (a + base, c + base, b + base))
+        elif topo == 2:
+            for i in range(0, len(seg) - 3, 4):
+                a, b, c, e = (x + base for x in seg[i:i + 4])
+                tris += [(a, b, c), (a, c, e)]
+        subs.append(tris)
+    return out, subs
+
+
+def mesh_to_obj(name, attrs, subs, flip=True):
+    L = [f"# exported by unity_parser.py", f"o {name}"]
+    sx = -1.0 if flip else 1.0
+    for p in attrs.get("pos", []):
+        L.append(f"v {sx * p[0]:.6f} {p[1]:.6f} {p[2]:.6f}")
+    for uv in attrs.get("uv0", []):
+        L.append(f"vt {uv[0]:.6f} {uv[1]:.6f}")
+    for n in attrs.get("normal", []):
+        L.append(f"vn {sx * n[0]:.6f} {n[1]:.6f} {n[2]:.6f}")
+    has_uv, has_n = "uv0" in attrs, "normal" in attrs
+    for si, tris in enumerate(subs):
+        L.append(f"g submesh_{si}")
+        for a, b, c in tris:
+            if flip:
+                b, c = c, b
+            def ref(i):
+                i += 1
+                if has_uv and has_n:
+                    return f"{i}/{i}/{i}"
+                if has_uv:
+                    return f"{i}/{i}"
+                if has_n:
+                    return f"{i}//{i}"
+                return str(i)
+            L.append(f"f {ref(a)} {ref(b)} {ref(c)}")
+    return "\n".join(L) + "\n"
+
+
+# --------------------------------------------------------------------------- #
+# AnimationClip
+# --------------------------------------------------------------------------- #
+ATTR_TRANSFORM = {1: "position", 2: "rotation", 3: "scale", 4: "euler"}
+
+
+def curve_keys(c):
+    return [[k.get("time"), k.get("value"), k.get("inSlope"), k.get("outSlope")]
+            for k in (c.get("m_Curve") or [])]
+
+
+def avatar_paths(container):
+    m = {}
+    for sf, o in container.all_objects():
+        if sf.class_name(o) == "Avatar":
+            try:
+                for pair in sf.read(o).get("m_TOS", []):
+                    m[pair["first"]] = pair["second"]
+            except Exception:
+                pass
+    return m
+
+
+def decode_animation(d, tos):
+    res = {"name": d.get("m_Name"), "sample_rate": d.get("m_SampleRate"),
+           "legacy": d.get("m_Legacy"), "wrap_mode": d.get("m_WrapMode")}
+    legacy = {}
+    for key in ("m_RotationCurves", "m_PositionCurves", "m_ScaleCurves", "m_EulerCurves"):
+        if d.get(key):
+            legacy[key[2:-6].lower()] = [{"path": c.get("path"), "keys": curve_keys(c.get("curve", {}))}
+                                         for c in d[key]]
+    if d.get("m_FloatCurves"):
+        legacy["float"] = [{"path": c.get("path"), "attribute": c.get("attribute"),
+                            "class_id": c.get("classID"), "keys": curve_keys(c.get("curve", {}))}
+                           for c in d["m_FloatCurves"]]
+    if legacy:
+        res["legacy_curves"] = legacy
+
+    mc = d.get("m_MuscleClip")
+    if mc:
+        clip = mc.get("m_Clip", {})
+        res["stop_time"] = mc.get("m_StopTime")
+        binds = (d.get("m_ClipBindingConstant") or clip.get("m_Binding") or {}).get("genericBindings", [])
+        labels, last, comp = [], None, 0
+        for b in binds:
+            key = (b.get("path"), b.get("attribute"), b.get("typeID"))
+            comp = comp + 1 if key == last else 0
+            last = key
+            path = tos.get(b.get("path"), f"#{b.get('path')}")
+            if b.get("typeID") == 4:
+                an = ATTR_TRANSFORM.get(b.get("attribute"), f"attr{b.get('attribute')}")
+                labels.append(f"{path}:{an}.{'xyzw'[comp % 4]}")
+            else:
+                labels.append(f"{path}:type{b.get('typeID')}/attr{b.get('attribute')}#{comp}")
+        res["bindings"] = labels
+
+        sc = clip.get("m_StreamedClip", {})
+        data = sc.get("data") or []
+        streamed = []
+        if data:
+            buf = struct.pack(f"<{len(data)}I", *data)
+            pos = 0
+            while pos + 8 <= len(buf):
+                t, n = struct.unpack_from("<fi", buf, pos)
+                pos += 8
+                if math.isinf(t) or n < 0 or pos + n * 20 > len(buf):
+                    break
+                for _ in range(n):
+                    idx, c0, c1, c2, c3 = struct.unpack_from("<i4f", buf, pos)
+                    pos += 20
+                    streamed.append({"time": t, "curve": idx,
+                                     "label": labels[idx] if 0 <= idx < len(labels) else None,
+                                     "value": c3, "out_slope": c2})
+        res["streamed_keys"] = streamed
+        sc_count = sc.get("curveCount", 0)
+
+        dc = clip.get("m_DenseClip", {})
+        if dc.get("m_CurveCount"):
+            arr, cc = dc.get("m_SampleArray", []), dc["m_CurveCount"]
+            res["dense"] = {"frames": dc.get("m_FrameCount"), "sample_rate": dc.get("m_SampleRate"),
+                            "begin_time": dc.get("m_BeginTime"),
+                            "curves": [{"curve": sc_count + k,
+                                        "label": labels[sc_count + k] if sc_count + k < len(labels) else None,
+                                        "samples": arr[k::cc]} for k in range(cc)]}
+        cst = clip.get("m_ConstantClip", {}).get("data", [])
+        if cst:
+            base = sc_count + dc.get("m_CurveCount", 0)
+            res["constant"] = [{"curve": base + k,
+                                "label": labels[base + k] if base + k < len(labels) else None,
+                                "value": v} for k, v in enumerate(cst)]
+    return res
+
+
+# --------------------------------------------------------------------------- #
+# CLI
+# --------------------------------------------------------------------------- #
+def jdump(x, **kw):
+    def default(o):
+        if isinstance(o, (bytes, bytearray)):
+            return f"<bytes {len(o)}>"
+        return str(o)
+    return json.dumps(x, indent=2, default=default, **kw)
+
+
+def cmd_info(c, a):
+    if c.bundle:
+        b = c.bundle
+        print(f"UnityFS v{b.version}  player={b.player_version}  revision={b.revision}")
+        print(f"flags=0x{b.flags:x} compression={b.flags & 0x3F}  decompressed={len(b.blob)} bytes")
+        for n in b.nodes:
+            print(f"  node {n['path']:<48} size={n['size']:>10} flags={n['flags']}")
+    for sf in c.files:
+        print(f"\nSerializedFile {sf.name}: v{sf.version} unity={sf.unity_version} "
+              f"platform={sf.platform} typetree={sf.has_typetree} objects={len(sf.objects)}")
+        counts = {}
+        for o in sf.objects.values():
+            k = sf.class_name(o)
+            counts[k] = counts.get(k, 0) + 1
+        for k, v in sorted(counts.items(), key=lambda x: -x[1]):
+            print(f"  {k:<24} {v}")
+        if sf.externals:
+            print("  externals:", ", ".join(sf.externals))
+
+
+def cmd_ls(c, a):
+    for sf, o in c.all_objects():
+        cn = sf.class_name(o)
+        if a.type and cn != a.type:
+            continue
+        print(f"{sf.name[:20]:<20} {o.path_id:>20} {cn:<20} {o.byte_size:>10}  {sf.peek_name(o)}")
+
+
+def cmd_dump(c, a):
+    for sf, o in c.all_objects():
+        if o.path_id == a.id:
+            print(jdump(sf.read(o)))
+            return
+    sys.exit("path_id tidak ditemukan")
+
+
+def cmd_unpack(c, a):
+    if not c.bundle:
+        sys.exit("Bukan bundle")
+    os.makedirs(a.out, exist_ok=True)
+    for n in c.bundle.nodes:
+        p = os.path.join(a.out, safe_name(os.path.basename(n["path"]), "node"))
+        with open(p, "wb") as f:
+            f.write(c.bundle.node_data(n))
+        print(p)
+
+
+def cmd_extract(c, a):
+    want = {t.strip() for t in a.types.split(",")}
+    rx = re.compile(a.name, re.I) if a.name else None
+    os.makedirs(a.out, exist_ok=True)
+    tos = None
+    n_ok = n_fail = 0
+    for sf, o in c.all_objects():
+        cn = sf.class_name(o)
+        if cn not in want:
+            continue
+        name = sf.peek_name(o)
+        if rx and not rx.search(name or ""):
+            continue
+        base = f"{safe_name(name, cn)}_{o.path_id}"
+        try:
+            d = sf.read(o)
+            name = d.get("m_Name") or name
+            base = f"{safe_name(name, cn)}_{o.path_id}"
+            if cn == "Texture2D":
+                p = os.path.join(a.out, base + ".png")
+                decode_texture(d, c).save(p)
+            elif cn == "Mesh":
+                attrs, subs = decode_mesh(d, version_tuple(sf.unity_version))
+                p = os.path.join(a.out, base + ".obj")
+                with open(p, "w") as f:
+                    f.write(mesh_to_obj(name, attrs, subs, not a.no_flip))
+            elif cn == "AnimationClip":
+                if tos is None:
+                    tos = avatar_paths(c)
+                p = os.path.join(a.out, base + ".anim.json")
+                with open(p, "w") as f:
+                    f.write(jdump(decode_animation(d, tos)))
+            elif cn == "TextAsset":
+                p = os.path.join(a.out, base + ".bytes")
+                with open(p, "wb") as f:
+                    f.write(d.get("m_Script", "").encode("utf-8", "surrogateescape"))
+            else:
+                p = os.path.join(a.out, base + ".json")
+                with open(p, "w") as f:
+                    f.write(jdump(d))
+            print(f"[ok]   {cn:<14} {p}")
+            n_ok += 1
+        except Exception as e:
+            print(f"[gagal] {cn:<14} {base}: {e}", file=sys.stderr)
+            n_fail += 1
+    print(f"selesai: {n_ok} ok, {n_fail} gagal", file=sys.stderr)
+
+
+def main_unity():
+    p = argparse.ArgumentParser(description="Parser Unity bundle/SerializedFile",
+                                formatter_class=argparse.RawDescriptionHelpFormatter, epilog=UNITY_DOC)
+    p.add_argument("file")
+    p.add_argument("--fallback", action="store_true", help="pakai UnityPy bila TypeTree tidak ada")
+    sp = p.add_subparsers(dest="cmd", required=True)
+    sp.add_parser("info").set_defaults(fn=cmd_info)
+    s = sp.add_parser("ls"); s.set_defaults(fn=cmd_ls); s.add_argument("--type")
+    s = sp.add_parser("dump"); s.set_defaults(fn=cmd_dump); s.add_argument("--id", type=int, required=True)
+    s = sp.add_parser("unpack"); s.set_defaults(fn=cmd_unpack); s.add_argument("-o", "--out", required=True)
+    s = sp.add_parser("extract"); s.set_defaults(fn=cmd_extract)
+    s.add_argument("-o", "--out", required=True)
+    s.add_argument("--types", default="Texture2D,Mesh,AnimationClip,TextAsset")
+    s.add_argument("--name"); s.add_argument("--no-flip", action="store_true")
+    a = p.parse_args()
+    c = Container(a.file, a.fallback)
+    a.fn(c, a)
+
+
+
+
+# =========================================================================== #
+# Dispatcher
+# =========================================================================== #
+
+
+# =========================================================================== #
+# Dispatcher gamelab (dulu gamelab.py; kini bagian rea_triage.py)
+# =========================================================================== #
+_GL_GROUPS = {"pak": main_pak, "re": main_re, "unity": main_unity}
+_GL_USAGE = '\nrea_triage.py --gamelab - toolkit game dalam SATU file\n\n  python rea_triage.py --gamelab pak   <subcommand> ...   Unreal pak: Oodle/Zstd + AES-256 (UnrealPak)\n  python rea_triage.py --gamelab re    <binary> <cmd> ... analisis ELF/Mach-O ARM/ARM64\n  python rea_triage.py --gamelab unity <file> <cmd> ...   parser UnityFS / SerializedFile\n\nBantuan per grup:\n  python rea_triage.py --gamelab pak -h\n  python rea_triage.py --gamelab re x.so triage -h\n  python rea_triage.py --gamelab unity bundle -h\n\nDependensi (dimuat hanya saat grupnya dipakai):\n  pak    : tidak ada (butuh UnrealPak.exe dari Unreal Engine)\n  re     : pip install lief capstone\n  unity  : pip install lz4   (opsional: pillow texture2ddecoder UnityPy)\n'
+
+
+def gamelab_main(argv=None) -> int:
+    """Pintu masuk gamelab: gamelab_main(["pak"|"re"|"unity", ...]). CLI: rea_triage.py --gamelab GRUP ..."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv or argv[0] in ("-h", "--help"):
+        print(_GL_USAGE)
+        return 0
+    grp = argv[0]
+    if grp not in _GL_GROUPS:
+        sys.exit("Grup tidak dikenal: %s. Pilih: %s" % (grp, ", ".join(_GL_GROUPS)))
+    _old = sys.argv
+    sys.argv = ["rea_triage.py --gamelab " + grp] + argv[1:]
+    try:
+        _GL_GROUPS[grp]()
+    finally:
+        sys.argv = _old
+    return 0
+
 
 
 if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [--compact] [--json] [--ioc] [--raw] [--yara] [--carve DIR]
@@ -14780,6 +18668,8 @@ if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [-
         t = argv[argv.index("--api") + 1:]
         print(json.dumps(rea_api(t[0] if t else "{}"), ensure_ascii=False, indent=2, default=str))
         raise SystemExit(0)
+    if "--gamelab" in argv:  # --gamelab pak|re|unity ...  (toolkit game: UnrealPak, RE ELF/Mach-O ARM, Unity bundle)
+        raise SystemExit(gamelab_main(argv[argv.index("--gamelab") + 1:]))
     if "--re" in argv:       # --re FILE [--compact]
         t = [x for x in argv[argv.index("--re") + 1:] if not x.startswith("--")]
         print(re_text(t[0], defang="--raw" not in argv, compact="--compact" in argv) if t else "pemakaian: --re FILE")
@@ -14812,6 +18702,10 @@ if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [-
         t = argv[argv.index("--disasm") + 1:]
         print(disasm_text(t[0], t[1] if len(t) > 1 else "entry", int(t[2], 0) if len(t) > 2 else 40, t[3] if len(t) > 3 else None) if t else "pemakaian: --disasm FILE [entry|0xVA|rva:0x..|off:0x..] [N] [ARCH]")
         raise SystemExit(0)
+    if "--bin" in argv:      # --bin hex|inspect|search|compare|patch|undo|history|restore ...  (CLI Binary Workbench, dulu rea_binary.py)
+        raise SystemExit(_bn_main(argv[argv.index("--bin") + 1:]))
+    if "--ex" in argv:       # --ex list|extract|formats ...  (CLI mesin ekstraksi container, dulu rea_extract.py)
+        raise SystemExit(_ex_main(argv[argv.index("--ex") + 1:]))
     if "--similar" in argv:  # --similar A B
         t = argv[argv.index("--similar") + 1:]
         print(similar_text(t[0], t[1]) if len(t) > 1 else "pemakaian: --similar A B")
@@ -14934,7 +18828,7 @@ if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [-
     args = [x for x in argv if not x.startswith("--")]
     flags = {x for x in argv if x.startswith("--")}
     if not args:
-        print("pemakaian: python rea_triage.py <file|folder> [--compact] [--card] [--json] [--ioc] [--raw (tanpa defang)] [--yara] [--carve DIR] | --config FILE [--key STR] | --deobf FILE [--json] [--full] | --hex FILE [OFFSET [LENGTH]] | --compare A B | --list <container> | --extract OUTDIR <container> [pola] [--scan] | --similar A B | --md FILE | --html FILE [OUT.html] | --dex FILE [--compact] | --net FILE [--compact] | --cfg FILE [entry|0xVA] | --emu FILE [entry|0xVA] | --export FILE ghidra|ida|x64dbg [OUT] | --funcdiff A B | --ctph FILE | --re FILE | --xref FILE QUERY | --disasm FILE [AT [N [ARCH]]] | --unpack FILE OUTDIR | --unpack7z FILE OUTDIR | --sigcheck FILE [--online] | --vt FILE|SHA256 --online | --yarascan FILE RULES | --assets FILE | --assets-extract OUTDIR FILE [pola] [--no-convert] | --assets-carve FILE [OUTDIR] | --formats | --plugins FOLDER | --api JSON | --no-cache | --cache-info | --cache-clear")
+        print("pemakaian: python rea_triage.py <file|folder> [--compact] [--card] [--json] [--ioc] [--raw (tanpa defang)] [--yara] [--carve DIR] | --config FILE [--key STR] | --deobf FILE [--json] [--full] | --hex FILE [OFFSET [LENGTH]] | --compare A B | --list <container> | --extract OUTDIR <container> [pola] [--scan] | --similar A B | --md FILE | --html FILE [OUT.html] | --gamelab pak|re|unity ... | --dex FILE [--compact] | --net FILE [--compact] | --cfg FILE [entry|0xVA] | --emu FILE [entry|0xVA] | --export FILE ghidra|ida|x64dbg [OUT] | --funcdiff A B | --ctph FILE | --re FILE | --xref FILE QUERY | --disasm FILE [AT [N [ARCH]]] | --unpack FILE OUTDIR | --unpack7z FILE OUTDIR | --sigcheck FILE [--online] | --vt FILE|SHA256 --online | --yarascan FILE RULES | --assets FILE | --assets-extract OUTDIR FILE [pola] [--no-convert] | --assets-carve FILE [OUTDIR] | --formats | --plugins FOLDER | --bin CMD ... | --ex CMD ... | --api JSON | --no-cache | --cache-info | --cache-clear")
     elif Path(args[0]).is_dir():
         print(triage_dir_text(args[0], defang="--raw" not in flags))
     elif "--card" in flags and not ({"--json", "--ioc", "--yara"} & flags):

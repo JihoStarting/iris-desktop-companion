@@ -1205,6 +1205,8 @@ namespace IrisLauncher
         DateTime lastLine = DateTime.Now;
         bool closeNow, pendingCloseStop;   // closeNow: penutupan sudah diputuskan; pendingCloseStop: Stop-lalu-tutup menunggu proses yang sedang jalan
         string runTitle = "";
+        HashSet<string> updKeys = null;                       // komponen yang sedang di-update (null = tidak sedang update)
+        HashSet<int> sideChips = new HashSet<int>();          // chip yang sedang dimatikan di samping update
         EventWaitHandle stopEvt;           // sinyal dari 'IrisLauncher.exe --stop-all' (menu Keluar overlay)
 
         // ---- v1.1
@@ -2236,6 +2238,7 @@ namespace IrisLauncher
                 ServiceChip c = chips[i];
                 if (on[i] && errChip == i) errChip = -1;
                 if (busyChip == i) { c.Caption = busyCaption; c.State = ChipState.Busy; }
+                else if (sideChips.Contains(i)) { c.Caption = "Mematikan..."; c.State = ChipState.Busy; }
                 else if (on[i]) { c.Caption = "Hidup"; c.State = ChipState.On; }
                 else if (errChip == i) { c.Caption = "Gagal (lihat log)"; c.State = ChipState.Err; }
                 else { c.Caption = "Mati"; c.State = ChipState.Off; }
@@ -2420,7 +2423,11 @@ namespace IrisLauncher
         // Klik chip: nyalakan atau matikan HANYA layanan itu.
         void Toggle(int i)
         {
-            if (busy) return;
+            if (busy)
+            {
+                if (updKeys != null) SideStop(i);   // saat update: hanya layanan yang tidak terlibat yang boleh dimatikan
+                return;
+            }
             bool[] on = new bool[] { last.Wsl, last.Voice, last.Router, last.Hermes, last.Server, last.Overlay };
             bool nyala = !on[i];
             if (i >= 4 && !Ready()) return;
@@ -2435,6 +2442,108 @@ namespace IrisLauncher
             }
 
             RunService(i, nyala, null);
+        }
+
+        // ------------------------------------------------------------ matikan layanan lain saat update berjalan
+        // Alasan kunci: null = boleh dimatikan; selain itu teks alasan kenapa tidak boleh.
+        string SideLock(int i)
+        {
+            if (updKeys == null) return "Tidak sedang update.";
+            string k = ChipKey[i];
+            if (updKeys.Contains(k)) return "sedang di-update";
+            if (updKeys.Contains("wsl") && i <= 3) return "ikut dimatikan dan dinyalakan lagi oleh update WSL";
+            if (i == 0 && (updKeys.Contains("router") || updKeys.Contains("hermes") || updKeys.Contains("apt")))
+                return "update 9Router / Hermes / paket Ubuntu berjalan di dalam WSL";
+            if (sideChips.Contains(i)) return "sedang dimatikan";
+            return null;
+        }
+
+        void SideStop(int i)
+        {
+            bool[] on = new bool[] { last.Wsl, last.Voice, last.Router, last.Hermes, last.Server, last.Overlay };
+            string why = SideLock(i);
+            if (why != null)
+            {
+                Log(ChipName[i] + " tidak bisa dimatikan sekarang: " + why + ".");
+                return;
+            }
+            if (!on[i])
+            {
+                Log(ChipName[i] + " sudah mati. Selama update hanya bisa mematikan layanan, tidak menyalakan.");
+                return;
+            }
+            if (i >= 4 && !Settings.IsProject(cfg.Proyek)) return;
+            if (cfg.KonfirmasiStop && (i == 0 || i == 3))
+            {
+                string msg = i == 0
+                    ? "WSL akan dimatikan. 9Router dan Hermes ikut mati karena berjalan di dalam WSL (VOICEVOX ikut mati hanya bila masih dijalankan di WSL).\r\n\r\nUpdate yang sedang berjalan tidak terganggu. Tugas /agen yang sedang jalan akan terputus. Lanjutkan?"
+                    : "Hermes akan dimatikan (WSL, 9Router, dan VOICEVOX tidak disentuh).\r\n\r\nUpdate yang sedang berjalan tidak terganggu. Tugas /agen yang sedang jalan akan terputus. Lanjutkan?";
+                if (MessageBox.Show(this, msg, ChipName[i], MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+                if (updKeys == null || SideLock(i) != null) return;   // update bisa selesai / berubah saat dialog terbuka
+            }
+            RunSide(i);
+        }
+
+        // Jalankan iris-service.ps1 -Aksi mati di proses sendiri, terpisah dari proses update (busy/current tidak disentuh).
+        void RunSide(int i)
+        {
+            string script = "iris-service.ps1";
+            if (!File.Exists(Path.Combine(Res.ScriptDir(), script)))
+            {
+                try { Res.ExtractScripts(); } catch (Exception ex) { Log("[GAGAL] " + ex.Message); return; }
+            }
+            string a = "-Nama " + ChipKey[i] + " -Aksi mati -Distro " + cfg.Distro + " -TungguDetik " + cfg.TungguDetik;
+            if (!string.IsNullOrEmpty(cfg.Proyek)) a += " -Proyek " + Q(cfg.Proyek);
+            if (!cfg.Penjaga) a += " -TanpaPenjaga";
+            if (!cfg.VoiceGpu) a += " -TanpaGPU";
+
+            string tag = "[" + ChipName[i] + "] ";
+            sideChips.Add(i); if (errChip == i) errChip = -1;
+            UpdateChips();
+            Log(tag + "dimatikan selagi update berjalan...");
+
+            ProcessStartInfo psi = new ProcessStartInfo();
+            psi.FileName = "powershell.exe";
+            psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File " + P(script) + " " + a;
+            psi.UseShellExecute = false; psi.CreateNoWindow = true;
+            psi.RedirectStandardOutput = true; psi.RedirectStandardError = true;
+            psi.StandardOutputEncoding = Encoding.UTF8; psi.StandardErrorEncoding = Encoding.UTF8;
+
+            Thread th = new Thread(delegate ()
+            {
+                int code = -1;
+                try
+                {
+                    Process p = new Process(); p.StartInfo = psi;
+                    p.OutputDataReceived += delegate (object s, DataReceivedEventArgs e) { if (e.Data != null) { string d = e.Data; UI(delegate { Log(tag + d); }); } };
+                    p.ErrorDataReceived += delegate (object s, DataReceivedEventArgs e) { if (e.Data != null) { string d = e.Data; UI(delegate { Log(tag + d); }); } };
+                    p.Start();
+                    p.BeginOutputReadLine(); p.BeginErrorReadLine();
+                    while (!p.WaitForExit(500)) { }
+                    Thread.Sleep(300);
+                    code = p.ExitCode;
+                }
+                catch (Exception ex) { string m = ex.Message; UI(delegate { Log(tag + "[GAGAL] Tidak bisa menjalankan PowerShell: " + m); }); }
+                int c = code;
+                UI(delegate
+                {
+                    sideChips.Remove(i);
+                    if (c != 0) { errChip = i; Log(tag + "GAGAL mematikan (kode " + c + ")."); }
+                    else Log(tag + "sudah mati.");
+                    UpdateChips();
+                    Refresh2();
+                });
+            });
+            th.IsBackground = true; th.Start();
+        }
+
+        void LogSideHint()
+        {
+            List<string> bebas = new List<string>();
+            bool[] on = new bool[] { last.Wsl, last.Voice, last.Router, last.Hermes, last.Server, last.Overlay };
+            for (int i = 0; i < 6; i++) if (on[i] && SideLock(i) == null) bebas.Add(ChipName[i]);
+            if (bebas.Count > 0)
+                Log("Tip: selama update kamu bisa klik chip " + string.Join(", ", bebas.ToArray()) + " untuk mematikannya (layanan yang tidak ikut di-update).");
         }
 
         // ------------------------------------------------------------ update komponen
@@ -2639,9 +2748,11 @@ namespace IrisLauncher
                 + (keys.Contains("launcher") ? " Launcher mengganti exe-nya sendiri, lalu kamu ditawari mulai ulang." : "")
                 + "\r\nTugas /agen Hermes yang sedang jalan bisa terputus. Lanjutkan?";
             if (MessageBox.Show(this, msg, "Update", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            updKeys = new HashSet<string>(keys);
             Run("Update: " + string.Join(", ", names.ToArray()), "iris-update.ps1", UpdArgs("update", string.Join(",", keys.ToArray())),
                 delegate (int c)
                 {
+                    updKeys = null;
                     // setelah SetBusy(false) selesai: tawarkan mulai ulang bila launcher baru terpasang, kalau tidak cek ulang
                     BeginInvoke((Action)delegate
                     {
@@ -2651,6 +2762,8 @@ namespace IrisLauncher
                         else CheckUpdates(false, string.Join(",", keys.ToArray()));
                     });
                 });
+            if (!busy) updKeys = null;   // Run menolak mulai
+            else LogSideHint();
         }
 
         bool HasVvBackup()
