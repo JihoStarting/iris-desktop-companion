@@ -1,7 +1,7 @@
 <#
 iris-hermes.ps1 - saklar Hermes + WSL (nyala <-> mati). Hanya karakter ASCII.
 
-Kalau Hermes (:8642) menjawab  -> MATI: stop hermes-gateway, hentikan sesi penjaga WSL, lalu wsl --shutdown
+Kalau Hermes (:8642) menjawab  -> MATI: stop hermes-gateway, hentikan sesi penjaga WSL, lalu wsl --shutdown (hanya bila tidak ada distro lain yang jalan; kalau ada: wsl --terminate distro Iris saja)
                                   (RAM VmmemWSL lepas; 9Router dan VOICEVOX ikut mati karena WSL-nya mati)
 Kalau Hermes tidak menjawab    -> NYALA: WSL dibangunkan, sesi penjaga dibuka, hermes-gateway di-start
                                   (9Router dan VOICEVOX naik sendiri bersama WSL karena unit systemd-nya enabled)
@@ -18,6 +18,10 @@ param(
   [switch]$Matikan,
   [switch]$TanpaPenjaga
 )
+
+# Tier A: samakan penyandian keluaran konsol dengan yang dibaca launcher (UTF-8, tanpa BOM). Dibungkus try: tanpa konsol
+# (proses tersembunyi / dialihkan) PowerShell 5.1 bisa melempar "handle tidak valid".
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
 
 $Unit = 'hermes-gateway'
 $Url  = 'http://127.0.0.1:8642/health'
@@ -43,6 +47,25 @@ function Get-HttpCode([string]$U, [int]$TimeoutMs = 3000) {
   } catch {
     return 0
   }
+}
+
+# Tier S: `wsl --shutdown` mematikan SEMUA distro WSL (Docker Desktop, proyek lain) dan membuang data yang belum tersimpan di sana.
+# Dipakai hanya kalau tidak ada distro lain yang jalan. Kalau ada, hanya distro Iris yang dihentikan (--terminate).
+# Mengembalikan $true bila seluruh WSL dimatikan, $false bila hanya distro Iris.
+function Stop-WslAman {
+  $raw = ''
+  try { $raw = ((& wsl.exe -l -v 2>&1) | Out-String) -replace "`0", '' } catch { $raw = '' }
+  $lain = @()
+  foreach ($m in [regex]::Matches($raw, '(?m)^\s*\*?\s*(\S+)\s+Running\b')) {
+    if ($m.Groups[1].Value -ne $Distro) { $lain += $m.Groups[1].Value }
+  }
+  if ($lain.Count -gt 0) {
+    Write-Host ('Distro lain masih jalan (' + ($lain -join ', ') + '): WSL tidak di-shutdown, hanya ' + $Distro + ' yang dihentikan.')
+    & wsl.exe --terminate $Distro 2>$null | Out-Null
+    return $false
+  }
+  & wsl.exe --shutdown 2>$null | Out-Null
+  return $true
 }
 
 function Get-Penjaga {
@@ -76,10 +99,12 @@ if ($mau -eq 'mati') {
   }
 
   Write-Host 'Mematikan WSL...'
-  & wsl.exe --shutdown
+  $semuaMati = Stop-WslAman
   Start-Sleep -Seconds 3
   $vm = Get-Process -Name vmmemWSL, vmmem -ErrorAction SilentlyContinue
-  if ($vm) {
+  if (-not $semuaMati) {
+    Write-Host ('Distro ' + $Distro + ' dihentikan; WSL tetap hidup untuk distro lain.') -ForegroundColor Cyan
+  } elseif ($vm) {
     Write-Host 'WSL dimatikan. VmmemWSL mungkin butuh beberapa detik lagi untuk hilang.' -ForegroundColor Cyan
   } else {
     Write-Host 'WSL dimatikan. RAM sudah lepas.' -ForegroundColor Green

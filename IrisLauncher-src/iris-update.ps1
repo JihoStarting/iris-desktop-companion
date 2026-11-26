@@ -47,6 +47,10 @@ param(
   [ValidatePattern('^([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)?$')][string]$LauncherRepo = ''
 )
 
+# Tier A: samakan penyandian keluaran konsol dengan yang dibaca launcher (UTF-8, tanpa BOM). Dibungkus try: tanpa konsol
+# (proses tersembunyi / dialihkan) PowerShell 5.1 bisa melempar "handle tidak valid".
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
+
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 if ($Proyek) { $Proyek = $Proyek.TrimEnd('\') }
@@ -219,6 +223,29 @@ function Test-Digest([string]$Path, $Digest, [string]$Label, [switch]$Wajib) {
   $got = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLower()
   if ($got -ne $m.Groups[1].Value.ToLower()) { throw ('SHA-256 ' + $Label + ' tidak cocok (didapat ' + $got + ')') }
   Write-Host '  SHA-256 cocok'
+}
+
+# Tier S: operasi berkas yang bisa kena file-lock sesaat (antivirus, indeks Windows, handle yang belum dilepas) diulang beberapa kali.
+# $Act harus melempar galat saat gagal (pakai -ErrorAction Stop). Galat terakhir dilempar ulang.
+function Invoke-Retry([scriptblock]$Act, [int]$Kali = 10, [int]$JedaDetik = 1) {
+  for ($i = 1; $i -le $Kali; $i++) {
+    try { & $Act; return } catch { if ($i -eq $Kali) { throw }; Start-Sleep -Seconds $JedaDetik }
+  }
+}
+
+# Tier S: hentikan SEMUA proses yang berasal dari sebuah folder (bukan hanya run.exe) beserta anak-anaknya, lalu tunggu sampai hilang.
+# Dipakai sebelum folder vv-engine diganti namanya: satu handle yang tersisa (mis. proses pembantu mesin) sudah cukup menggagalkan rename.
+function Stop-ProsesDiFolder([string]$Dir, [int]$BatasDetik = 10) {
+  $pref = $Dir.TrimEnd('\') + '\'
+  $cari = { @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($pref, [System.StringComparison]::OrdinalIgnoreCase) }) }
+  $t0 = Get-Date
+  while (((Get-Date) - $t0).TotalSeconds -lt $BatasDetik) {
+    $sisa = & $cari
+    if ($sisa.Count -eq 0) { return $true }
+    foreach ($p in $sisa) { & taskkill.exe /PID $p.ProcessId /T /F 2>&1 | Out-Null }
+    Start-Sleep -Milliseconds 500
+  }
+  return ((& $cari).Count -eq 0)
 }
 
 function Hist([string]$Key, [string]$V0, [string]$V1, [string]$Hasil) {
@@ -738,17 +765,18 @@ function Update-Voice {
   $was = ((Get-HttpCode $VvUrl) -gt 0)
   Write-Host 'Mematikan VOICEVOX untuk menukar folder...'
   [void](Svc 'voicevox' 'mati')
+  if (-not (Stop-ProsesDiFolder $vvDir)) { Write-Host 'PERINGATAN: masih ada proses dari vv-engine yang belum berhenti; penggantian folder bisa gagal.' }
   $bakName = 'vv-engine.bak-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
   $bak = Join-Path $Proyek $bakName
   $ok = $false
   try {
-    Rename-Item -LiteralPath $vvDir -NewName $bakName -ErrorAction Stop
+    Invoke-Retry { Rename-Item -LiteralPath $vvDir -NewName $bakName -ErrorAction Stop } 15 1   # file-lock sesaat setelah proses berhenti
     try {
-      Move-Item -LiteralPath $newDir -Destination $vvDir -ErrorAction Stop
+      Invoke-Retry { Move-Item -LiteralPath $newDir -Destination $vvDir -ErrorAction Stop } 5 1
       $ok = $true
     } catch {
       Write-Host ('GAGAL memindahkan folder baru: ' + $_.Exception.Message)
-      Rename-Item -LiteralPath $bak -NewName 'vv-engine' -ErrorAction SilentlyContinue
+      try { Invoke-Retry { Rename-Item -LiteralPath $bak -NewName 'vv-engine' -ErrorAction Stop } 10 1 } catch { Write-Host ('PERINGATAN: gagal mengembalikan folder lama; pulihkan manual dari ' + $bakName) }
     }
   } catch {
     Write-Host ('GAGAL mengganti nama folder lama (masih dipakai proses lain?): ' + $_.Exception.Message)
@@ -894,8 +922,15 @@ function Update-Overlay {
   Write-Host 'Menjalankan npm update (bila Electron naik versi, unduhannya ratusan MB)...'
   Push-Location -LiteralPath $Proyek
   try {
-    & $npm update --no-fund --no-audit 2>&1 | ForEach-Object { Write-Host ('   ' + (Strip-Ansi ([string]$_))) }
-    $ok = ($LASTEXITCODE -eq 0)
+    # Tier S: berkas node_modules (mis. electron.exe) bisa masih terkunci sesaat setelah overlay ditutup; ulangi sekali bila galatnya EBUSY / EPERM / EACCES.
+    $ok = $false
+    for ($coba = 1; $coba -le 2; $coba++) {
+      $npmOut = @(& $npm update --no-fund --no-audit 2>&1 | ForEach-Object { $baris = Strip-Ansi ([string]$_); Write-Host ('   ' + $baris); $baris })
+      $ok = ($LASTEXITCODE -eq 0)
+      if ($ok -or $coba -eq 2 -or (($npmOut -join "`n") -notmatch 'EBUSY|EPERM|EACCES')) { break }
+      Write-Host '  Berkas terkunci (EBUSY/EPERM); mencoba lagi dalam 5 detik...'
+      Start-Sleep -Seconds 5
+    }
   } finally { Pop-Location }
   if ($ok) { $ok = (Repair-Electron) }
   if ($was) { Write-Host 'Membuka overlay lagi...'; [void](Svc 'overlay' 'nyala') }
@@ -980,12 +1015,13 @@ function Rollback-Voice {
   $was = ((Get-HttpCode $VvUrl) -gt 0)
   Write-Host ('Memulihkan VOICEVOX dari ' + $bak.Name + ' ...')
   [void](Svc 'voicevox' 'mati')
+  if (-not (Stop-ProsesDiFolder $cur)) { Write-Host 'PERINGATAN: masih ada proses dari vv-engine yang belum berhenti; pemulihan bisa gagal.' }
   $tmpName = 'vv-engine.dibuang-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
   $ok = $false
   try {
-    if (Test-Path -LiteralPath $cur) { Rename-Item -LiteralPath $cur -NewName $tmpName -ErrorAction Stop }
+    if (Test-Path -LiteralPath $cur) { Invoke-Retry { Rename-Item -LiteralPath $cur -NewName $tmpName -ErrorAction Stop } 15 1 }
     try {
-      Rename-Item -LiteralPath $bak.FullName -NewName 'vv-engine' -ErrorAction Stop
+      Invoke-Retry { Rename-Item -LiteralPath $bak.FullName -NewName 'vv-engine' -ErrorAction Stop } 10 1
       $ok = $true
     } catch {
       Write-Host ('GAGAL memulihkan: ' + $_.Exception.Message)

@@ -19,6 +19,10 @@ param(
   [switch]$TanpaGPU
 )
 
+# Tier A: samakan penyandian keluaran konsol dengan yang dibaca launcher (UTF-8, tanpa BOM). Dibungkus try: tanpa konsol
+# (proses tersembunyi / dialihkan) PowerShell 5.1 bisa melempar "handle tidak valid".
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
+
 if (-not $Proyek) { $Proyek = (Get-Location).Path }
 $Proyek = $Proyek.TrimEnd('\')
 $LogStart = Join-Path $Proyek 'iris-start.log'
@@ -156,10 +160,53 @@ foreach ($l in $layanan) {
   }
 }
 if ($tertunda.Count -gt 0) {
+  # Tier S: tepat setelah WSL bangun, systemd --user belum tentu siap. Tanpa menunggu, `systemctl --user start` gagal diam-diam dan
+  # layanan baru ketahuan "belum menjawab" setelah $TungguDetik. Tunggu systemd dulu (maks 40 detik; langsung kembali kalau sudah siap),
+  # lalu ulangi start (3x) bila gagal, dan catat alasannya di log.
+  $ErrorActionPreference = 'Continue'
+  & wsl.exe -d $Distro -- timeout 40 systemctl --user is-system-running --wait 2>&1 | Out-Null
+  $ErrorActionPreference = 'Stop'
   $unitArgs = @('-d', $Distro, '--', 'systemctl', '--user', 'start', '--no-block') + @($tertunda | ForEach-Object { $_.Unit })
   Log ('Start sekaligus: ' + (@($tertunda | ForEach-Object { $_.Nama }) -join ', '))
-  $ErrorActionPreference = 'Continue'; & wsl.exe @unitArgs 2>&1 | Out-Null; $ErrorActionPreference = 'Stop'
+  $startOk = $false; $startKet = ''; $kode = 0
+  for ($i = 1; $i -le 3 -and -not $startOk; $i++) {
+    $ErrorActionPreference = 'Continue'
+    $startKet = (& wsl.exe @unitArgs 2>&1 | Out-String) -replace "`0", ''
+    $kode = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($kode -eq 0) { $startOk = $true } else { Start-Sleep -Seconds 3 }
+  }
+  if (-not $startOk) { Log ('systemctl --user start gagal (kode ' + $kode + '): ' + $startKet.Trim()) 'WARN' }
 }
+
+# Tier A: beri tahu server.py (POST /internal/service-state) sebelum layanan dimatikan / sesudah dinyalakan, supaya health_probe dan
+# overlay tidak menunggu timeout ke layanan yang sengaja dimatikan. Token dibaca dari <Proyek>\.env dan tidak pernah dicetak.
+# Gagal = diam: server.py boleh sedang mati, dan sinyal ini hanya optimasi (status "off" kedaluwarsa sendiri di server.py).
+function Send-SvcState([string]$Svc, [string]$State) {
+  try {
+    if (-not $Proyek) { return }
+    $envFile = Join-Path $Proyek '.env'
+    if (-not (Test-Path -LiteralPath $envFile)) { return }
+    $tok = ''
+    foreach ($l in (Get-Content -LiteralPath $envFile -ErrorAction Stop)) {
+      $m = [regex]::Match($l, '^\s*COMPANION_TOKEN\s*=\s*(.*?)\s*$')
+      if ($m.Success) { $tok = $m.Groups[1].Value.Trim([char]34, [char]39); break }
+    }
+    if (-not $tok) { return }
+    $body = [System.Text.Encoding]::UTF8.GetBytes('{"service":"' + $Svc + '","state":"' + $State + '"}')
+    $req = [System.Net.HttpWebRequest]::Create('http://127.0.0.1:8765/internal/service-state')
+    $req.Method = 'POST'; $req.ContentType = 'application/json'
+    $req.Timeout = 2000; $req.ReadWriteTimeout = 2000; $req.Proxy = $null
+    $req.Headers['x-iris-token'] = $tok
+    $req.ContentLength = $body.Length
+    $st = $req.GetRequestStream()
+    try { $st.Write($body, 0, $body.Length) } finally { $st.Close() }
+    $res = $req.GetResponse(); $res.Close()
+  } catch { }
+}
+
+# Layanan baru saja dinyalakan: hapus status "off" lama di server.py (kalau server.py sudah jalan dari sesi sebelumnya)
+Send-SvcState 'all' 'on'
 
 # 3. server.py
 if ((Get-HttpCode 'http://127.0.0.1:8765/ping') -gt 0) {

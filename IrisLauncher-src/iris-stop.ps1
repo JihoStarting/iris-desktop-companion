@@ -6,7 +6,8 @@ Urutan mati (terbalik dari start):
   2. server.py (yang mendengar di :8765)
   3. Hermes, 9Router, VOICEVOX (unit systemd user di WSL, dihentikan sekaligus)
   4. Sesi penjaga WSL (sleep infinity)
-  5. WSL itu sendiri (wsl --shutdown) -> RAM VmmemWSL lepas
+  5. WSL itu sendiri (wsl --shutdown) -> RAM VmmemWSL lepas. HANYA kalau tidak ada distro lain yang jalan
+     (mis. docker-desktop); kalau ada, hanya distro Iris yang dihentikan (wsl --terminate)
 
 PERINGATAN: jangan jalankan saat Hermes sedang mengerjakan tugas /agen.
 
@@ -24,9 +25,32 @@ param(
   [switch]$HentikanPenjaga
 )
 
+# Tier A: samakan penyandian keluaran konsol dengan yang dibaca launcher (UTF-8, tanpa BOM). Dibungkus try: tanpa konsol
+# (proses tersembunyi / dialihkan) PowerShell 5.1 bisa melempar "handle tidak valid".
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
+
 if (-not $Proyek) { $Proyek = (Get-Location).Path }
 $Proyek = $Proyek.TrimEnd('\')
 $prefix = $Proyek + '\'
+
+# Tier S: `wsl --shutdown` mematikan SEMUA distro WSL (Docker Desktop, proyek lain) dan membuang data yang belum tersimpan di sana.
+# Dipakai hanya kalau tidak ada distro lain yang jalan. Kalau ada, hanya distro Iris yang dihentikan (--terminate).
+# Mengembalikan $true bila seluruh WSL dimatikan, $false bila hanya distro Iris.
+function Stop-WslAman {
+  $raw = ''
+  try { $raw = ((& wsl.exe -l -v 2>&1) | Out-String) -replace "`0", '' } catch { $raw = '' }
+  $lain = @()
+  foreach ($m in [regex]::Matches($raw, '(?m)^\s*\*?\s*(\S+)\s+Running\b')) {
+    if ($m.Groups[1].Value -ne $Distro) { $lain += $m.Groups[1].Value }
+  }
+  if ($lain.Count -gt 0) {
+    Write-Host ('Distro lain masih jalan (' + ($lain -join ', ') + '): WSL tidak di-shutdown, hanya ' + $Distro + ' yang dihentikan.')
+    & wsl.exe --terminate $Distro 2>$null | Out-Null
+    return $false
+  }
+  & wsl.exe --shutdown 2>$null | Out-Null
+  return $true
+}
 
 # 1. Overlay: electron.exe yang berasal dari folder proyek ini
 $el = Get-CimInstance Win32_Process -Filter "Name='electron.exe'" |
@@ -92,9 +116,11 @@ if ($pj) {
 # 5. WSL
 if ($wslJalan) {
   Write-Host 'Mematikan WSL...'
-  & wsl.exe --shutdown
+  $semuaMati = Stop-WslAman
   Start-Sleep -Seconds 3
-  if (Get-Process -Name vmmemWSL, vmmem -ErrorAction SilentlyContinue) {
+  if (-not $semuaMati) {
+    Write-Host ('Distro ' + $Distro + ' dihentikan; WSL tetap hidup untuk distro lain.')
+  } elseif (Get-Process -Name vmmemWSL, vmmem -ErrorAction SilentlyContinue) {
     Write-Host 'WSL dimatikan. VmmemWSL mungkin butuh beberapa detik lagi untuk hilang.'
   } else {
     Write-Host 'WSL dimatikan. RAM sudah lepas.'

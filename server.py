@@ -177,7 +177,7 @@ import zipfile
 import httpx
 import uvicorn
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from dotenv import load_dotenv
 
 try:   # game teka-teki; kalau iris_games.py tidak ada, server jalan tanpa /tekateki
@@ -2940,6 +2940,42 @@ def _resolve_local_path(p: str):
     return None
 
 
+# v106: lokasi / nama berkas yang tidak boleh dibaca sebagai lampiran. Path datang dari klien /ws: jaringan pengaman terakhir kalau klien
+# (atau siapa pun yang memegang token) mengirim path sembarang. Pemeriksaan dilakukan pada path NYATA (symlink sudah diurai).
+_ATTACH_DENY_DIRS = {".ssh", ".aws", ".gnupg", ".kube", ".docker", ".azure", ".gcloud", "gcloud", "user data", "mozilla"}   # "user data" = profil Chrome / Edge
+_ATTACH_DENY_ROOTS = {"proc", "sys", "dev", "etc"}   # hanya tepat di bawah root POSIX; folder pengguna bernama "dev" tidak ikut terblokir
+_ATTACH_DENY_NAMES = {"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "authorized_keys", "known_hosts", "credentials", "login data", "cookies",
+                      "web data", "key3.db", "key4.db", "logins.json", ".netrc", "_netrc", ".npmrc", ".pypirc", "hosts.yml", "shadow", "passwd"}
+
+
+def _attach_denied(rp: Path) -> bool:
+    parts = [x.lower() for x in rp.parts]
+    if rp.anchor == "/" and len(parts) > 2 and parts[1] in _ATTACH_DENY_ROOTS:
+        return True
+    if any(x in _ATTACH_DENY_DIRS for x in parts[:-1]):
+        return True
+    n = parts[-1] if parts else ""
+    return n in _ATTACH_DENY_NAMES or n.startswith(".env") or n.endswith(".env") or n.startswith("id_rsa") or n.startswith("id_ed25519")
+
+
+def _read_regular(path: Path, cap: int) -> bytes:
+    """Baca berkas biasa dari handle yang sama dengan pemeriksaan jenisnya (FIFO / perangkat ditolak, tidak menggantung), paling banyak `cap` byte."""
+    import stat as _stat
+    fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0))
+    try:
+        if not _stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError("bukan berkas biasa")
+        with os.fdopen(fd, "rb") as fh:
+            fd = -1
+            b = fh.read(cap + 1)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+    if len(b) > cap:
+        raise ValueError("file lebih besar dari batas baca")
+    return b
+
+
 def clean_files(raw) -> tuple[list[dict], list[str]]:
     """Validasi lampiran dari overlay. Mengembalikan (file valid, daftar masalah yang bisa ditampilkan)."""
     files: list[dict] = []
@@ -2960,7 +2996,15 @@ def clean_files(raw) -> tuple[list[dict], list[str]]:
             if p is None:
                 problems.append(f"File tidak ditemukan di disk: {name or path[-60:]}")
                 continue
-            name = name or p.name
+            try:
+                p = p.resolve(strict=True)   # path NYATA: symlink diurai sekali di sini, pembacaan berikutnya memakai hasil ini
+            except (OSError, RuntimeError):
+                problems.append(f"File tidak bisa dibuka: {name or path[-60:]}")
+                continue
+            if _attach_denied(p):
+                problems.append(f"Lokasi file dilindungi dan tidak bisa dilampirkan: {p.name}")
+                continue
+            name = p.name   # jenis file ditentukan dari berkas SEBENARNYA, bukan dari nama kiriman klien (name="a.txt" + path=kunci pribadi)
         elif not (isinstance(data, str) and data):
             problems.append(f"File '{name or '?'}' tidak terbaca (path kosong).")
             continue
@@ -3251,7 +3295,7 @@ def extract_file_text(f: dict, limit: int) -> tuple[str, str]:
     kind, ext = f["kind"], f["ext"]
     if kind == "media":
         return _transcribe_media(f)
-    data = f["data"] if f["data"] is not None else f["path"].read_bytes()
+    data = f["data"] if f["data"] is not None else _read_regular(f["path"], MAX_DOC_BYTES)
     if kind == "text":
         text = _decode_text(data)
         return text, f"teks .{ext}, {text.count(chr(10)) + 1} baris"
@@ -3567,8 +3611,10 @@ async def _translate_image_body(ws, client, data_url, lang, history, say, fail, 
     print(f"[{stamp()}] terjemah gambar selesai: {res.translated}/{res.blocks} blok, OCR {res.ocr}, {time.time() - t0:.1f} dtk", flush=True)
     if history is not None and res.text:
         # v77: ingat ISI terjemahan supaya pertanyaan lanjutan ("isi terjemahan itu apa?") dijawab dari teks nyata, bukan karangan
+        # Teks layar = DATA tak tepercaya: dibungkus lewat as_context() (pembatas + catatan anti-injeksi), bukan ditempel mentah.
+        # Batas 1200 huruf agar penutup pembungkus tidak terpotong.
         history.screen = ("Layar barusan diterjemahkan ke Indonesia lewat OCR (hanya teks yang terbaca; ikon, gambar, dan teks yang gagal dibaca TIDAK ada di sini, "
-                          "jangan mengarang isi di luar daftar ini). Terjemahan dari atas ke bawah: " + res.text.replace("\n", " | "))[:1800]
+                          "jangan mengarang isi di luar daftar ini). Terjemahan dari atas ke bawah:\n" + res.as_context(1200).replace("\n", " | "))
     await safe_send(ws, {"type": "translate_image_result", "ok": True, "image": res.image, "blocks": res.blocks,
                          "translated": res.translated, "ocr": res.ocr, "lang": res.lang, "secs": round(time.time() - t0, 1),
                          "dropped": res.dropped, "text": res.text[:4000]})
@@ -4177,6 +4223,23 @@ HEALTH_PUSH_SEC = max(15, int(os.getenv("IRIS_HEALTH_SEC", "45")))
 HEALTH_CONNECT_SEC = env_float("IRIS_HEALTH_CONNECT", 1.5)
 
 
+# Tier A: Iris Launcher memberi tahu server.py sebelum mematikan layanan (POST /internal/service-state), supaya health_probe
+# tidak menunggu timeout ke layanan yang sengaja dimatikan. Status kedaluwarsa otomatis (jaga-jaga kalau sinyal "on" tidak pernah datang).
+SVC_OFF_TTL_SEC = env_float("IRIS_SVC_OFF_TTL", 600.0)
+_SVC_NAMES = {"voicevox": "voicevox", "9router": "ninerouter", "ninerouter": "ninerouter", "hermes": "hermes"}
+_svc_off_until: dict = {}   # nama internal -> time.monotonic() batas kedaluwarsa
+
+
+def svc_is_off(name: str) -> bool:
+    until = _svc_off_until.get(name)
+    if until is None:
+        return False
+    if time.monotonic() >= until:
+        _svc_off_until.pop(name, None)
+        return False
+    return True
+
+
 async def health_probe() -> dict:
     result = {"voicevox": None, "ninerouter": None, "hermes": None,
               "ws_token": "aktif" if COMPANION_TOKEN else "KOSONG (/ws terbuka)",   # tanpa panjang / sidik: /health tidak bertoken
@@ -4185,6 +4248,9 @@ async def health_probe() -> dict:
                                 + ("" if HERMES_STREAM else "; HERMES_STREAM bukan 1, kartu tidak akan muncul")}
     async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=HEALTH_CONNECT_SEC)) as client:
         async def p_voicevox():
+            if svc_is_off("voicevox"):
+                result["voicevox"] = "ERROR: dimatikan lewat Launcher"
+                return
             try:
                 r = await client.get(f"{VOICEVOX_URL}/version")
                 result["voicevox"] = r.text.strip('"')
@@ -4192,6 +4258,9 @@ async def health_probe() -> dict:
                 result["voicevox"] = f"ERROR: {e!r}"
 
         async def p_ninerouter():
+            if svc_is_off("ninerouter"):
+                result["ninerouter"] = "ERROR: dimatikan lewat Launcher"
+                return
             # 20 Nov 2026: periksa hidup-tidaknya lewat "/" (sama seperti Iris Launcher dan iris-doctor), bukan /v1/models.
             # Hasil ukur: /v1/models di 9Router sering 5 sampai 8 detik atau timeout, sehingga pil status berkedip "tidak merespons"
             # padahal 9Router hidup. Kunci API yang salah tetap terlihat lewat iris-doctor dan galat chat.
@@ -4205,6 +4274,9 @@ async def health_probe() -> dict:
                 result["ninerouter"] = f"ERROR: {e!r}"
 
         async def p_hermes():
+            if svc_is_off("hermes"):
+                result["hermes"] = "ERROR: dimatikan lewat Launcher"
+                return
             try:
                 r = await client.get(f"{HERMES_URL}/health")
                 key_note = "kunci terisi" if HERMES_KEY else "HERMES_API_KEY kosong"
@@ -4236,6 +4308,32 @@ def health_message(result: dict) -> dict:
 # v70: cek hidup server.py SAJA. Segera menjawab tanpa memeriksa VOICEVOX/9Router/Hermes. Dipakai Iris Launcher dan skrip start/service
 # untuk tahu "server.py hidup atau tidak". /health memeriksa layanan lain, jadi menjadi lambat atau gagal kalau Hermes (dll.) sedang mati;
 # dulu itu membuat server.py yang masih hidup tampak "Mati" di launcher begitu Hermes dimatikan.
+@app.post("/internal/service-state")
+async def service_state(request: Request):
+    """Dipanggil Iris Launcher: {"service": "hermes|9router|voicevox|all", "state": "on|off"}. Wajib token dan klien loopback."""
+    client_host = request.client.host if request.client else ""
+    if client_host not in ("127.0.0.1", "::1", "localhost"):
+        return JSONResponse({"error": "hanya dari komputer ini"}, status_code=403)
+    if not token_ok(request.headers.get("x-iris-token")):
+        return JSONResponse({"error": "token salah"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "JSON tidak valid"}, status_code=400)
+    svc = str(body.get("service", "")).strip().lower() if isinstance(body, dict) else ""
+    state = str(body.get("state", "")).strip().lower() if isinstance(body, dict) else ""
+    if state not in ("on", "off") or (svc != "all" and svc not in _SVC_NAMES):
+        return JSONResponse({"error": "service / state tidak dikenal"}, status_code=400)
+    targets = sorted(set(_SVC_NAMES.values())) if svc == "all" else [_SVC_NAMES[svc]]
+    for t in targets:
+        if state == "off":
+            _svc_off_until[t] = time.monotonic() + SVC_OFF_TTL_SEC
+        else:
+            _svc_off_until.pop(t, None)
+    _health_cache["data"] = None   # paksa pemeriksaan ulang pada /health berikutnya
+    return {"ok": True, "off": sorted(k for k in _svc_off_until if svc_is_off(k))}
+
+
 @app.get("/ping")
 async def ping():
     return {"ok": True}

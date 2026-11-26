@@ -27,6 +27,10 @@ param(
   [int]$RamWarnPct = 85
 )
 
+# Tier A: samakan penyandian keluaran konsol dengan yang dibaca launcher (UTF-8, tanpa BOM). Dibungkus try: tanpa konsol
+# (proses tersembunyi / dialihkan) PowerShell 5.1 bisa melempar "handle tidak valid".
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
+
 $ErrorActionPreference = 'Continue'
 if ([string]::IsNullOrWhiteSpace($Proyek)) { $Proyek = (Get-Location).Path }
 

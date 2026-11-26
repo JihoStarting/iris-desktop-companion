@@ -1,4 +1,4 @@
-"""rea_triage.py - triase statis lokal untuk perintah /rea (Iris v99.22, kumulatif dengan v99.21, v99.20, v99.19, v99.18, v99.17, v99.16, v99.15, v99.14, v99.13, v99.12, v99.11, v99.10, v99.9, v99.8, v99.7, v99.6, v99.5, v99.4, v99.3, v99.1, v99.0, v98.6, v97, v96, v95, v94, v93, v92, v91).  by: KangJiho
+"""rea_triage.py - triase statis lokal untuk perintah /rea (Iris v99.57, kumulatif dengan v99.56, v99.55, v99.54, v99.53, v99.52, v99.51, v99.50, v99.49, v99.48, v99.47, v99.46, v99.45, v99.44, v99.43, v99.42, v99.41, v99.40, v99.39, v99.38, v99.37, v99.36, v99.35, v99.34, v99.33, v99.32, v99.31, v99.30, v99.29, v99.28, v99.27, v99.26, v99.25, v99.24, v99.23, v99.22, v99.21, v99.20, v99.19, v99.18, v99.17, v99.16, v99.15, v99.14, v99.13, v99.12, v99.11, v99.10, v99.9, v99.8, v99.7, v99.6, v99.5, v99.4, v99.3, v99.1, v99.0, v98.6, v97, v96, v95, v94, v93, v92, v91).  by: KangJiho
 
 Dihitung langsung di PC oleh Python (hanya pustaka standar), TANPA LLM dan TANPA menjalankan file:
 hash, jenis file, entropi, header PE / ELF / ZIP (APK, JAR), import / export, bagian (section), string menarik,
@@ -101,9 +101,59 @@ v99.13 (roadmap v2, Tier S butir 3: CFG + kompleksitas fungsi; aditif; by: KangJ
 NOTICE: _CAPA_RULES diturunkan dari aturan mandiant/capa-rules (c) Mandiant / Google, lisensi Apache-2.0
 (https://github.com/mandiant/capa-rules). Hanya nama aturan, ATT&CK, dan daftar API yang dipakai ulang; telah diubah bentuk dan disaring.
 
+v99.27 (roadmap v2, Tier A butir 4 'RE Lab Mach-O / ARM', TAHAP 2d-2a (kecil); aditif; by: KangJiho): dukungan PAC (arm64e / -mbranch-protection) di RE Lab AArch64: RETAA / RETAB, BRAA / BRAB / BRAAZ / BRABZ,
+      BLRAA / BLRAB / BLRAAZ / BLRABZ dikenali lewat _a64_brk() di CFG, emulasi mikro, deteksi stub / thunk, dan batas fungsi; PACIBSP dihitung sebagai awal fungsi. Sebelumnya fungsi ber-PAC (iOS arm64e, Android dengan PAC)
+      salah dipotong: RETAA tidak dianggap akhir blok. Jalur x86 / x64 dan AArch64 tanpa PAC tidak berubah.
+v99.57 (roadmap v23, Tier A butir 4, TAHAP 2d-2e-10; aditif; by: KangJiho): R_AARCH64_IRELATIVE (1032) / R_ARM_IRELATIVE (160) / ifunc (glibc, bionic) di `_elf_layout(arm=True)`: nilai slot = hasil memanggil resolver (alamat resolver = addend RELA / nilai slot REL). `_arm_ifunc_resolve()` (dipanggil `_arm_layout`) mengemulasi resolver dengan `_a64_emu_func` / `_a32_emu_func` (jendela IFUNC_WINDOW 0x400 byte, batas waktu IFUNC_TIME 3 dtk per berkas, maks 512 slot); slot masuk `L["reloc"]` hanya bila SEMUA jalur berakhir di RET dengan x0 / r0 diketahui dan satu nilai yang sama di dalam bagian kode, sehingga BLR / BLX register lewat slot ifunc ikut diselesaikan v99.42. Resolver bergantung hwcap (dua kandidat atau lebih), hasil tak diketahui, atau di luar kode -> dilewati (tak ada tebakan). Kunci aditif `L["irel"]`, `L["n_irel"]`, `L["n_irel_skip"]` + catatan "IRELATIVE (ifunc)". Thumb dan resolver beralamat ganjil dilewati. Diuji `test_ifunc.py` (22 cek: ELF64 AArch64 dan ELF32 ARM sintetis, RELA dan REL, resolver sederhana, dua kandidat, hasil di luar kode, ujung ke ujung `adrp` + `ldr` + `blr` terselesaikan sedangkan tanpa IRELATIVE tidak, fuzz 400 ELF rusak); belum diuji pada `lib*.so` / glibc asli. Belum: resolver bergantung hwcap (semua kandidat sebagai tepi), resolver Thumb, resolver yang membaca data terisi saat jalan (mis. `__getauxval`).
+v99.56 (roadmap v22, Tier A arsip game modern: kunci AES dipilih dari ISI entri; aditif; by: KangJiho): pada pak dengan indeks POLOS, entri terenkripsi, dan beberapa kunci tanpa GUID yang cocok, v99.55 mengambil satu kunci tanpa bukti (entri tak terkompresi diam-diam menghasilkan sampah; entri terkompresi gagal tanpa mencoba kunci lain). Kini `read()` di `_upak_raw` mencoba tiap kandidat berurutan (GUID cocok, kunci bawaan, sisanya): entri terkompresi terbukti bila dekompresi berhasil, entri tak terkompresi bila `_aes_plain_ok()` menilai plaintext wajar (magic format umum seperti uasset / png / dds / riff / ogg / zip, teks >= 85% byte cetak, atau biner terstruktur >= 10% byte nol; entropi sengaja tidak dipakai karena sampah ECB dari plaintext berulang ikut berentropi rendah). Kunci terbukti di-cache per pak dan dipakai untuk entri berikutnya, termasuk biner acak yang tak bisa dibuktikan sendiri. Tak terbukti sama sekali (biner acak / pendek) -> perilaku v99.55 (kunci pertama atau ValueError "tak satu pun cocok dengan GUID pak"). Indeks terenkripsi, satu kunci, dan tanpa kunci tidak berubah. Diuji `test_pak_aes_pick.py` (68 cek, perakit `pak_builders.py`: v8 / v11, polos / zlib, GUID cocok / nol / berbeda, kunci benar di posisi mana pun, semua salah, kunci terbukti dipakai ulang, ujung ke ujung `assets_extract` / `assets_text` dengan berkas kunci, 300 pak rusak hanya ValueError; false positive `_aes_plain_ok` pada data acak < 0,5%). Catatan: `test_pak_aes_guid.py` (113 cek) tidak ikut diunggah, jadi belum dijalankan ulang; tes yang mengharapkan ValueError "tak satu pun cocok" untuk entri berisi teks / uasset dengan banyak kunci tanpa GUID cocok kini akan berhasil membaca (perubahan disengaja). SHA1 entri TIDAK dipakai untuk memilih kunci: dugaan saya UnrealPak menghitungnya atas byte tersimpan (terenkripsi), sehingga hanya memeriksa integritas, bukan kunci; belum diverifikasi dengan pak asli.
+v99.55 (roadmap v21, Tier A arsip game modern: pemilihan kunci AES lewat GUID enkripsi pak; aditif; by: KangJiho): footer pak v7+ menyimpan GUID kunci enkripsi (4 uint32 little-endian, dicetak sebagai 32 digit hex A B C D); `_upak_raw` membacanya dan memilih kunci dari DAFTAR kunci: GUID cocok, lalu kunci bawaan (tanpa GUID), lalu sisanya (`_aes_candidates()`). Indeks terenkripsi: tiap kandidat dicoba dan mount point yang wajar membuktikan kunci benar, jadi Crypto.json ber-GUID keliru atau footer ber-GUID nol tetap terbuka bila salah satu kunci benar. Hanya entri terenkripsi (indeks polos, tanpa bukti isi): GUID cocok -> kunci bawaan -> satu-satunya kunci, bila ada beberapa kunci dan tak satu pun cocok -> ValueError "tak satu pun cocok dengan GUID pak" (`_aes_pick_data()`). Sumber kunci: `--aes` boleh diulang (`--aes [GUID:]KUNCI|BERKAS`), API `aes` dan `aes_file` menerima satu atau daftar, `assets_text` / `assets_extract` (`aes_key=`, `aes_file=` satu atau daftar). Format: `GUID:KUNCI` / `GUID=KUNCI` (GUID boleh bertanda hubung / kurung kurawal), berkas teks banyak baris (`#`, `;`, `//` dilewati), Crypto.json UnrealPak dengan `EncryptionKey` + `SecondaryEncryptionKeys`, daftar JSON; satu kunci tanpa GUID bekerja seperti v99.54; maks 64 kunci. GUID pak dicatat di catatan arsip dan di pesan galat tanpa kunci ("GUID pak ...") sehingga kunci yang diperlukan dapat dicari. Diuji `test_pak_aes_guid.py` (113 cek, perakit `pak_builders.py`) dan `test_pak_aes.py` (94 cek, tetap lulus). Catatan: urutan byte GUID (A B C D little-endian, tampilan %08X x4) mengikuti pengetahuan format FGuid dan baru diuji dengan pak sintetis; verifikasi dengan satu pak asli ber-GUID. Belum: verifikasi SHA1 entri, `--list` / `--extract` kontainer, Oodle.\nv99.54 (roadmap v20, Tier A arsip game modern: enkripsi AES-256 di pembaca Unreal pak; aditif; by: KangJiho): `--assets FILE --aes [GUID:]KUNCI|BERKAS` dan `--assets-extract OUTDIR FILE [pola] [--no-convert] --aes [GUID:]KUNCI|BERKAS` (urutan `--aes` bebas; KUNCI = hex 64 karakter, base64, atau 32 karakter ASCII; BERKAS = Crypto.json UnrealPak (`EncryptionKey.Key`) atau teks / 32 byte mentah), aksi API `assets` / `assets_extract` menerima `"aes"` (kunci) dan `"aes_file"` (berkas, lewat pembatas path), `assets_text(..., aes_key=, aes_file=)` dan `assets_extract(..., aes_key=, aes_file=)`. AES-ECB murni Python (`_aes_ecb()`, tabel T, S-box dibangkitkan; 128 / 192 / 256 bit, Unreal memakai 256; sekitar 1 MB/dtk, batas waktu `AES_TIME`; jalur cepat OPSIONAL lewat paket `cryptography` bila terpasang). Kunci dibawa lewat ContextVar `_AES_KEY_CTX` / `_aes_key_scope()` (tanda tangan registri Asset Explorer tidak berubah) dan tidak pernah masuk pesan / laporan. `_upak_raw` kini mendekripsi indeks primer (v4-v9 dan v10 / v11) dan indeks direktori penuh v10 / v11 bila footer menandai indeks terenkripsi, serta entri tak terkompresi dan tiap blok terkompresi (zlib / LZ4 / Zstd; dibaca sejajar 16 byte, dipotong ke ukuran asli). Kunci salah: indeks -> "kunci AES salah: indeks PAK tidak bisa dibaca" (mount point diperiksa), entri terkompresi -> "gagal mendekompres entri terenkripsi (kunci AES salah?)". Tanpa kunci pesan tetap "butuh kunci AES" (kini dengan petunjuk `--aes`). Entri ZIP terenkripsi tetap dilewati (jalur umum Asset Explorer hanya melonggarkan pak). Tanpa kunci / tanpa enkripsi perilaku v99.53 tidak berubah. Belum: entri tak terkompresi tidak punya penanda kunci benar / salah (isi sampah bila kunci salah; hash SHA1 entri belum diverifikasi), beberapa kunci / pemilihan lewat GUID enkripsi, `--list` / `--extract` kontainer, Oodle.\nv99.53 (roadmap v19, Tier A arsip game modern: dictionary Zstd di Asset Explorer dan pembaca Unreal pak; aditif; by: KangJiho): `--assets FILE --dict DICT` dan `--assets-extract OUTDIR FILE [pola] [--no-convert] --dict DICT` (urutan `--dict` bebas), aksi API `assets` / `assets_extract` menerima `"dict"`, `assets_text(..., dict_path=)` dan `assets_extract(..., dict_path=)`. Dictionary dibawa lewat ContextVar `_ZSTD_DICT_CTX` (`_zstd_dict_scope()`), jadi tanda tangan registri Asset Explorer (`inspect` / `extract`) tidak berubah; dibaca oleh `_zstd_arc` (`.zst` / `.tar.zst`: intip, dekompres penuh, entri tunggal) dan oleh `read()` pembaca Unreal pak (`_upak_raw`, blok Zstd per frame) dan ditangkap saat arsip dibuka. Dictionary tidak terbaca -> manifest `bad_dictionary` (extract) / pesan "ASSETS gagal" (teks). Frame ber-dictionary tanpa dictionary tetap galat dengan petunjuk `--dict`. Tanpa dictionary perilaku v99.52 tidak berubah. Belum ada pak Unreal nyata berdictionary yang diketahui (UE memakai Zstd tanpa dictionary), jadi jalur pak diuji dengan pak sintetis.\nv99.52 (roadmap v18, Tier A arsip game modern: dictionary Zstd di jalur kontainer; aditif; by: KangJiho): `--list` / `--extract` (dan aksi API `list` / `extract`) menerima dictionary untuk `.zst` / `.tar.zst`: `--list FILE --dict DICT`, `--extract OUTDIR FILE [pola] [--scan] --dict DICT`, API `{"action": "list" | "extract", ..., "dict": "path"}`, `container_text(..., dict_path=)`, `container_extract(..., dict_path=)`. Di mesin kontainer: `open_container(path, zstd_dict=)`, `describe_container(..., zstd_dict=)`, `describe_container_text(..., zstd_dict=)`, `_ex_extract(..., zstd_dict=)` -> `_make_handler` -> `_zstd_handler` / `_SingleHandler` / `_ZstdStream` meneruskan dictionary (bytes, daftar, atau {id: bytes}) ke `_zstd_decompress`. Frame ber-dictionary tanpa `--dict` tetap `ContainerError` "corrupt" dengan petunjuk memakai `--dict`. Pembantu `_zstd_load_dict()` (batas UNPACK_MAX). Tanpa dictionary perilaku v99.51 tidak berubah. Belum: Asset Explorer (`--assets` / `--assets-extract`) dan pembaca Unreal pak.\nv99.51 (roadmap v17, Tier A arsip game modern: Zstd dengan dictionary; aditif; by: KangJiho): dekoder Zstd murni Python menerima dictionary: `_zstd_dict_parse()` (dictionary terformat magic 0xEC30A437: id, tabel Huffman, tabel FSE offset / match / literal-length, tiga offset ulang, konten; atau konten mentah id 0), `_zstd_decompress(..., dictionary=bytes | daftar | {id: bytes})`; di `_zstd_frame()` konten dictionary menjadi riwayat sebelum keluaran (offset boleh menunjuk ke sana), tabel entropi dan offset ulang awal diambil dari dictionary (mode 'ulang' dan literal treeless pada blok pertama valid). Frame ber-dictionary tanpa dictionary yang cocok tetap ValueError dengan pesan jelas. CLI `--unzstd FILE [OUT] [--dict DICT]`, aksi API `unzstd` (`dict`), `unzstd(..., dict_path=)`. Jalur kontainer `.zst` / `.tar.zst` belum menerima dictionary. Frame tanpa dictionary tidak berubah.\nv99.50 (roadmap v16, Tier A butir 4, TAHAP 2d-2e-9; aditif; by: KangJiho): pelacak konstanta A32 mengenali dua sumber nilai baru: `sub Rd, pc, #imm` (ADR mundur, literal / fungsi sebelum instruksi) dan `mov` / `mvn Rd, #imm` (alamat rendah non-PIE, bisa digeser ADD / ORR #imm dari v99.49). Target tetap harus berada di dalam bagian kode agar menjadi tepi. Thumb, AArch64 dan x86 / x64 tidak berubah.
+v99.49 (roadmap v15, Tier A butir 4, TAHAP 2d-2e-8; aditif; by: KangJiho): pelacak konstanta A32 di _a32_scan_word() kini membatalkan SEMUA register yang ditulis instruksi lewat _a32_writes() (sebelumnya hanya Rd data processing dan LDR): perkalian (RdHi / RdLo), LDRD (Rt + Rt+1), LDM / POP, writeback LDR / STR / LDM, MRC / VMOV, media, BL bersyarat, BLX imm, SVC (r0); MOV pc / LDM {.., pc} AL membersihkan semua. TST / TEQ / CMP / CMN, STR* dan MSR tidak lagi membatalkan konstanta secara keliru. ADD / SUB / ORR / BIC / EOR / AND #imm pada register berkonstanta menggeser nilainya (adr + orr #1 + blx). MOVT tidak lagi memakai nilai basi. Thumb, AArch64 dan x86 / x64 tidak berubah.
+v99.48 (roadmap v14, Tier A butir 4, TAHAP 2d-2e-7; aditif; by: KangJiho): pelacak konstanta Thumb / Thumb-2 di _thumb_scan() kini membatalkan register yang DITULIS instruksi lain (sebelumnya hanya BL / BLX dan MOV register tinggi): ALU 16-bit (geser, ADD / SUB, MOVS imm, ALU 0x40xx, ADD hi, LDR / LDRB / LDRH register dan imm, LDR SP-relatif, ADD Rd, SP, UXT / SXT / REV, POP, LDMIA / STMIA) lewat _thumb16_writes(), dan 32-bit (data processing, load / store tunggal termasuk writeback, perkalian, koprosesor, LDM / LDRD / POP.W) lewat _thumb32_writes(); instruksi 32-bit tak dikenal menghapus semua. ADDS / SUBS #imm (imm3 dan imm8) pada register berkonstanta menggeser nilainya (idiom `adr r3, x; adds r3, #1; bx r3`) alih-alih menghapusnya. Efek: BLX / BX register tidak lagi menyelesaikan target dari nilai basi (hasil palsu); hanya mengurangi / menggeser konstanta, tidak menambah sumber nilai baru. A32, AArch64 dan x86 / x64 tidak berubah.
+v99.47 (roadmap v13, Tier A butir 4, TAHAP 2d-2e-6; aditif; by: KangJiho): Mach-O chained fixups bertipe MULTI (page_start dengan bit 0x8000 = indeks ke daftar awal rantai tambahan, diakhiri entri ber-bit 0x8000; 0xFFFF = tanpa fixup) kini diikuti di _macho_chained_binds(): setiap awal rantai dalam satu halaman ditelusuri, sehingga bind (nama impor) dan rebase (L["reloc"]) pada halaman yang berisi beberapa rantai tidak lagi terlewat (sebelumnya seluruh halaman dilewati). Daftar awal dibatasi 64 per halaman, langkah total tetap dibatasi. Format 32-bit / kernel tidak relevan (chained fixups hanya dibaca untuk arm64). Halaman biasa dan x86 / x64 tidak berubah.
+v99.46 (roadmap v12, Tier A butir 4, TAHAP 2d-2e-5; aditif; by: KangJiho): R_AARCH64_GLOB_DAT / JUMP_SLOT dan R_ARM_GLOB_DAT / JUMP_SLOT ke simbol TERDEFINISI di biner itu sendiri (fungsi diekspor / dapat di-interpose lewat PLT) kini masuk peta L["reloc"] (slot -> nilai simbol + addend RELA; REL tanpa addend karena slot JUMP_SLOT berisi alamat PLT malas, bukan addend), sehingga BLR / BLX register lewat slot GOT lokal ikut diselesaikan oleh v99.42. Simbol tak terdefinisi tetap hanya nama impor (iat); TLS dan GNU ifunc dilewati; entri RELATIVE / ABS v99.43 tidak ditimpa. Kunci aditif L["n_symrel"] + catatan. x86 / x64 tidak berubah.
+v99.45 (roadmap v11, Tier A butir 4, TAHAP 2d-2e-4; aditif; by: KangJiho): pointer REBASE pada Mach-O chained fixups (LC_DYLD_CHAINED_FIXUPS, iOS 15+ / macOS 12+) kini dibaca sebagai nilai slot, bukan hanya bind: _macho_chained_binds(..., rebase=dict) mengisi VA slot -> alamat tujuan (format 2 = vmaddr, 6 = offset dari base, arm64e: auth selalu offset, non-auth fmt 1 vmaddr dan fmt 9 / 12 offset; high8 dibuang) ke L["reloc"] (kunci sama dengan ELF v99.43), sehingga BLR / BR register lewat slot / vtable data Mach-O ikut diselesaikan oleh v99.42 (sebelumnya nilai berkas berisi pointer terenkode, bukan alamat). Kunci aditif L["reloc"] hanya ada bila ada rebase; catatan baru. ELF, x86 / x64 dan Mach-O tanpa chained fixups tidak berubah.
+v99.44 (roadmap v10, Tier A butir 4, TAHAP 2d-2e-3; aditif; by: KangJiho): DT_RELR (relokasi RELATIVE terkompresi, SHT_RELR / SHT_ANDROID_RELR, Android 11+ / glibc 2.36+ / lld --pack-dyn-relocs=relr) dibaca di _elf_layout(arm=True) lewat _elf_relr_decode(): entri genap = alamat slot, entri ganjil = bitmap (31 / 63 slot berikutnya), nilai slot diambil dari berkas (addend implisit) dan masuk peta L["reloc"] yang sama dengan v99.43, sehingga BLR / BLX register lewat slot data PIE modern ikut diselesaikan. Sumber: bagian bertipe RELR; bila tidak ada section header, dari PT_DYNAMIC (DT_RELR / DT_RELRSZ, DT_ANDROID_RELR / DT_ANDROID_RELRSZ). Kunci aditif L["n_relr"] + catatan. Juga: dua definisi ganda nama fungsi (emulator vs disassembler: _a32_shift, _a32_dp, _t16, _t32, _a64_bitmask) diberi akhiran _txt / _dis pada sisi disassembler, karena definisi terakhir menimpa emulator. x86 / x64 tidak berubah.
+v99.43 (roadmap v9, Tier A butir 4, TAHAP 2d-2e-2; aditif; by: KangJiho): relokasi ELF ARM / AArch64 dibaca di _elf_layout(arm=True): R_AARCH64_RELATIVE / R_ARM_RELATIVE (RELA dan REL) dan ABS64 / ABS32 ke simbol terdefinisi menjadi peta VA slot -> nilai (L["reloc"]), dipakai _arm_slot() oleh pembacaan literal (_arm_lit), LDR literal dan LDR dari slot data sehingga BLR / BLX register lewat slot / vtable data PIE (nilai berkas = 0 sebelum relokasi) ikut diselesaikan. x86 / x64 tidak berubah.
+v99.42 (roadmap v8, Tier A butir 4, TAHAP 2d-2e-1; aditif; by: KangJiho): cabang-register ARM / ARM64 di RE Lab (ELF + Mach-O): BLR / BR (AArch64, termasuk varian PAC), BLX / BX Rm (A32) dan BLX / BX Rm (Thumb) kini diselesaikan bila register berisi konstanta alamat yang diketahui (ADRP+ADD, ADR, MOVZ+MOVK, MOVW+MOVT, LDR literal, LDR dari slot data terisi, MOV register) dalam jendela kecil; targetnya masuk ke edges (penemuan fungsi, peta panggilan, thunk / stub API) lewat _arm_indirect(). Penulisan ke register membatalkan nilainya (jebakan jump table ADR + ADD + BR tidak jadi tepi); BL / BLR membersihkan register caller-saved; BR / BX hanya diikuti bila di luar +-0x400 byte atau thunk. Kunci aditif info["n_indirect"] + catatan. Jalur x86 / x64 identik pada 5 biner sistem.
+v99.41 (roadmap v7, Tier A butir 4, TAHAP 2d-2d-1; aditif; by: KangJiho): API hashing ARM / ARM64 di RE Lab (ELF + Mach-O): hash 32-bit nama API dicari di kata literal sejajar 4-byte pada bagian kode dan di imediat hasil MOVW + MOVT (A32, Thumb-2) / MOVZ + MOVK (AArch64); algoritma ror13 (block_api / fungsi-saja), djb2 (= GNU hash), djb2-xor, sdbm, FNV-1 / FNV-1a, ELF SysV, CRC32; nama dari API Windows, libc / Linux / Android, dan Apple / iOS (_arm_hash_table, _arm_hash_scan, _arm_hash_filter). Hasil lolos saringan hanya bila >= 3 nama berbeda dari satu algoritma atau >= 2 nama dalam jarak 0x200 byte; mengisi info["api_hashes"] (kunci api / offset + algo / how), peringatan RE Lab, skor, dan tag anti fungsi "API hashing". Jalur x86 / x64 tidak berubah (identik pada 5 biner sistem).
+v99.40 (roadmap v5, Tier A butir 4, TAHAP 2d-2c-2b-3b-2; aditif; by: KangJiho): disassembler AArch64 murni Python (tanpa capstone) lewat _a64_dis() / _a64_disasm_lines(), dipakai `--disasm` / disasm_text untuk ELF / Mach-O / berkas mentah arm64 saat capstone tidak terpasang (capstone tetap didahulukan; sebelumnya hanya tampilan hex). Cabang (B / BL / B.cond / CBZ / TBZ / BR / BLR / RET / RETAA / BRAA), SVC / BRK, hint (NOP / PACIASP / BTI ..), barrier, MRS / MSR; imediat (ADR / ADRP, ADD / SUB, logika bitmask, MOVZ / MOVN / MOVK, bitfield + alias lsl / lsr / asr / ubfx / sxtw / uxtb.., EXTR / ror); register (logika, ADD / SUB bergeser + extended, ADC / SBC, CCMP, CSEL + alias cset / cinc, UDIV / SDIV / MUL / SMULL / UMULH, geser variabel, RBIT / REV / CLZ); load / store (imm, unscaled, pra / pasca-indeks, register-offset, literal, pair, exclusive / acquire-release, CAS, atomik LSE, prfm) untuk register umum dan FP / SIMD skalar (b h s d q); FP skalar (FADD.., FCMP, FCVT, SCVTF / FCVTZS, FMOV, FMADD, FCSEL). Sisanya `.word` (NEON vektor, SVE, fmov imediat, fixed-point, PAC data, CRC, MTE). Target cabang diberi nama dari RE Lab, literal pool diberi nilai. Diuji test_a64_disasm.py (97 vektor dari tata letak bit ARM ARM, jumlah imediat logika 5334 / 1302, 1 juta kata acak tanpa galat, ELF AArch64 sintetis ujung ke ujung); x86 / x64 / A32 / Thumb dan triage() identik. BELUM dibandingkan dengan capstone (tidak terpasang saat pengembangan): jalankan test_a64_vs_capstone.py; format alias langka (movn, hint, sysreg) bisa berbeda.
+v99.39 (roadmap v3, Tier A butir 4, TAHAP 2d-2c-2b-3b-1; aditif; by: KangJiho): disassembler ARM 32-bit Thumb / Thumb-2 murni Python (tanpa capstone) lewat _thumb_dis() / _thumb_disasm_lines(), dipakai `--disasm` / disasm_text untuk ELF / Mach-O ARM 32-bit saat capstone tidak terpasang (capstone tetap didahulukan): mode Thumb dipilih dari arch=thumb, alamat / e_entry ganjil, atau wilayah $t (_arm_mode_at). 16-bit: seluruh himpunan umum (geser, ADD / SUB, MOV / CMP imm8, ALU, register tinggi, BX / BLX / BXNS, LDR / STR semua bentuk, ADR, SP-relatif, PUSH / POP, LDM / STM, CBZ / CBNZ, B / B<c>, SVC, BKPT, NOP / hint, CPS, REV, UXT / SXT); 32-bit: B.W / B<c>.W / BL / BLX, data processing (imediat termodifikasi, imediat biasa, register bergeser, geser register), MOVW / MOVT, ADDW / SUBW, UBFX / SBFX / BFI / BFC, LDR / STR (imm12, imm8 pra / pasca-indeks, register, literal, unprivileged), LDM / STM / PUSH.W / POP.W, LDRD / STRD, LDREX / STREX, TBB / TBH, MUL / MLA / MLS / UMULL.. / SDIV / UDIV, CLZ / REV / RBIT, UXT / SXT.W, NOP.W / DMB / DSB / ISB; sisanya `.short` / `.word` (VFP / NEON / koprosesor / SSAT / USAT / PKH / DSP / atomik lain / sistem). Blok IT diikuti (akhiran kondisi, flag narrow hanya di luar IT). Catatan literal pool (LDR / ADR) diberi nama / nilai dari RE Lab. Diuji test_thumb_disasm.py terhadap capstone 5.0.7: seluruh 57.870 halfword 16-bit dan jutaan pasangan acak 32-bit (semua instruksi yang dikenali identik) serta aliran acak dengan blok IT; perbedaan yang disengaja: di dalam blok IT, `lsls rd, rm, #0` dicetak `mov<cc>` (capstone mencetak `movs`). x86 / x64 / A32 identik; belum diuji pada biner Thumb nyata.
+v99.38 (roadmap v3, Tier A butir 4, TAHAP 2d-2c-2b-3a; aditif; by: KangJiho): disassembler ARM 32-bit A32 murni Python (tanpa capstone) lewat _a32_dis() / _a32_disasm_lines(), dipakai `--disasm` / disasm_text untuk ELF / Mach-O ARM 32-bit saat capstone tidak terpasang (capstone tetap didahulukan): data processing, MOVW / MOVT, MUL / MLA / UMULL.., LDR / STR (word / byte / half / signed / dual), LDM / STM / PUSH / POP, B / BL / BLX / BX, SVC, CLZ, BKPT, UBFX / SBFX / BFI / BFC, UXT / SXT, REV; sisanya `.word`. Target cabang dan literal pool diberi nama dari RE Lab. Diuji test_a32_disasm.py (20.308 cek, 300 berkas rusak) dan test_a32_vs_capstone.py (sekitar 2 juta kata acak, sama dengan capstone 5.0.7); x86 / x64 identik pada 3 biner sistem. Belum: AArch64 tanpa capstone, VFP / NEON, mode campuran A32 / Thumb otomatis.
+v99.37 (roadmap v2, Tier A butir 4, TAHAP 2d-2c-2b-2b; aditif; by: KangJiho): emulasi mikro ARM 32-bit Thumb / Thumb-2 lewat _thumb_emu_func() / _t_step() (state blok IT di _EmuStT, memakai pembantu A32 dan _emu_collect() yang sama; _arm32_emu_func kini memilih A32 / Thumb dari wilayah $a / $t). 16-bit: geser, ADD / SUB, MOV / CMP imm8, ALU, register tinggi, BX / BLX, LDR / STR (reg, imm5, SP, literal, half, signed), PUSH / POP, LDM / STM, UXT / SXT, REV, CBZ / CBNZ, IT, B, B<c>, SVC; 32-bit: MOVW / MOVT, ADDW / SUBW, UBFX, data processing (imm berekspansi, register bergeser), LDR / STR single, LDM / STM / PUSH.W / POP.W, MUL / MLA, geser register, UXT / SXT.W, B.W, B<c>.W, BL / BLX. Flag narrow hanya di luar IT. _a32_block direfaktor ke pembantu bersama _blk() (perilaku A32 identik). Diuji test_thumb_emu.py (71 cek: unit per instruksi, IT, stack string XOR Thumb-2 dan mov+eor+strb lewat pipeline, fuzz 4.000 fungsi + 1.500 berkas rusak tanpa galat) dan test_arm32_emu.py (48 cek, tetap lulus); x86 / x64 identik pada 40 biner sistem; belum diuji pada biner Thumb nyata.
+v99.36 (roadmap v2, Tier A butir 4, TAHAP 2d-2c-2b-2a; aditif; by: KangJiho): emulasi mikro ARM 32-bit mode A32 lewat _a32_emu_func() / _a32_step() (dibungkus _arm32_emu_func(), dipanggil _emu_func): data processing (imm berotasi, register bergeser imm / register), MOVW / MOVT, MUL / MLA, LDR / STR / LDRB / STRB / LDRH / STRH / LDRSB / LDRSH (pre / post-index, literal pc), LDM / STM (push / pop), B / B<c> / BL / BLX / BX, SVC, eksekusi bersyarat (cond tak tentu dijalankan di salinan lalu digabung). info["emu"] dan emu_text() / --emu kini juga untuk ELF / Mach-O ARM 32-bit A32; Thumb / Thumb-2 belum (_arm32_emu_func mengembalikan None, fungsi Thumb dilewati). Diuji test_arm32_emu.py (48 cek, ELF A32 sintetis: stack string lewat loop XOR dan mov+eor+strb, flag, bersyarat, memori; fuzz 4.000 fungsi acak + 1.500 berkas rusak tanpa galat); x86 / x64 identik pada 40 biner sistem; belum diuji pada biner ARM 32-bit nyata.
+v99.35 (perbaikan kecil CLI; aditif; by: KangJiho): `--extract` tanpa OUTDIR / container tidak lagi IndexError melainkan mencetak pemakaian (kode keluar 2); `--list` tanpa berkas mencetak pemakaian (sebelumnya path kosong dibaca sebagai folder kerja dan memberi pesan "bukan berkas biasa"); kegagalan `--extract` kini mencetak baris "pesan: ..." berisi alasannya. Perilaku untuk argumen lengkap tidak berubah.
+v99.34 (roadmap v2, Tier A arsip game modern: Zstd di modul container; aditif; by: KangJiho): `--list` / `--extract` (dan aksi API `list` / `extract`) kini membuka `.zst` tunggal dan `.tar.zst` lewat dekoder Zstd murni Python (v99.31): _zstd_handler() (intip dulu dengan head=1024; TAR dikenali dari isi, bukan ekstensi), _ZstdStream (dekompres lazy, dibatasi min(MAX_ENTRY_BYTES, max(RATIO_FLOOR, ukuran x MAX_RATIO)); melebihi batas -> dilewati sebagai "zip bomb?", bukan galat), _SingleHandler comp="zstd", _sniff "ZSTD", _ARCHIVE_TYPES, _ex_formats. Berkas rusak / terpotong / frame ber-dictionary -> ContainerError "corrupt" dengan pesan jelas. Diuji test_container_zstd.py (26 cek: .zst dengan / tanpa content size, .tar.zst, pola, path traversal tetap dinetralkan, 300 berkas rusak tanpa pengecualian, zip bomb 300 MB, CLI, gzip / tar / xz / bz2 / zip tidak berubah). Dekompresi di memori (bukan streaming): .tar.zst besar memakai RAM sebesar hasil dekompresi (maks 512 MB); kecepatan sekitar 4-6 MB/dtk. Belum diuji pada .tar.zst nyata dari alat lain selain libzstd; jalur lain tidak berubah.
+v99.33 (roadmap v2, hardening pembaca Unreal pak; aditif; by: KangJiho): _upak kini pembungkus _upak_raw; indeks / footer / entri PAK rusak atau terpotong selalu menjadi ValueError (sebelumnya struct.error / IndexError lolos), baik saat membuka maupun membaca entri. Fuzz 6.000 pak sintetis rusak (zlib + Zstd, 80% mengenai indeks / footer): sebelum 1.557 galat non-ValueError, sesudah 0. Diuji test_pak_zstd.py (13 cek, pak v8 sintetis) dan test_pak_v10.py (81 cek: pak v10 / v11 sintetis, zlib + Zstd, bs 65536 / 60000, dengan / tanpa indeks direktori penuh, entri terenkode + tak-terenkode; 10.000 pak rusak hanya ValueError); kode parser tidak berubah dari uji v10 / v11. Belum diuji pada pak Unreal asli. Jalur lain tidak berubah.
+v99.32 (roadmap v2, Tier A arsip game modern: Zstd di pembaca Unreal pak; aditif; by: KangJiho): pembaca Unreal .pak (v3-v11, `_upak`) kini membuka entri berkompresi Zstd: tiap blok = satu frame Zstd utuh, didekode dengan _zstd_decompress() (murni stdlib, keluaran dibatasi min(MAX_OUT_FILE, 2 x ukuran blok + 64 KB), waktu ZSTD_TIME). Pesan galat Oodle kini jelas (butuh pustaka proprietary). Berlaku untuk --assets / --assets-extract. Diuji test_pak_zstd.py (pak v8 sintetis: zlib vs Zstd multi-blok, berkas kosong, data acak, Oodle ditolak jelas, 300 pak rusak di area data hanya ValueError); belum diuji pada pak Unreal asli berkompresi Zstd. Jalur lain tidak berubah.
+v99.31 (roadmap v2, Tier A arsip game modern: dekoder Zstd murni Python; aditif; by: KangJiho): dekoder Zstandard (RFC 8878) murni stdlib lewat _zstd_decompress(): frame + skippable, blok raw / RLE / terkompresi, literal raw / RLE / Huffman (1 dan 4 stream, bobot langsung dan FSE, treeless),
+      sequences (tabel bawaan / RLE / FSE / ulang, riwayat offset), checksum xxh64 (_xxh64, murni Python). Keluaran dibatasi MAX_OUT_FILE, waktu ZSTD_TIME (30 dtk), mode intip head=N. Tanpa dictionary (ditolak dengan pesan jelas). Kecepatan sekitar 4-6 MB/dtk.
+      Baru: unzstd() / unzstd_text(), CLI `--unzstd FILE [OUT] [--force]`, aksi API {"action": "unzstd", "path": ..., "outdir": ...}, kontainer Asset Explorer ZSTD (.zst satu berkas dan .tar.zst; `--assets` / `--assets-extract`, belum untuk `--list` / `--extract`), capabilities["zstd_pure"].
+      Dasar untuk Zstd di pembaca Unreal pak (tahap berikutnya); pembaca pak BELUM memakainya. Diuji terhadap libzstd 1.5.5 (test_zstd.py: round-trip level -7..22, checksum, window kecil, long-distance, semua jenis literal / mode tabel, 3.000 frame rusak hanya ValueError). Jalur lain tidak berubah.
+v99.30 (roadmap v2, Tier A butir 4, TAHAP 2d-2c-2b-1; aditif; by: KangJiho): CFG ARM 32-bit (A32 + Thumb / Thumb-2) lewat _a32_cfg_func() dan _thumb_cfg_func() (dibungkus _arm32_cfg_func()), memakai pembangun yang sama
+      dengan x86 / AArch64 (_cfg_build()). Blok dasar, kompleksitas siklomatik, loop, kandidat loop dekripsi (EOR / ADD / SUB / ROR / LSL / LSR + load / store), flattening, switch (BX Rm, LDR / MOV / ADD pc, TBB / TBH).
+      A32: B / B<c> / BL / BLX / BX / BLX Rm, POP / LDM berisi pc, LDR pc, MOV pc, SUBS pc, lr. Thumb: B / B<c> / CBZ / CBNZ / B.W / B<c>.W, BL / BLX, BX / BLX Rm, POP {.., pc}, TBB / TBH, blok IT (cabang di dalam IT dianggap
+      bersyarat). Mode per fungsi dari wilayah $a / $t / $d (L["arm_regions"], diisi _re_lab_arm64). info["cfg"] dan cfg_text() kini juga untuk ELF / Mach-O ARM 32-bit. Emulasi mikro, disasm, stack string, API hashing ARM 32-bit
+      tetap belum. Jalur x86 / x64 dan AArch64 tidak berubah. Belum diuji pada biner ARM 32-bit nyata.
+v99.29 (roadmap v2, Tier A butir 4, TAHAP 2d-2c-2a; aditif; by: KangJiho): Thumb / Thumb-2 di RE Lab ARM 32-bit lewat _thumb_scan(): BL / BLX / B.W / B, LDR literal (16 + 32-bit), ADR, SVC + MOVS r7, PUSH {.., lr} (16 + 32-bit).
+      Mode per wilayah dari simbol pemetaan ELF ($a / $t / $d, kunci layout "modes"), atau simbol fungsi (bit 0) + entry (e_entry ganjil = Thumb) bila tanpa itu; wilayah $d (literal pool) dilewati (_arm_regions()).
+      CFG / emulasi / disasm ARM 32-bit tetap belum. Jalur A32, AArch64, x86 / x64 tidak berubah.
+v99.28 (roadmap v2, Tier A butir 4, TAHAP 2d-2c-1; aditif; by: KangJiho): RE Lab ARM 32-bit A32 (ELF + Mach-O) lewat _a32_scan_word(): BL / B (peta panggilan), stub PLT ELF (add ip,pc ; add ip,ip ; ldr pc,[ip]!), LDR literal ->
+      xref string / slot GOT, SVC + MOV r7 -> nama syscall EABI, penemuan fungsi (entry, ekspor, target BL, PUSH {..., lr}). Thumb / Thumb-2 BELUM; CFG, emulasi, disasm ARM 32-bit belum (cfg_func / emu_func kini mengembalikan None untuk ARM 32-bit
+      alih-alih salah memakai decoder x86). Jalur AArch64 dan x86 / x64 tidak berubah.
+v99.27b (TAHAP 2d-2b; aditif): slot impor Mach-O arm64 dari LC_DYLD_CHAINED_FIXUPS (iOS 15+ / macOS 12+) lewat _macho_chained_binds(): rantai pointer per halaman (format 1 / 9 / 12 arm64e, 2 / 6 pointer 64-bit),
+      nama dari tabel impor (format 1 / 2 / 3) -> iat, sehingga panggilan API lewat GOT / stub bernama. Nama dari indirect symbol tetap didahulukan. Format lain (32-bit, kernel, MULTI) dilewati. Belum diuji pada biner nyata.
+v99.26 (roadmap v2, Tier A butir 4 'RE Lab Mach-O / ARM', TAHAP 2d-1; aditif; by: KangJiho): RE Lab AArch64 disambungkan ke triage() / rea_api lewat _v98_enrich: rep["relab"] terisi untuk ELF / Mach-O AArch64 (laporan teks, kartu, markdown, JSON, peringatan dari CFG / emulasi).
+      SVC langsung diberi kunci anti "SVC langsung (tanpa libc)" (bukan "syscall langsung") supaya TIDAK menambah skor: SVC lazim di libc / Go / musl ARM64. Jalur PE / ELF x86 / x64 identik (triage penuh pada 5 biner sistem); skor sampel ARM64 sintetis tidak berubah.
+v99.25 (roadmap v2, Tier A butir 4 'RE Lab Mach-O / ARM', TAHAP 2c; aditif; by: KangJiho): emulasi mikro AArch64 (_a64_emu_func() / _a64_step()): MOVZ / MOVK / ALU / geser / EOR / bitmask imm / load-store / STP / cabang, memakai _EmuSt dan _emu_collect() yang sama dengan x86.
+      info["emu"], emu_text() (CLI --emu, API 'emu') kini juga untuk ELF / Mach-O AArch64. SIMD / FP / atomik / PAC tidak didukung (jalur berhenti); BL / BLR dilangkahi. Jalur x86 / x64 identik (25 perbandingan pada 5 biner sistem); fuzz 4.000 fungsi acak tanpa galat.
+v99.24 (roadmap v2, Tier A butir 4 'RE Lab Mach-O / ARM', TAHAP 2b; aditif; by: KangJiho): CFG AArch64 (blok dasar, kompleksitas siklomatik, loop, kandidat loop dekripsi EOR / ADD / SUB / ROR / LSL / LSR + load / store, flattening, switch lewat BR).
+      _a64_cfg_func() memakai pembangun yang sama dengan x86 (_cfg_build(), hasil pecahan _cfg_func); info["cfg"] dan cfg_text() kini juga untuk ELF / Mach-O AArch64. emu / disasm tetap hanya x86 / x64. Jalur x86 / x64 identik (15 perbandingan pada 5 biner sistem).
+v99.23 (roadmap v2, Tier A butir 4 'RE Lab Mach-O / ARM', TAHAP 2a; aditif; by: KangJiho): RE Lab AArch64 untuk ELF dan Mach-O lewat decoder kecil (BL / B, ADRP + ADD / ADR, LDR GOT, stub PLT / __stubs, SVC + MOVZ x8 / x16 -> nama syscall, prolog STP).
+      _re_lab_arm64() / _relab_arm() / _relab_multi(); dipakai re_lab_path, xref_text, dan ekspor anotasi. cfg / emu / disasm tetap hanya x86 / x64; ARM 32-bit belum. Jalur x86 / x64 identik (dibandingkan pada 5 biner sistem).
+      Diuji dengan test_arm64.py (ELF + Mach-O sintetis, 3.000 berkas rusak acak); belum diuji pada biner ARM nyata.
 v99.22 (roadmap v2, Tier A butir 4 'RE Lab Mach-O / ARM', TAHAP 1 dari beberapa; aditif; by: KangJiho): peta alamat ELF ARM / AArch64 dan Mach-O ARM / ARM64 (tipis + fat; arm64 diutamakan)
       lewat _arm_layout() / _macho_layout() dan _elf_layout(d, arm=True): segmen, bagian kode, slot impor (GOT / la_symbol_ptr), stub Mach-O, simbol fungsi, penanda Thumb, entry, cryptid.
-      Murni stdlib. BELUM disambungkan ke _relab_any / triage() / rea_api (decoder ARM64 menyusul di tahap 2), jadi keluaran yang ada tidak berubah. Jalur x86 / x64 tidak berubah (diuji identik pada ELF nyata).
+      Murni stdlib. Belum disambungkan ke _relab_any (tahap 2a di v99.23 memakai _relab_multi), jadi keluaran yang ada tidak berubah. Jalur x86 / x64 tidak berubah (diuji identik pada ELF nyata).
       Diuji dengan ELF dan Mach-O sintetis buatan sendiri serta 12.000 berkas rusak acak; belum diuji pada biner ARM nyata.
 v99.21 (roadmap v2, Tier A: SerializedFile Unity; aditif; by: KangJiho): parser Unity dari gamelab (SerializedFile v13-v22, TypeTree, Texture2D / Mesh / AnimationClip / TextAsset) kini terhubung ke inti.
       Asset Explorer: `--assets` pada UnityFS menampilkan objek per kelas; `--assets-extract` (tanpa pola, convert=True) menulis objek ke unity_objects/<Kelas>/ (PNG / OBJ / anim.json / bytes) di samping node mentah.
@@ -237,6 +287,7 @@ SEC_ENT_SAMPLE = 1 * 1024 * 1024     # sampel per bagian PE
 ENT_BUDGET = 32 * 1024 * 1024        # total byte yang boleh dihitung entropinya lewat semua bagian PE / ELF
 MD5_BUDGET = 256 * 1024 * 1024       # total byte yang boleh di-MD5 lewat semua bagian PE
 MAX_ZIP_ENTRIES = 100_000            # lebih dari ini: arsip tidak diurai (cegah kehabisan memori)
+MAX_ZIP_CD = 32 * 1024 * 1024        # v104: ukuran DIREKTORI PUSAT maksimal; jumlah entri saja tidak cukup (nama + extra + komentar bisa ~64 KB per entri = puluhan GB)
 
 # ---------------------------------------------------------------------------
 # Dasar
@@ -257,6 +308,47 @@ def _md5(data=b""):
         return hashlib.md5(data, usedforsecurity=False)
     except TypeError:   # Python < 3.9
         return hashlib.md5(data)
+
+
+def _write_atomic_nofollow(path, data: bytes, mode: int = 0o644) -> None:
+    """v104: tulis berkas lewat berkas sementara unik (O_EXCL|O_NOFOLLOW) lalu os.replace atomik. Tidak pernah menulis lewat symlink di
+    tujuan (replace mengganti link itu sendiri); tujuan yang berupa direktori ditolak."""
+    path = Path(os.fspath(path))
+    if path.is_dir() and not path.is_symlink():
+        raise IsADirectoryError(str(path))
+    tmp = path.with_name(".%s.%s.tmp" % (path.name, os.urandom(6).hex()))
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+    fd = os.open(str(tmp), flags, mode)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        os.replace(str(tmp), str(path))
+    except BaseException:
+        try:
+            os.unlink(str(tmp))
+        except OSError:
+            pass
+        raise
+
+
+def _secure_key_file(kp) -> bool:
+    """v104: berkas kunci hanya boleh dibaca pemiliknya. POSIX: chmod 0600 sudah cukup. Windows: mode 0o600 TIDAK mengunci ACL, jadi
+    warisan ACL dilepas dan hanya pengguna sekarang yang diberi akses (icacls); gagal = False (kunci tidak disimpan)."""
+    if os.name != "nt":
+        return True
+    try:
+        import subprocess
+        user = os.environ.get("USERNAME", "")
+        if not user:
+            return False
+        dom = os.environ.get("USERDOMAIN", "")
+        if dom:   # DOMAIN\\USER: tanpa domain, nama pendek bisa gagal / salah terurai pada akun domain atau akun Microsoft
+            user = "%s\\%s" % (dom, user)
+        r_ = subprocess.run(["icacls", str(kp), "/inheritance:r", "/grant:r", "%s:F" % user],
+                            capture_output=True, timeout=10)
+        return r_.returncode == 0
+    except Exception:
+        return False
 
 
 def _open_regular(path, follow: bool = True):
@@ -427,32 +519,39 @@ def _res_format(d: bytes, fo: int, size: int) -> tuple[str, bool]:
 
 
 def _cert_spans(d: bytes, off: int, size: int) -> tuple[list[tuple[int, int]], int]:
-    """Rentang struktur PKCS#7 (DER) di tabel sertifikat Authenticode, plus jumlah byte TAK BERSTRUKTUR setelah struktur itu (di luar
-    padding nol). Hanya struktur DER yang dikecualikan dari ekstraksi string / IOC: header dan byte sisa tetap dipindai, karena data
-    bisa diselipkan di tabel sertifikat tanpa merusak tanda tangan. Bila struktur tidak terbaca, hasil kosong (tidak ada yang dikecualikan)."""
+    """Rentang struktur PKCS#7 (DER) di tabel sertifikat Authenticode, plus jumlah byte TAK BERSTRUKTUR di tabel itu (di luar padding nol).
+    Hanya struktur DER dari entri WIN_CERTIFICATE PKCS#7 (wCertificateType == 2) PERTAMA yang dikecualikan dari ekstraksi string / IOC: itu
+    satu-satunya entri yang diperiksa _authenticode_check (digest-nya dibandingkan dengan hash berkas). Entri kedua dan seterusnya, entri
+    bertipe lain, header entri, dan byte sisa TIDAK dikecualikan dan dihitung sebagai byte tak berstruktur (cert_extra), karena data bisa
+    diselipkan di sana tanpa merusak tanda tangan utama. Bila struktur tidak terbaca, byte sisanya dihitung sebagai tak berstruktur."""
     spans: list[tuple[int, int]] = []
     extra, pos, end = 0, off, min(off + size, len(d))
-    while pos + 16 <= end:
-        dw = struct.unpack_from("<I", d, pos)[0]
-        if dw < 16 or pos + dw > end:
-            return spans, extra
-        s0 = pos + 8
-        if d[s0] != 0x30:   # PKCS#7 SignedData selalu diawali SEQUENCE
-            return spans, extra
-        b = d[s0 + 1]
-        if b & 0x80:
-            n = b & 0x7F
-            if n == 0 or n > 4 or s0 + 2 + n > pos + dw:
-                return spans, extra
-            hdr, ln = 2 + n, int.from_bytes(d[s0 + 2:s0 + 2 + n], "big")
-        else:
-            hdr, ln = 2, b
-        if s0 + hdr + ln > pos + dw:
-            return spans, extra
-        spans.append((s0, s0 + hdr + ln))
-        extra += len(d[s0 + hdr + ln:pos + dw].rstrip(b"\x00"))
+    got = False   # sudah ada entri PKCS#7 pertama yang dikecualikan
+    while pos + 8 <= end:
+        dw, _rev, typ = struct.unpack_from("<IHH", d, pos)
+        if dw < 8 or pos + dw > end:
+            break   # entri rusak: sisa tabel dihitung di bawah
+        if not got and typ == 2 and dw >= 16 and d[pos + 8] == 0x30:   # PKCS#7 SignedData selalu diawali SEQUENCE
+            s0, b = pos + 8, d[pos + 9]
+            ok = True
+            if b & 0x80:
+                n = b & 0x7F
+                if n == 0 or n > 4 or s0 + 2 + n > pos + dw:
+                    ok = False
+                else:
+                    hdr, ln = 2 + n, int.from_bytes(d[s0 + 2:s0 + 2 + n], "big")
+            else:
+                hdr, ln = 2, b
+            if ok and s0 + hdr + ln <= pos + dw:
+                spans.append((s0, s0 + hdr + ln))
+                extra += len(d[s0 + hdr + ln:pos + dw].rstrip(b"\x00"))
+                got = True
+                pos += (dw + 7) & ~7
+                continue
+        # entri bukan PKCS#7 pertama (atau DER-nya tak terbaca): seluruh isinya tak berstruktur
+        extra += len(d[pos + 8:pos + dw].rstrip(b"\x00"))
         pos += (dw + 7) & ~7
-    if spans and pos < end:
+    if pos < end:
         extra += len(d[pos:end].rstrip(b"\x00"))
     return spans, extra
 
@@ -779,7 +878,7 @@ _PRIO_EXT = (".dex", ".class", "vbaproject.bin", ".js", ".ps1", ".vbs", ".bat", 
 _REL_TARGET = re.compile(rb'Target="((?:https?|file|ftp)://[^"]{4,300})"[^>]*TargetMode="External"|TargetMode="External"[^>]*Target="((?:https?|file|ftp)://[^"]{4,300})"', re.I)
 
 
-def _zip_entry_count(f, size: int) -> int:
+def _zip_entry_count(f, size: int, info: dict | None = None) -> int:
     """Perkiraan jumlah entri dari EOCD / ZIP64 TANPA memuat direktori pusat (ZIP berjuta entri bisa menghabiskan RAM). -1 bila tak terbaca."""
     try:
         tail = min(size, 65535 + 22 + 20)
@@ -790,6 +889,8 @@ def _zip_entry_count(f, size: int) -> int:
             return -1
         total = struct.unpack_from("<H", buf, i + 10)[0]
         cd_size = struct.unpack_from("<I", buf, i + 12)[0]
+        cd_off = struct.unpack_from("<I", buf, i + 16)[0]
+        eocd_off = size - tail + i   # posisi EOCD di berkas
         if (total == 0xFFFF or cd_size == 0xFFFFFFFF) and i >= 20 and buf[i - 20:i - 16] == b"PK\x06\x07":
             z64 = struct.unpack_from("<Q", buf, i - 12)[0]
             if z64 + 56 <= size:
@@ -798,15 +899,51 @@ def _zip_entry_count(f, size: int) -> int:
                 if len(rec) == 56 and rec[:4] == b"PK\x06\x06":
                     total = struct.unpack_from("<Q", rec, 32)[0]
                     cd_size = struct.unpack_from("<Q", rec, 40)[0]
-        return max(total, 0 if cd_size == 0xFFFFFFFF else cd_size // 46)   # 46 = ukuran minimum satu entri direktori pusat
+                    cd_off = struct.unpack_from("<Q", rec, 48)[0]
+                    eocd_off = z64
+        est = max(total, 0 if cd_size == 0xFFFFFFFF else cd_size // 46)   # 46 = ukuran minimum satu entri direktori pusat
+        if cd_size == 0xFFFFFFFF:
+            # v103: ukuran direktori pusat tak terpecahkan (EOCD palsu / rekaman ZIP64 rusak): zipfile akan membaca sampai akhir berkas
+            # dan mengurai semua entri di situ, walau "total" bilang 1. Batasi dengan jarak direktori pusat -> EOCD.
+            span = eocd_off - cd_off if 0 <= cd_off <= eocd_off else size
+            est = max(est, span // 46)
+        if info is not None:   # v104: ukuran direktori pusat yang akan dibaca zipfile (bila tak terpecahkan: rentang sampai EOCD)
+            info["cd_bytes"] = (cd_size if cd_size != 0xFFFFFFFF else (eocd_off - cd_off if 0 <= cd_off <= eocd_off else size))
+        return est
     except (OSError, struct.error):
         return -1
+
+
+def _zip_cd_bytes(src) -> int:
+    """v104: ukuran direktori pusat ZIP (byte) TANPA memuatnya; 0 bila tak terbaca. src = path atau file object (posisi dipulihkan)."""
+    info: dict = {}
+    try:
+        if hasattr(src, "read"):
+            pos = src.tell()
+            try:
+                src.seek(0, 2)
+                _zip_entry_count(src, src.tell(), info)
+            finally:
+                src.seek(pos)
+        else:
+            with open(src, "rb") as f:
+                f.seek(0, 2)
+                _zip_entry_count(f, f.tell(), info)
+    except (OSError, ValueError, TypeError):
+        return 0
+    return int(info.get("cd_bytes", 0))
 
 
 def _zread(z, member, limit: int) -> bytes:
     """Baca paling banyak `limit` byte HASIL dekompresi. z.read() tanpa batas rentan zip bomb (1 MB terkompres bisa jadi GB)."""
     with z.open(member) as m:
         return m.read(max(0, limit))
+
+
+def _zlast(z, low: list[str], name: str):
+    """ZipInfo entri TERAKHIR bernama `name` (low = nama berhuruf kecil, urutan sama dengan z.infolist()). zipfile Python dan parser Android /
+    Java memakai entri terakhir bila nama ganda; index() mengambil yang pertama, sehingga penyerang bisa menaruh manifest jinak di depan."""
+    return z.infolist()[len(low) - 1 - low[::-1].index(name)]
 
 
 def _parse_zip(src, size: int | None = None) -> dict | None:
@@ -821,10 +958,15 @@ def _parse_zip(src, size: int | None = None) -> dict | None:
     if not zipfile.is_zipfile(src):
         return None
     out: dict = {"names": [], "n": 0, "unc": 0, "kind": "ZIP", "warn": [], "perms": [], "dex": 0, "nested": [], "ext_rels": [], "_blob": b""}
-    cnt = _zip_entry_count(src, size)
+    _zi: dict = {}
+    cnt = _zip_entry_count(src, size, _zi)
     if cnt > MAX_ZIP_ENTRIES:
         out["n"] = cnt
         out["warn"].append("jumlah entri arsip tidak wajar (~%d): tidak diurai (cegah kehabisan memori)" % cnt)
+        return out
+    if _zi.get("cd_bytes", 0) > MAX_ZIP_CD:   # v104: batasi byte direktori pusat, bukan hanya jumlah entri
+        out["n"] = max(cnt, 0)
+        out["warn"].append("direktori pusat ZIP terlalu besar (%d byte > %d): tidak diurai (cegah kehabisan memori)" % (_zi["cd_bytes"], MAX_ZIP_CD))
         return out
     with zipfile.ZipFile(src) as z:
         infos = z.infolist()
@@ -841,11 +983,14 @@ def _parse_zip(src, size: int | None = None) -> dict | None:
         if out["ratio"] > 200:
             out["warn"].append("rasio kompresi %.0fx (kemungkinan zip bomb)" % out["ratio"])
         low = [n.lower() for n in names]
+        for key_ in ("androidmanifest.xml", "meta-inf/manifest.mf"):
+            if low.count(key_) > 1:
+                out["warn"].append("entri '%s' muncul %d kali di arsip (pola evasion: parser berbeda memilih entri berbeda; yang dianalisis di sini adalah yang TERAKHIR)" % (key_, low.count(key_)))
         if "androidmanifest.xml" in low:
             out["kind"] = "APK (Android)"
             out["dex"] = sum(1 for n in low if re.fullmatch(r"classes\d*\.dex", n))
             try:
-                mf = _zread(z, names[low.index("androidmanifest.xml")], 400000)
+                mf = _zread(z, _zlast(z, low, "androidmanifest.xml"), 400000)
                 perms = {m.decode() for m in _PERM_RE.findall(mf)}
                 perms |= {m.decode("utf-16le", "ignore") for m in _PERM_RE16.findall(mf)}
                 out["perms"] = sorted(perms)[:60]
@@ -855,7 +1000,7 @@ def _parse_zip(src, size: int | None = None) -> dict | None:
         elif "meta-inf/manifest.mf" in low:
             out["kind"] = "JAR/WAR (Java)"
             try:
-                mf = _zread(z, names[low.index("meta-inf/manifest.mf")], 4096).decode("utf-8", "replace")
+                mf = _zread(z, _zlast(z, low, "meta-inf/manifest.mf"), 4096).decode("utf-8", "replace")
                 m = re.search(r"Main-Class:\s*(\S+)", mf)
                 out["main"] = m.group(1) if m else ""
             except Exception:
@@ -1883,30 +2028,119 @@ _AC_ALGS = (   # (OID DER lengkap dengan tag + panjang, nama hashlib, ukuran dig
 )
 
 
-def _ac_digests(blob: bytes) -> list[tuple[str, bytes]]:
-    """Semua (algoritma, digest) dari SpcIndirectDataContent di blob PKCS#7 (tanda tangan ganda / bersarang menghasilkan lebih dari satu)."""
-    out: list[tuple[str, bytes]] = []
-    pos = blob.find(_OID_SPC_INDIRECT)
-    n = 0
-    while pos != -1 and n < 8:
-        win = blob[pos:pos + 768]
-        best = None
-        for oid, name, dsz in _AC_ALGS:
-            i = win.find(oid)
-            while i != -1:
-                j = i + len(oid)
-                if win[j:j + 2] == b"\x05\x00":
-                    j += 2
-                if win[j:j + 2] == bytes([4, dsz]) and j + 2 + dsz <= len(win):
-                    if best is None or i < best[0]:
-                        best = (i, name, win[j + 2:j + 2 + dsz])
-                    break
-                i = win.find(oid, i + 1)
-        if best:
-            out.append((best[1], best[2]))
-        pos = blob.find(_OID_SPC_INDIRECT, pos + 1)
-        n += 1
+_OID_NESTED_SIG = bytes.fromhex("060a2b060104018237020401")   # 1.3.6.1.4.1.311.2.4.1 (szOID_NESTED_SIGNATURE)
+
+
+def _ac_tlv(d, pos: int, end: int):
+    """v104: satu TLV DER dengan batas ketat: (tag, awal_isi, akhir_isi) atau None. Panjang tak-tentu / tag tinggi / keluar batas = None."""
+    if pos + 2 > end:
+        return None
+    if d[pos] & 0x1F == 0x1F:
+        return None
+    b0 = d[pos + 1]
+    if b0 < 0x80:
+        cs, ln = pos + 2, b0
+    else:
+        n = b0 & 0x7F
+        if n == 0 or n > 4 or pos + 2 + n > end:
+            return None
+        cs, ln = pos + 2 + n, int.from_bytes(d[pos + 2:pos + 2 + n], "big")
+    ce = cs + ln
+    if ce > end:
+        return None
+    return d[pos], cs, ce
+
+
+def _ac_kids(d, cs: int, ce: int, limit: int = 64):
+    """Anak-anak TLV di rentang [cs, ce): [(tag, isi_awal, isi_akhir, tlv_awal)], atau None bila tidak persis habis (sisa byte = tidak sah)."""
+    out, p = [], cs
+    while p < ce:
+        if len(out) >= limit:
+            return None
+        t = _ac_tlv(d, p, ce)
+        if t is None:
+            return None
+        out.append((t[0], t[1], t[2], p))
+        p = t[2]
     return out
+
+
+def _ac_primary(blob: bytes):
+    """v104: digest dari SpcIndirectDataContent di posisi STRUKTURAL yang benar (ContentInfo > [0] > SignedData > encapContentInfo >
+    [0] > SpcIndirectDataContent > DigestInfo) lewat parser DER ketat, bukan pencarian byte mentah OID. Mengembalikan (algoritma, digest,
+    daftar_signerInfo) atau None bila struktur tidak sah / tidak lengkap."""
+    top = _ac_tlv(blob, 0, len(blob))
+    if not top or top[0] != 0x30:
+        return None
+    ci = _ac_kids(blob, top[1], top[2], 4)
+    if not ci or len(ci) != 2 or blob[ci[0][3]:ci[0][2]] != bytes.fromhex("06092a864886f70d010702") or ci[1][0] != 0xA0:
+        return None   # bukan ContentInfo signedData (1.2.840.113549.1.7.2)
+    sd_t = _ac_tlv(blob, ci[1][1], ci[1][2])
+    if not sd_t or sd_t[0] != 0x30:
+        return None
+    sd = _ac_kids(blob, sd_t[1], sd_t[2], 16)
+    if not sd or len(sd) < 4 or sd[2][0] != 0x30:
+        return None
+    enc = _ac_kids(blob, sd[2][1], sd[2][2], 4)
+    if not enc or len(enc) != 2 or blob[enc[0][3]:enc[0][2]] != _OID_SPC_INDIRECT or enc[1][0] != 0xA0:
+        return None
+    spc_t = _ac_tlv(blob, enc[1][1], enc[1][2])
+    if not spc_t or spc_t[0] != 0x30:
+        return None
+    spc = _ac_kids(blob, spc_t[1], spc_t[2], 4)
+    if not spc or len(spc) != 2 or spc[1][0] != 0x30:
+        return None
+    di = _ac_kids(blob, spc[1][1], spc[1][2], 4)
+    if not di or len(di) != 2 or di[0][0] != 0x30 or di[1][0] != 0x04:
+        return None
+    ai = _ac_kids(blob, di[0][1], di[0][2], 4)
+    if not ai or ai[0][0] != 0x06 or (len(ai) == 2 and (ai[1][0] != 0x05 or ai[1][1] != ai[1][2])) or len(ai) > 2:
+        return None
+    oid_tlv = blob[ai[0][3]:ai[0][2]]
+    dig = blob[di[1][1]:di[1][2]]
+    for oid, name, dsz in _AC_ALGS:
+        if oid_tlv == oid:
+            return (name, dig, sd[-1]) if len(dig) == dsz and sd[-1][0] == 0x31 else None
+    return None
+
+
+def _ac_nested(blob: bytes, depth: int = 0):
+    """Tanda tangan bersarang (unauthenticatedAttributes SignerInfo, OID 1.3.6.1.4.1.311.2.4.1). TIDAK ditandatangani oleh tanda tangan
+    utama, jadi penyerang bebas menaruh digest apa pun di sini: hasilnya hanya informasi, tidak pernah menentukan "match"."""
+    out: list[tuple[str, bytes]] = []
+    if depth >= 2:
+        return out
+    p = _ac_primary(blob)
+    if not p:
+        return out
+    top = _ac_tlv(blob, 0, len(blob))
+    sd_t = _ac_tlv(blob, _ac_kids(blob, top[1], top[2], 4)[1][1], _ac_kids(blob, top[1], top[2], 4)[1][2])
+    sd = _ac_kids(blob, sd_t[1], sd_t[2], 16)
+    sis = _ac_kids(blob, sd[-1][1], sd[-1][2], 8) or []
+    for si in sis:
+        kids = _ac_kids(blob, si[1], si[2], 16) or []
+        for k in kids:
+            if k[0] != 0xA1:
+                continue
+            for at in (_ac_kids(blob, k[1], k[2], 16) or []):
+                parts = _ac_kids(blob, at[1], at[2], 4) or []
+                if len(parts) == 2 and blob[parts[0][3]:parts[0][2]] == _OID_NESTED_SIG and parts[1][0] == 0x31:
+                    for ci in (_ac_kids(blob, parts[1][1], parts[1][2], 4) or []):
+                        sub = blob[ci[3]:ci[2]]
+                        pr = _ac_primary(sub)
+                        if pr and len(out) < 8:
+                            out.append((pr[0], pr[1]))
+                            out += _ac_nested(sub, depth + 1)[: max(0, 8 - len(out))]
+    return out
+
+
+def _ac_digests(blob: bytes) -> list[tuple[str, bytes]]:
+    """v104: [(algoritma, digest)]: elemen PERTAMA = digest tanda tangan utama (satu-satunya yang boleh menentukan "match"); sisanya
+    tanda tangan bersarang (informasi). Daftar kosong bila struktur PKCS#7 tidak bisa diurai ketat."""
+    p = _ac_primary(blob)
+    if not p:
+        return []
+    return [(p[0], p[1])] + _ac_nested(blob)
 
 
 def _authenticode_hash(d: bytes, size: int, pe: dict, alg: str) -> str | None:
@@ -1956,28 +2190,28 @@ def _authenticode_check(d: bytes, size: int, pe: dict) -> dict | None:
     end = min(c_off + c_sz, len(d))
     cands: list[tuple[str, bytes]] = []
     pos = c_off
-    while pos + 8 <= end and len(cands) < 8:
+    while pos + 8 <= end:
         dw, _rev, typ = struct.unpack_from("<IHH", d, pos)
         if dw < 8 or pos + dw > end:
             break
         if typ == 2:
-            cands += _ac_digests(d[pos + 8:pos + dw])
+            cands = _ac_digests(d[pos + 8:pos + dw])   # v104: hanya entri PKCS#7 PERTAMA; entri tambahan = tanpa wewenang (bisa disisipkan penyerang)
+            break
         pos += (dw + 7) & ~7
     if not cands:
         return None
-    cache: dict[str, str | None] = {}
-    first = None
-    for alg, dig in cands:
-        if alg not in cache:
-            cache[alg] = _authenticode_hash(d, size, pe, alg)
-        comp = cache[alg]
-        if comp is None:
-            return None
-        if first is None:
-            first = (alg, dig.hex(), comp)
-        if comp == dig.hex():
-            return {"alg": alg, "signed": dig.hex(), "computed": comp, "match": True}
-    return {"alg": first[0], "signed": first[1], "computed": first[2], "match": False}
+    alg, dig = cands[0]   # v104: hanya digest tanda tangan UTAMA yang menentukan; tanda tangan bersarang tidak ditandatangani tanda tangan utama
+    comp = _authenticode_hash(d, size, pe, alg)
+    if comp is None:
+        return None
+    res = {"alg": alg, "signed": dig.hex(), "computed": comp, "match": comp == dig.hex()}
+    if not res["match"]:
+        for a2, d2 in cands[1:]:
+            c2 = comp if a2 == alg else _authenticode_hash(d, size, pe, a2)
+            if c2 is not None and c2 == d2.hex():
+                res["nested_only_match"] = True   # digest utama tidak cocok tetapi ada digest bersarang yang cocok: pola pemalsuan
+                break
+    return res
 
 
 _CO_STOP = frozenset({"corporation", "company", "limited", "software", "technologies", "technology", "group", "holdings", "international",
@@ -2251,13 +2485,26 @@ def _cache_key() -> bytes | None:
             key = hashlib.sha256(e.encode("utf-8")).digest()
         else:
             kp = Path.home() / ".rea_cache_key"
-            if kp.is_file():
-                key = kp.read_bytes()[:64]
+            try:   # v104: tolak symlink / non-berkas / milik pengguna lain / terbuka untuk grup-dunia; kunci semacam itu tak dipercaya
+                fk, _ksz = _open_regular(kp, follow=False)
+                with fk:
+                    st_ = os.fstat(fk.fileno())
+                    if (os.name == "nt" or (st_.st_uid == os.getuid() and not st_.st_mode & 0o077)) and st_.st_size <= 4096:
+                        key = fk.read(64)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                key = b""
+                raise
             if len(key) < 32:
                 key = os.urandom(32)
-                fd = os.open(str(kp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                with os.fdopen(fd, "wb") as fh:
-                    fh.write(key)
+                try:   # simpan hanya bila tujuan bukan symlink dan ACL/izin bisa dikunci; kalau tidak, kunci hanya hidup di memori (cache lama tak dipakai)
+                    if not kp.is_symlink():
+                        _write_atomic_nofollow(kp, key, 0o600)
+                        if not _secure_key_file(kp):
+                            kp.unlink()
+                except OSError:
+                    pass
     except Exception:
         key = b""
     _CACHE_KEY["k"] = key
@@ -2283,10 +2530,16 @@ def _cache_load(sha: str, tag: str):
     if p is None:
         return None
     try:
-        if p.stat().st_size > CACHE_MAX_ENTRY:
+        # Buka lewat _open_regular(follow=False): symlink ditolak (O_NOFOLLOW), FIFO / perangkat (mis. /dev/zero) / folder ditolak dari
+        # fstat pada handle yang sama (tanpa celah TOCTOU, tidak pernah menggantung). Baca paling banyak CACHE_MAX_ENTRY + 1 byte.
+        f_, fsz = _open_regular(p, follow=False)
+        with f_:
+            if fsz > CACHE_MAX_ENTRY:
+                return None
+            raw_ = f_.read(CACHE_MAX_ENTRY + 1)
+        if len(raw_) > CACHE_MAX_ENTRY:
             return None
-        with open(p, "r", encoding="utf-8") as fh:
-            wrap = json.load(fh)
+        wrap = json.loads(raw_.decode("utf-8"))
         import hmac
         if not isinstance(wrap, dict) or not isinstance(wrap.get("body"), str) or not isinstance(wrap.get("mac"), str):
             return None
@@ -2326,7 +2579,8 @@ def _cache_store(sha: str, tag: str, data: dict, verify) -> bool:
         text = json.dumps({"mac": mac, "body": text}, ensure_ascii=False, separators=(",", ":"))
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_name("%s.%s.tmp" % (p.name, os.urandom(6).hex()))   # unik per panggilan: aman untuk beberapa thread / proses
-        with open(tmp, "w", encoding="utf-8") as fh:
+        fd_ = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0), 0o600)   # v104
+        with os.fdopen(fd_, "w", encoding="utf-8") as fh:
             fh.write(text)
         os.replace(tmp, p)
         tmp = None
@@ -2457,14 +2711,22 @@ def triage(path, follow_links: bool = True, fuzzy: bool = True, use_cache: bool 
     f, size = _open_regular(p, follow_links)
     with f:
         tag = "t1" if fuzzy else "t0"
-        sha = _sha256_of(f, size) if _cache_dir() is not None else None
+        sha, hashes = None, None
+        if _cache_dir() is not None:   # v104: satu lintasan membaca (sha256 + sha1 + md5) dipakai untuk kunci cache DAN laporan; sebelumnya dua lintasan penuh saat cache miss
+            try:
+                f.seek(0)
+                hashes = _hash_file(f, size)
+                f.seek(0)
+                sha = hashes["sha256"]
+            except OSError:
+                sha, hashes = None, None
         if sha and use_cache:
             hit = _cache_load(sha, tag)
             if hit is not None:
                 hit["name"] = p.name
                 hit["cached"] = True
                 return hit
-        rep = _triage_open(p, f, size, fuzzy)
+        rep = _triage_open(p, f, size, fuzzy, hashes)
         if sha:
             _cache_store(rep.get("sha256") or sha, tag, rep, lambda back: _verify_triage(rep, back))
         rep["cached"] = False
@@ -2517,9 +2779,9 @@ def _balance(rep: dict) -> list[str]:
     return out
 
 
-def _triage_open(p: Path, f, size: int, fuzzy: bool = True) -> dict:
+def _triage_open(p: Path, f, size: int, fuzzy: bool = True, hashes: dict | None = None) -> dict:
     rep: dict = {"name": p.name, "size": size, "warn": []}
-    rep.update(_hash_file(f, size))
+    rep.update(dict(hashes) if hashes else _hash_file(f, size))   # v104: hash dari pemanggil (triage) dipakai ulang, tidak membaca ulang berkas
     f.seek(0)
     d = f.read(MAX_SCAN)
     rep["truncated"] = size > len(d)
@@ -3105,13 +3367,17 @@ def carve(path, outdir, max_items: int = 8, rep: dict | None = None) -> list[dic
         if x.get("mz"):
             cands.append(("resource %s/%s" % (x["type"], x["name"]), d[x["off"]:x["off"] + min(x["size"], cap)]))
     try:
-        for mm in itertools.islice(_B64.finditer("\n".join(_strings(d))), 60):
+        b64_iter = itertools.islice(_B64.finditer("\n".join(_strings(d))), 60)
+    except Exception:
+        b64_iter = ()
+    for mm in b64_iter:
+        try:   # per kandidat: satu kandidat base64 korup tidak boleh menghentikan pemindaian kandidat berikutnya
             m = mm.group(0)
             raw = base64.b64decode(m + "=" * (-len(m) % 4))
             if raw[:2] == b"MZ" and len(raw) >= 256:
                 cands.append(("PE base64", raw[:_pe_extent(raw)]))
-    except Exception:
-        pass
+        except Exception:
+            continue
     out: list[dict] = []
     seen: set[str] = set()
     od = Path(outdir)
@@ -3125,12 +3391,15 @@ def carve(path, outdir, max_items: int = 8, rep: dict | None = None) -> list[dic
         od.mkdir(parents=True, exist_ok=True)
         fp = od / (sha[:16] + ".bin")
         try:
-            with open(fp, "xb") as f:
+            fd_ = os.open(str(fp), os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0), 0o600)
+            with os.fdopen(fd_, "wb") as f:
                 f.write(blob)
         except FileExistsError:
-            try:
-                if hashlib.sha256(fp.read_bytes()).hexdigest() != sha:   # berkas lama bernama sama tapi isi lain: jangan klaim
-                    continue
+            try:   # v104: berkas lama dibuka lewat _open_regular(follow=False): symlink / FIFO / perangkat ditolak, ukuran dicek sebelum dibaca
+                fo_, osz_ = _open_regular(fp, follow=False)
+                with fo_:
+                    if osz_ != len(blob) or hashlib.sha256(fo_.read(len(blob) + 1)).hexdigest() != sha:   # beda isi: jangan klaim
+                        continue
             except OSError:
                 continue
         except OSError:
@@ -3294,13 +3563,31 @@ def yara_draft(rep: dict, name: str = "") -> str:
         rid = "r_" + rid
     if len(cand) < 2:
         return "// Tidak cukup string unik untuk draf YARA yang layak (%d). Jangan membuat aturan dari satu string umum." % len(cand)
-    esc = lambda x: x.replace("\\", "\\\\").replace('"', '\\"')
+    def esc(x):   # v104: backslash, kutip, dan SEMUA karakter kontrol (\x00-\x1f, \x7f) di-escape; baris baru mentah merusak / menyisipkan baris aturan
+        out_ = []
+        for ch in str(x):
+            o = ord(ch)
+            if ch == "\\":
+                out_.append("\\\\")
+            elif ch == '"':
+                out_.append('\\"')
+            elif ch == "\n":
+                out_.append("\\n")
+            elif ch == "\t":
+                out_.append("\\t")
+            elif ch == "\r":
+                out_.append("\\r")
+            elif o < 0x20 or o == 0x7F:   # YARA hanya mengenal \xNN (tanpa \u); karakter non-ASCII lain aman ditulis apa adanya (UTF-8)
+                out_.append("\\x%02X" % o)
+            else:
+                out_.append(ch)
+        return "".join(out_)
     L = ["rule %s {" % rid, "  meta:",
          '    description = "DRAF otomatis Iris rea_triage v93; WAJIB diuji terhadap file sah sebelum dipakai"',
          '    sha256 = "%s"' % rep["sha256"]]
     pe = rep.get("pe")
     if pe and not pe.get("broken") and pe.get("imphash"):
-        L.append('    // imphash varian Iris: %s' % pe["imphash"])
+        L.append('    // imphash varian Iris: %s' % re.sub(r"[^0-9A-Za-z]", "", str(pe["imphash"]))[:64])   # v104: berasal dari berkas; baris baru tidak boleh lolos dari komentar
     L.append("  strings:")
     for i, c in enumerate(cand, 1):
         L.append('    $s%d = "%s" ascii wide nocase' % (i, esc(c)))
@@ -3354,7 +3641,7 @@ def triage_json(path, ioc_only: bool = False) -> str:
 #      laporan Markdown, dan API JSON untuk Iris / Hermes. Semuanya hanya-baca, pustaka standar, file tidak dijalankan.
 # ---------------------------------------------------------------------------
 
-VERSION = "99.22"
+VERSION = "99.57"
 AUTHOR = "KangJiho"
 
 # nama impor Mach-O (garis bawah depan sudah dibuang) yang menandai manipulasi proses lain
@@ -4494,7 +4781,7 @@ def triage_html_file(path, out=None, defang: bool = True) -> str:
     """Tulis laporan HTML ke `out` (bawaan: <nama>.rea.html di folder kerja); kembalikan path-nya."""
     rep = triage(path)
     target = Path(out) if out else Path.cwd() / (Path(path).name + ".rea.html")
-    target.write_text(triage_html(path, defang, rep=rep), encoding="utf-8")
+    _write_atomic_nofollow(target, triage_html(path, defang, rep=rep).encode("utf-8"), 0o644)   # v104: tidak menulis lewat symlink
     return str(target)
 
 
@@ -5434,6 +5721,10 @@ def _x86_dec(b: bytes, i: int, is64: bool):
 
 def _cfg_func(d: bytes, L: dict, start: int, end: int, is64: bool, want_blocks: bool = False) -> dict | None:
     """CFG satu fungsi [start, end). None bila awal fungsi tidak bisa dibaca."""
+    if L.get("arch") == "arm64":
+        return _a64_cfg_func(d, L, start, end, want_blocks)
+    if L.get("arch") == "arm":
+        return _arm32_cfg_func(d, L, start, end, want_blocks)      # v99.30: A32 / Thumb; tidak pernah memakai decoder x86
     off0 = _va_off(L, start)
     if off0 is None or end <= start:
         return None
@@ -5474,6 +5765,380 @@ def _cfg_func(d: bytes, L: dict, start: int, end: int, is64: bool, want_blocks: 
             if kind in (_K_RET, _K_HALT, _K_JMPI):
                 break
             va = nxt
+    return _cfg_build(start, insns, leaders, incomplete, trunc, want_blocks)
+
+
+def _a64_brk(w: int) -> tuple[str, int]:
+    """v99.27: cabang-register AArch64 termasuk varian PAC (arm64e / -mbranch-protection). -> (jenis, Rn); jenis 'ret' | 'br' | 'blr' | ''."""
+    m = w & 0xFFFFFC1F
+    if m == 0xD65F0000:
+        return "ret", (w >> 5) & 31
+    if m == 0xD61F0000 or m in (0xD61F081F, 0xD61F0C1F) or (w & 0xFFFFF800) == 0xD71F0800:        # BR / BRAAZ / BRABZ / BRAA / BRAB
+        return "br", (w >> 5) & 31
+    if m == 0xD63F0000 or m in (0xD63F081F, 0xD63F0C1F) or (w & 0xFFFFF800) == 0xD73F0800:        # BLR / BLRAAZ / BLRABZ / BLRAA / BLRAB
+        return "blr", (w >> 5) & 31
+    if w in (0xD65F0BFF, 0xD65F0FFF):                                                              # RETAA / RETAB
+        return "ret", 30
+    return "", 0
+
+
+def _a64_cfg_func(d: bytes, L: dict, start: int, end: int, want_blocks: bool = False) -> dict | None:
+    """CFG satu fungsi AArch64 [start, end): B / B.cond / CBZ / CBNZ / TBZ / TBNZ / RET / BR (jump table = switch) / BRK. BL dan BLR bukan akhir blok."""
+    off0 = _va_off(L, start)
+    if off0 is None or end <= start:
+        return None
+    n_w = min((end - start) // 4, len(d) // 4 + 1)
+    code = d[off0:off0 + n_w * 4]
+    n_w = len(code) // 4
+    if n_w <= 0:
+        return None
+    words = struct.unpack("<%dI" % n_w, code[:n_w * 4])
+    lim = start + n_w * 4
+    insns: dict = {}
+    leaders = {start}
+    work = [start]
+    incomplete = trunc = False
+    while work and not trunc:
+        va = work.pop()
+        while start <= va < lim and va not in insns:
+            if len(insns) >= CFG_MAX_FUNC_INSNS:
+                trunc = incomplete = True
+                break
+            w = words[(va - start) >> 2]
+            nxt = va + 4
+            fl, mn, kind, tgt = 0, "", _K_NORM, None
+            if (w & 0xFC000000) == 0x14000000:
+                kind, tgt = _K_JMP, va + (_a64_s(w & 0x3FFFFFF, 26) << 2)
+            elif (w & 0xFF000010) == 0x54000000:
+                kind, tgt = _K_JCC, va + (_a64_s((w >> 5) & 0x7FFFF, 19) << 2)
+            elif (w & 0x7E000000) == 0x34000000:
+                kind, tgt = _K_JCC, va + (_a64_s((w >> 5) & 0x7FFFF, 19) << 2)
+            elif (w & 0x7E000000) == 0x36000000:
+                kind, tgt = _K_JCC, va + (_a64_s((w >> 5) & 0x3FFF, 14) << 2)
+            elif (w & 0xFC000000) == 0x94000000:
+                kind = _K_CALL
+            elif _a64_brk(w)[0] == "blr":
+                kind = _K_CALLI
+            elif _a64_brk(w)[0] == "ret" or w in (0xD69F03E0, 0xD6BF03E0):
+                kind = _K_RET
+            elif _a64_brk(w)[0] == "br":
+                kind = _K_JMPI
+            elif (w & 0xFFE0001F) == 0xD4200000 or w == 0:
+                kind = _K_HALT
+            elif (w & 0x7F800000) == 0x52000000 or (w & 0x7F200000) == 0x4A000000:
+                fl, mn = 1, "xor"
+            elif (w & 0x7FA00000) == 0x13800000:
+                fl, mn = 1, "ror"
+            elif (w & 0x1F000000) == 0x11000000 or (w & 0x1F200000) == 0x0B000000:
+                fl, mn = 1, "sub" if (w >> 30) & 1 else "add"
+            elif (w & 0x7F800000) in (0x53000000, 0x13000000):
+                immr, imms = (w >> 16) & 63, (w >> 10) & 63
+                fl, mn = 1, ("shr" if imms >= immr else "shl")
+            if ((w >> 25) & 5) == 4:                       # keluarga load / store
+                fl |= 2
+                if not (w >> 22) & 1:
+                    fl |= 4
+            insns[va] = (4, kind, (tgt - nxt) if tgt is not None else 0, fl, mn)
+            if kind == _K_JMP:
+                if tgt is not None and start <= tgt < lim:
+                    leaders.add(tgt)
+                    work.append(tgt)
+                break
+            if kind == _K_JCC:
+                if start <= tgt < lim:
+                    leaders.add(tgt)
+                    work.append(tgt)
+                leaders.add(nxt)
+                va = nxt
+                continue
+            if kind in (_K_RET, _K_HALT, _K_JMPI):
+                break
+            va = nxt
+    if not insns:
+        return None
+    return _cfg_build(start, insns, leaders, incomplete, trunc, want_blocks)
+
+
+def _arm_mode_at(L: dict, va: int):
+    """v99.30: mode kode ARM 32-bit di va -> ('a' | 't', batas_atas_va); None bila wilayah data ($d) atau di luar bagian kode."""
+    regs = L.get("arm_regions")
+    if regs is None:
+        return ("t" if va in (L.get("thumb") or ()) else "a"), 1 << 62
+    i = bisect.bisect_right(L["arm_region_lo"], va) - 1
+    if i < 0:
+        return None
+    lo, hi, k = regs[i]
+    return (k, hi) if lo <= va < hi and k in ("a", "t") else None
+
+
+def _a32_kind(w: int, va: int) -> tuple:
+    """v99.30: satu kata A32 -> (jenis, target | None, fl, mn). Target -1 = keluar fungsi (kembali / lompat bersyarat tanpa target)."""
+    cond = w >> 28
+    if cond == 15:
+        return (_K_CALL if (w & 0xFE000000) == 0xFA000000 else _K_NORM), None, 0, ""         # BLX imm; sisanya ruang tanpa syarat (PLD dll)
+    top = (w >> 25) & 7
+    if top == 5:                                                                               # B / BL
+        if w & 0x01000000:
+            return _K_CALL, None, 0, ""
+        return (_K_JMP if cond == 14 else _K_JCC), va + 8 + (_a64_s(w & 0xFFFFFF, 24) << 2), 0, ""
+    ex = (_K_RET, _K_JMPI)
+    def leave(k):
+        return (k if cond == 14 else _K_JCC), (None if cond == 14 else -1), 0, ""
+    if (w & 0x0FFFFFD0) == 0x012FFF10:                                                         # BX Rm / BLX Rm
+        if w & 0x20:
+            return _K_CALLI, None, 0, ""
+        return leave(_K_RET if (w & 15) == 14 else _K_JMPI)
+    if (w & 0x0E108000) == 0x08108000:                                                         # LDM / POP {..., pc}
+        return leave(_K_RET)
+    if (w & 0x0C10F000) == 0x0410F000:                                                         # LDR pc, [...]
+        return leave(_K_RET if w == 0xE49DF004 else _K_JMPI)
+    if top < 2 and ((w >> 12) & 15) == 15 and not (top == 0 and (w & 0x90) == 0x90):          # operasi data menulis pc
+        op = (w >> 21) & 15
+        if not 8 <= op <= 11:
+            if (op == 13 and (w & 0xFFF) == 0x00E) or (op == 2 and ((w >> 16) & 15) == 14):    # MOV pc, lr / SUBS pc, lr, #n
+                return leave(_K_RET)
+            return leave(_K_JMPI)
+    if (w & 0xFFF000F0) in (0xE1200070, 0xE7F000F0) or w == 0:                                 # BKPT / UDF / padding nol
+        return _K_HALT, None, 0, ""
+    fl, mn = 0, ""
+    if top == 0 and (w & 0x90) == 0x90:                                                        # halfword / signed load-store (multiply tidak)
+        if w & 0x60:
+            fl = 2 | (0 if (w >> 20) & 1 else 4)
+    elif top < 2:
+        op = (w >> 21) & 15
+        if op == 1:
+            fl, mn = 1, "xor"
+        elif op in (2, 3):
+            fl, mn = 1, "sub"
+        elif op == 4:
+            fl, mn = 1, "add"
+        elif op == 13 and top == 0:
+            typ, sh = (w >> 5) & 3, (w >> 7) & 31
+            if (w & 0x10) or sh:
+                if typ == 3 and not (w & 0x10) and not sh:
+                    pass
+                else:
+                    fl, mn = 1, ("shl", "shr", "shr", "ror")[typ]
+    elif top in (2, 3) and not (top == 3 and (w & 0x10)):                                      # LDR / STR
+        fl = 2 | (0 if (w >> 20) & 1 else 4)
+    elif top == 4:                                                                             # LDM / STM
+        fl = 2 | (0 if (w >> 20) & 1 else 4)
+    return _K_NORM, None, fl, mn
+
+
+def _thumb16_kind(h: int, va: int) -> tuple:
+    """v99.30: satu halfword Thumb 16-bit -> (jenis, target | None, fl, mn). PC Thumb = alamat + 4."""
+    pc = va + 4
+    t = h >> 11
+    if t == 0x1C:                                                                              # B (T2)
+        return _K_JMP, pc + (_a64_s(h & 0x7FF, 11) << 1), 0, ""
+    if (h >> 12) == 0xD:
+        c = (h >> 8) & 15
+        if c < 14:                                                                             # B<c> (T1)
+            return _K_JCC, pc + (_a64_s(h & 0xFF, 8) << 1), 0, ""
+        return (_K_HALT if c == 14 else _K_NORM), None, 0, ""                                  # UDF / SVC
+    if (h & 0xF500) == 0xB100:                                                                 # CBZ / CBNZ
+        return _K_JCC, pc + ((((h >> 9) & 1) << 6) | (((h >> 3) & 31) << 1)), 0, ""
+    if (h & 0xFF00) == 0xBE00:                                                                 # BKPT
+        return _K_HALT, None, 0, ""
+    if (h & 0xFE00) == 0xBC00 and h & 0x100:                                                   # POP {..., pc}
+        return _K_RET, None, 0, ""
+    if (h & 0xFF87) == 0x4700 or (h & 0xFF87) == 0x4687:                                       # BX Rm / MOV pc, Rm
+        return (_K_RET if ((h >> 3) & 15) == 14 else _K_JMPI), None, 0, ""
+    if (h & 0xFF87) == 0x4487:                                                                 # ADD pc, Rm
+        return _K_JMPI, None, 0, ""
+    if (h & 0xFF87) == 0x4780:                                                                 # BLX Rm
+        return _K_CALLI, None, 0, ""
+    fl, mn = 0, ""
+    hi = h >> 12
+    if (h & 0xF800) == 0x1800:
+        fl, mn = 1, ("sub" if h & 0x200 else "add")
+    elif (h >> 13) == 0:
+        if t == 0 and ((h >> 6) & 31):
+            fl, mn = 1, "shl"
+        elif t in (1, 2):
+            fl, mn = 1, "shr"
+    elif (h >> 13) == 1:
+        if t == 2:
+            fl, mn = 1, "add"
+        elif t == 3:
+            fl, mn = 1, "sub"
+    elif (h & 0xFC00) == 0x4000:
+        op = (h >> 6) & 15
+        mn = {1: "xor", 7: "ror", 5: "add", 6: "sub", 9: "sub", 2: "shl", 3: "shr", 4: "shr"}.get(op, "")
+        fl = 1 if mn else 0
+    elif (h & 0xFF00) == 0x4400:
+        fl, mn = 1, "add"
+    elif hi == 5:
+        fl = 2 | (4 if ((h >> 9) & 7) < 3 else 0)
+    elif hi in (6, 7, 8, 9, 0xC) or (h & 0xF600) == 0xB400:
+        fl = 2 | (0 if h & 0x800 else 4)
+    elif (h & 0xF800) == 0x4800:
+        fl = 2
+    return _K_NORM, None, fl, mn
+
+
+def _thumb32_kind(h: int, h2: int, va: int) -> tuple:
+    """v99.30: satu instruksi Thumb-2 32-bit (h, h2) -> (jenis, target | None, fl, mn)."""
+    pc = va + 4
+    if (h & 0xF800) == 0xF000:
+        if (h2 & 0xC000) == 0xC000:                                                            # BL / BLX imm
+            return _K_CALL, None, 0, ""
+        if (h2 & 0xD000) == 0x9000:                                                            # B.W (T4)
+            S = (h >> 10) & 1
+            i1, i2 = (~((h2 >> 13) ^ S)) & 1, (~((h2 >> 11) ^ S)) & 1
+            return _K_JMP, pc + _a64_s((S << 24) | (i1 << 23) | (i2 << 22) | ((h & 0x3FF) << 12) | ((h2 & 0x7FF) << 1), 25), 0, ""
+        if (h2 & 0xD000) == 0x8000 and ((h >> 6) & 15) < 14:                                   # B<c>.W (T3)
+            S, J1, J2 = (h >> 10) & 1, (h2 >> 13) & 1, (h2 >> 11) & 1
+            return _K_JCC, pc + _a64_s((S << 20) | (J2 << 19) | (J1 << 18) | ((h & 0x3F) << 12) | ((h2 & 0x7FF) << 1), 21), 0, ""
+    if (h & 0xFFF0) == 0xF7F0 and (h2 & 0xF000) == 0xA000:                                     # UDF.W
+        return _K_HALT, None, 0, ""
+    if (h & 0xFFF0) == 0xE8D0 and (h2 & 0xFFE0) == 0xF000:                                     # TBB / TBH
+        return _K_JMPI, None, 0, ""
+    if (h == 0xE8BD or (h & 0xFFD0) == 0xE890) and h2 & 0x8000:                                # POP.W / LDM.W {..., pc}
+        return _K_RET, None, 0, ""
+    if (h & 0xFFF0) == 0xF850 and (h2 >> 12) == 15:                                            # LDR.W pc, [...]
+        return (_K_RET if (h == 0xF85D and h2 == 0xFB04) else _K_JMPI), None, 0, ""
+    if (h & 0xFFF0) == 0xF8D0 and (h2 >> 12) == 15:
+        return _K_JMPI, None, 0, ""
+    fl, mn = 0, ""
+    if (h & 0xFE00) == 0xEA00:                                                                 # operasi data (register bergeser)
+        op, typ = (h >> 5) & 15, (h2 >> 4) & 3
+        amt = (((h2 >> 12) & 7) << 2) | ((h2 >> 6) & 3)
+        if op == 4:
+            fl, mn = 1, "xor"
+        elif op == 8:
+            fl, mn = 1, "add"
+        elif op == 13:
+            fl, mn = 1, "sub"
+        elif op == 2 and (h & 15) == 15 and (amt or typ in (1, 2)):                            # MOV / LSL / LSR / ASR / ROR imm
+            fl, mn = 1, ("shl", "shr", "shr", "ror")[typ]
+    elif (h & 0xFA00) == 0xF000 and not (h2 & 0x8000):                                         # operasi data (konstanta modifikasi)
+        op = (h >> 5) & 15
+        mn = {4: "xor", 8: "add", 13: "sub"}.get(op, "")
+        fl = 1 if mn else 0
+        if not mn and (h & 0xFBF0) in (0xF200, 0xF2A0):                                        # ADDW / SUBW
+            fl, mn = 1, ("add" if (h & 0xFBF0) == 0xF200 else "sub")
+    elif (h & 0xFF80) == 0xFA00 and (h2 & 0xF0F0) == 0xF000:                                   # geser dengan register
+        fl, mn = 1, ("shl", "shr", "shr", "ror")[(h >> 5) & 3]
+    elif (h & 0xFE00) in (0xF800, 0xE800):                                                     # LDR / STR / LDM / STM / LDRD / STRD
+        fl = 2 | (0 if (h >> 4) & 1 else 4)
+    return _K_NORM, None, fl, mn
+
+
+def _a32_cfg_func(d: bytes, L: dict, start: int, end: int, want_blocks: bool = False) -> dict | None:
+    """v99.30: CFG satu fungsi A32 [start, end). Kata A32 selalu 4 byte."""
+    off0 = _va_off(L, start)
+    if off0 is None or end <= start or start & 3:
+        return None
+    n_w = min((end - start) // 4, (len(d) - off0) // 4)
+    if n_w <= 0:
+        return None
+    words = struct.unpack("<%dI" % n_w, d[off0:off0 + n_w * 4])
+    lim = start + n_w * 4
+    insns: dict = {}
+    leaders = {start}
+    work = [start]
+    incomplete = trunc = False
+    while work and not trunc:
+        va = work.pop()
+        while start <= va < lim and va not in insns:
+            if len(insns) >= CFG_MAX_FUNC_INSNS:
+                trunc = incomplete = True
+                break
+            kind, tgt, fl, mn = _a32_kind(words[(va - start) >> 2], va)
+            nxt = va + 4
+            insns[va] = (4, kind, (tgt - nxt) if tgt is not None else 0, fl, mn)
+            if kind == _K_JMP:
+                if tgt is not None and start <= tgt < lim and not tgt & 3:
+                    leaders.add(tgt)
+                    work.append(tgt)
+                break
+            if kind == _K_JCC:
+                if start <= tgt < lim and not tgt & 3:
+                    leaders.add(tgt)
+                    work.append(tgt)
+                leaders.add(nxt)
+                va = nxt
+                continue
+            if kind in (_K_RET, _K_HALT, _K_JMPI):
+                break
+            va = nxt
+    return _cfg_build(start, insns, leaders, incomplete, trunc, want_blocks)
+
+
+def _thumb_cfg_func(d: bytes, L: dict, start: int, end: int, want_blocks: bool = False) -> dict | None:
+    """v99.30: CFG satu fungsi Thumb / Thumb-2 [start, end). Blok IT: cabang di dalam IT bersyarat (JMP -> JCC, kembali / lompat tak langsung -> JCC keluar)."""
+    off0 = _va_off(L, start)
+    if off0 is None or end <= start or start & 1:
+        return None
+    n_h = min((end - start) // 2, (len(d) - off0) // 2)
+    if n_h <= 0:
+        return None
+    hws = struct.unpack("<%dH" % n_h, d[off0:off0 + n_h * 2])
+    lim = start + n_h * 2
+    insns: dict = {}
+    leaders = {start}
+    work = [start]
+    incomplete = trunc = False
+    while work and not trunc:
+        va = work.pop()
+        it_left = 0
+        while start <= va < lim and va not in insns:
+            if len(insns) >= CFG_MAX_FUNC_INSNS:
+                trunc = incomplete = True
+                break
+            j = (va - start) >> 1
+            h = hws[j]
+            if (h >> 11) in (0x1D, 0x1E, 0x1F):
+                if j + 1 >= n_h:
+                    incomplete = True
+                    break
+                n = 4
+                kind, tgt, fl, mn = _thumb32_kind(h, hws[j + 1], va)
+            else:
+                n = 2
+                kind, tgt, fl, mn = _thumb16_kind(h, va)
+            nxt = va + n
+            if it_left > 0:
+                it_left -= 1
+                if kind == _K_JMP:
+                    kind = _K_JCC
+                elif kind in (_K_RET, _K_JMPI):
+                    kind, tgt = _K_JCC, -1
+            elif n == 2 and (h & 0xFF00) == 0xBF00 and h & 15:                                 # IT: jumlah instruksi = 4 - posisi bit terendah
+                it_left = 4 - ((h & -h & 15).bit_length() - 1)
+            insns[va] = (n, kind, (tgt - nxt) if tgt is not None else 0, fl, mn)
+            if kind == _K_JMP:
+                if tgt is not None and start <= tgt < lim and not tgt & 1:
+                    leaders.add(tgt)
+                    work.append(tgt)
+                break
+            if kind == _K_JCC:
+                if start <= tgt < lim and not tgt & 1:
+                    leaders.add(tgt)
+                    work.append(tgt)
+                leaders.add(nxt)
+                va = nxt
+                continue
+            if kind in (_K_RET, _K_HALT, _K_JMPI):
+                break
+            va = nxt
+    return _cfg_build(start, insns, leaders, incomplete, trunc, want_blocks)
+
+
+def _arm32_cfg_func(d: bytes, L: dict, start: int, end: int, want_blocks: bool = False) -> dict | None:
+    """v99.30: CFG fungsi ARM 32-bit; mode (A32 / Thumb) dari wilayah di `start`, batas atas dipotong di akhir wilayah. None bila wilayah data / tak dikenal."""
+    m = _arm_mode_at(L, start)
+    if m is None:
+        return None
+    kind, hi = m
+    end = min(end, hi)
+    return (_thumb_cfg_func if kind == "t" else _a32_cfg_func)(d, L, start, end, want_blocks)
+
+
+def _cfg_build(start: int, insns: dict, leaders: set, incomplete: bool, trunc: bool, want_blocks: bool = False) -> dict | None:
+    """Blok dasar, sisi, kompleksitas siklomatik, loop (dipakai decoder x86 dan AArch64)."""
     if not insns:
         return None
     # blok dasar
@@ -5661,7 +6326,7 @@ def _render_cfg(r: dict, a, compact: bool) -> None:
 def cfg_text(path, at=None) -> str:
     """Ringkasan CFG (tanpa `at`) atau daftar blok dasar satu fungsi (at = 'entry' / 0xVA). CLI --cfg, API action 'cfg'."""
     try:
-        info, ctx, err = _relab_any(*_cfg_read(path))
+        info, ctx, err = _relab_multi(*_cfg_read(path))
     except Exception as e:
         return "CFG gagal (%s: %s)." % (type(e).__name__, str(e)[:120])
     if not info:
@@ -6717,6 +7382,10 @@ def _emu_fmt(ins, va, is64=True):
 
 def _emu_func(d: bytes, L: dict, start: int, end: int, is64: bool, deadline: float, trace_max: int = 0, max_total: int = EMU_MAX_TOTAL) -> dict | None:
     """Emulasi satu fungsi [start, end). None bila awal tidak bisa dibaca. Tidak pernah melempar karena data biner (batas sumber daya di atas)."""
+    if L.get("arch") == "arm64":
+        return _a64_emu_func(d, L, start, end, deadline, trace_max, max_total)
+    if L.get("arch") == "arm":
+        return _arm32_emu_func(d, L, start, end, deadline, trace_max, max_total)      # v99.36: A32 (Thumb belum)
     off0 = _va_off(L, start)
     if off0 is None or end <= start:
         return None
@@ -6948,6 +7617,1375 @@ def _emu_func(d: bytes, L: dict, start: int, end: int, is64: bool, deadline: flo
     return {"steps": total, "forks": forks, "stop": stop, "finals": finals, "trace": tr, "timed": timed}
 
 
+# ---------------------------------------------------------------------------
+# v99.25 (roadmap v2, Tier A butir 4, tahap 2c: emulasi mikro AArch64; aditif): _a64_emu_func() mengemulasi satu fungsi AArch64 (X0-X30, SP, NZCV, memori
+# overlay yang sama dengan emulator x86) untuk mendekode string / buffer yang dibangun lewat MOVZ / MOVK / ALU / geser / EOR / load-store / STP; hasilnya
+# dikumpulkan oleh _emu_collect() yang sama. Himpunan instruksi kecil: MOVZ/MOVK/MOVN, ADD/SUB (imm, reg bergeser, flag), AND/ORR/EOR/ANDS (imm, reg),
+# UBFM/SBFM (lsl/lsr/asr/ubfx/uxt/sxt), EXTR (ror), LSLV/LSRV/ASRV/RORV, MADD/MSUB, CSEL/CSINC/CSINV/CSNEG, ADR/ADRP, LDR/STR (imm, imm9, pre/post, reg,
+# literal), LDP/STP, B / B.cond / CBZ / CBNZ / TBZ / TBNZ. BL / BLR dilangkahi (x0-x18 dan x30 jadi tidak diketahui), RET / BR menghentikan jalur.
+# SIMD / FP / atomik / PAC tidak didukung (jalur berhenti). Statis murni, hanya pustaka standar.
+# ---------------------------------------------------------------------------
+_A64_COND = ("eq", "ne", "cs", "cc", "mi", "pl", "vs", "vc", "hi", "ls", "ge", "lt", "gt", "le", "al", "al")
+
+
+def _a64_bitmask(n: int, imms: int, immr: int, size: int, immediate: bool):
+    """DecodeBitMasks (ARM ARM): (wmask, tmask) atau None."""
+    v = (n << 6) | (~imms & 0x3F)
+    ln = v.bit_length() - 1
+    if ln < 1:
+        return None
+    levels = (1 << ln) - 1
+    if immediate and (imms & levels) == levels:
+        return None
+    s, r = imms & levels, immr & levels
+    esize = 1 << ln
+    if esize > size:
+        return None
+    em = (1 << esize) - 1
+    welem = (1 << (s + 1)) - 1
+    telem = (1 << (((s - r) & levels) + 1)) - 1
+    welem = ((welem >> r) | (welem << (esize - r))) & em if r else welem & em
+    wm = tm = 0
+    for k in range(size // esize):
+        wm |= welem << (k * esize)
+        tm |= telem << (k * esize)
+    return wm, tm
+
+
+def _a64_rd(st, n: int, sf: int, zr: bool = True):
+    if n == 31 and zr:
+        return 0
+    v = _emu_rg(st, n)
+    if v is None:
+        return None
+    return v if sf else v & 0xFFFFFFFF
+
+
+def _a64_wr(st, n: int, v, sf: int, zr: bool = True) -> None:
+    if n == 31 and zr:
+        return
+    if v is None:
+        st.rv[n], st.rk[n] = 0, 0
+        return
+    st.rv[n], st.rk[n] = v & (_M64 if sf else 0xFFFFFFFF), _M64
+
+
+def _a64_cond(fl, cc: int):
+    n_, z_, c_, v_ = fl
+    base = cc >> 1
+    if base == 0:
+        r = z_
+    elif base == 1:
+        r = c_
+    elif base == 2:
+        r = n_
+    elif base == 3:
+        r = v_
+    elif base == 4:
+        r = None if c_ is None or z_ is None else int(c_ and not z_)
+    elif base == 5:
+        r = None if n_ is None or v_ is None else int(n_ == v_)
+    elif base == 6:
+        r = None if n_ is None or v_ is None or z_ is None else int((not z_) and n_ == v_)
+    else:
+        return True
+    if r is None:
+        return None
+    r = bool(r)
+    return (not r) if (cc & 1 and cc != 15) else r
+
+
+def _a64_addsub(st, a: int, b: int, sub: bool, sf: int, setf: bool) -> int:
+    w = 64 if sf else 32
+    m = (1 << w) - 1
+    if sub:
+        res = (a - b) & m
+        c = int(a >= b)
+        v = ((a ^ b) & (a ^ res)) >> (w - 1) & 1
+    else:
+        res = (a + b) & m
+        c = int(a + b > m)
+        v = ((a ^ res) & (b ^ res)) >> (w - 1) & 1
+    if setf:
+        st.fl = [res >> (w - 1) & 1, int(res == 0), c, v]
+    return res
+
+
+def _a64_shift(v: int, typ: int, cnt: int, sf: int) -> int:
+    w = 64 if sf else 32
+    m = (1 << w) - 1
+    cnt %= w
+    if typ == 0:
+        return (v << cnt) & m
+    if typ == 1:
+        return v >> cnt
+    if typ == 2:
+        sv = v - (1 << w) if v >> (w - 1) else v
+        return (sv >> cnt) & m
+    return ((v >> cnt) | (v << (w - cnt))) & m if cnt else v
+
+
+def _a64_clobber(st) -> None:
+    for r_ in range(19):
+        st.rk[r_] = 0
+    st.rk[30] = 0
+    st.fl = [None] * 4
+
+
+def _a64_step(st, w: int, pc: int):
+    """Satu instruksi. (aksi, nilai, mnemonik): 'n' lanjut, 'j' lompat ke nilai, 'f' fork ke nilai lalu lanjut, 's' berhenti dengan alasan nilai."""
+    sf = w >> 31
+    rd, rn, rm = w & 31, (w >> 5) & 31, (w >> 16) & 31
+    if (w & 0xFFFFF01F) == 0xD503201F:
+        return "n", 0, "nop/hint"
+    bk_ = _a64_brk(w)[0]
+    if bk_ == "ret":
+        return "s", "ret", "ret"
+    if bk_ == "br":
+        return "s", "br register", "br"
+    if bk_ == "blr" or (w & 0xFC000000) == 0x94000000 or (w & 0xFFE0001F) == 0xD4000001:
+        _a64_clobber(st)
+        return "n", 0, "bl/blr/svc"
+    if (w & 0xFC000000) == 0x14000000:
+        return "j", pc + (_a64_s(w & 0x3FFFFFF, 26) << 2), "b"
+    if (w & 0xFF000010) == 0x54000000:
+        cv = _a64_cond(st.fl, w & 15)
+        t = pc + (_a64_s((w >> 5) & 0x7FFFF, 19) << 2)
+        if cv is None:
+            return "f", t, "b." + _A64_COND[w & 15]
+        return ("j", t, "b." + _A64_COND[w & 15]) if cv else ("n", 0, "b." + _A64_COND[w & 15])
+    if (w & 0x7E000000) == 0x34000000:
+        v = _a64_rd(st, rd, sf)
+        t = pc + (_a64_s((w >> 5) & 0x7FFFF, 19) << 2)
+        nz = (w >> 24) & 1
+        if v is None:
+            return "f", t, "cbnz" if nz else "cbz"
+        return ("j", t, "cb") if (v != 0) == bool(nz) else ("n", 0, "cb")
+    if (w & 0x7E000000) == 0x36000000:
+        v = _a64_rd(st, rd, 1)
+        t = pc + (_a64_s((w >> 5) & 0x3FFF, 14) << 2)
+        bit = (sf << 5) | ((w >> 19) & 31)
+        nz = (w >> 24) & 1
+        if v is None:
+            return "f", t, "tbnz" if nz else "tbz"
+        return ("j", t, "tb") if (((v >> bit) & 1) == nz) else ("n", 0, "tb")
+    if (w & 0x9F000000) == 0x90000000:
+        imm = _a64_s(((((w >> 5) & 0x7FFFF) << 2) | ((w >> 29) & 3)), 21) << 12
+        _a64_wr(st, rd, (pc & ~0xFFF) + imm, 1)
+        return "n", 0, "adrp"
+    if (w & 0x9F000000) == 0x10000000:
+        _a64_wr(st, rd, pc + _a64_s(((((w >> 5) & 0x7FFFF) << 2) | ((w >> 29) & 3)), 21), 1)
+        return "n", 0, "adr"
+    if (w & 0x1F800000) == 0x12800000:                                  # MOVN / MOVZ / MOVK
+        opc, hw, imm = (w >> 29) & 3, (w >> 21) & 3, (w >> 5) & 0xFFFF
+        if opc == 1 or (not sf and hw > 1):
+            return "s", "instruksi tak didukung", "?"
+        pos = hw * 16
+        if opc == 0:
+            v = ~(imm << pos)
+        elif opc == 2:
+            v = imm << pos
+        else:
+            old = _a64_rd(st, rd, sf)
+            v = None if old is None else (old & ~(0xFFFF << pos)) | (imm << pos)
+        _a64_wr(st, rd, v, sf)
+        return "n", 0, ("movn", "?", "movz", "movk")[opc]
+    if (w & 0x1F000000) == 0x11000000:                                  # ADD / SUB imm
+        sub, setf, shv = (w >> 30) & 1, (w >> 29) & 1, (w >> 22) & 3
+        if shv > 1:
+            return "s", "instruksi tak didukung", "?"
+        imm = ((w >> 10) & 0xFFF) << (12 if shv else 0)
+        a = _a64_rd(st, rn, sf, zr=False)
+        if a is None:
+            if setf:
+                st.fl = [None] * 4
+            _a64_wr(st, rd, None, sf, zr=bool(setf))
+        else:
+            r = _a64_addsub(st, a, imm, bool(sub), sf, bool(setf))
+            _a64_wr(st, rd, r, sf, zr=bool(setf))
+            if rn != 31 and rd != 31:
+                st.ops.add("sub" if sub else "add")
+        return "n", 0, ("subs" if setf else "sub") if sub else ("adds" if setf else "add")
+    if (w & 0x1F200000) == 0x0B000000:                                  # ADD / SUB (reg bergeser)
+        sub, setf, typ, imm6 = (w >> 30) & 1, (w >> 29) & 1, (w >> 22) & 3, (w >> 10) & 63
+        if typ == 3 or (not sf and imm6 > 31):
+            return "s", "instruksi tak didukung", "?"
+        a, b = _a64_rd(st, rn, sf), _a64_rd(st, rm, sf)
+        if a is None or b is None:
+            if setf:
+                st.fl = [None] * 4
+            _a64_wr(st, rd, None, sf)
+        else:
+            r = _a64_addsub(st, a, _a64_shift(b, typ, imm6, sf), bool(sub), sf, bool(setf))
+            _a64_wr(st, rd, r, sf)
+            if not (rd == 31 or rn == 31):
+                st.ops.add("sub" if sub else "add")
+        return "n", 0, ("subs" if setf else "sub") if sub else ("adds" if setf else "add")
+    if (w & 0x1F800000) == 0x12000000 or (w & 0x1F000000) == 0x0A000000:    # AND / ORR / EOR / ANDS (imm atau reg bergeser)
+        opc = (w >> 29) & 3
+        if (w & 0x1F800000) == 0x12000000:
+            bm = _a64_bitmask((w >> 22) & 1, (w >> 10) & 63, (w >> 16) & 63, 64 if sf else 32, True)
+            if bm is None or (not sf and (w >> 22) & 1):
+                return "s", "instruksi tak didukung", "?"
+            b = bm[0]
+            zr_rd = opc != 3
+            a = _a64_rd(st, rn, sf)
+            bsrc = True
+        else:
+            typ, imm6, inv = (w >> 22) & 3, (w >> 10) & 63, (w >> 21) & 1
+            if not sf and imm6 > 31:
+                return "s", "instruksi tak didukung", "?"
+            bv = _a64_rd(st, rm, sf)
+            b = None if bv is None else _a64_shift(bv, typ, imm6, sf)
+            if b is not None and inv:
+                b = ~b & (_M64 if sf else 0xFFFFFFFF)
+            a = _a64_rd(st, rn, sf)
+            bsrc = False
+            zr_rd = True
+        if a is None or b is None:
+            if opc == 3:
+                st.fl = [None] * 4
+            _a64_wr(st, rd, None, sf, zr=not (bsrc and opc != 3))
+        else:
+            r = (a & b, a | b, a ^ b, a & b)[opc]
+            m = _M64 if sf else 0xFFFFFFFF
+            if opc == 3:
+                st.fl = [r >> ((64 if sf else 32) - 1) & 1, int(r == 0), 0, 0]
+            _a64_wr(st, rd, r & m, sf, zr=not (bsrc and opc != 3))
+            if opc == 2 and not (rn == rm and not bsrc):
+                st.ops.add("xor")
+            elif opc == 1 and not bsrc and rn == 31 and (w >> 21) & 1:
+                st.ops.add("not")
+        return "n", 0, ("and", "orr", "eor", "ands")[opc]
+    if (w & 0x1F800000) == 0x13000000:                                  # SBFM / BFM / UBFM
+        opc = (w >> 29) & 3
+        n_ = (w >> 22) & 1
+        if opc == 1 or n_ != sf:
+            return "s", "instruksi tak didukung", "?"
+        immr, imms, size = (w >> 16) & 63, (w >> 10) & 63, 64 if sf else 32
+        bm = _a64_bitmask(n_, imms, immr, size, False)
+        a = _a64_rd(st, rn, sf)
+        if bm is None or a is None:
+            _a64_wr(st, rd, None, sf)
+            return "n", 0, "bfm?"
+        wm, tm = bm
+        m = (1 << size) - 1
+        bot = (((a >> immr) | (a << (size - immr))) & m if immr else a) & wm
+        if opc == 2:
+            r = bot & tm
+            if imms + 1 == immr and imms != size - 1:
+                st.ops.add("shl")
+            elif imms == size - 1 and immr:
+                st.ops.add("shr")
+        else:
+            top = m if (a >> imms) & 1 else 0
+            r = (top & ~tm) | (bot & tm)
+        _a64_wr(st, rd, r & m, sf)
+        return "n", 0, "sbfm" if opc == 0 else "ubfm"
+    if (w & 0x7FA00000) == 0x13800000:                                  # EXTR
+        lsb = (w >> 10) & 63
+        a, b = _a64_rd(st, rn, sf), _a64_rd(st, rm, sf)
+        size = 64 if sf else 32
+        if a is None or b is None or (not sf and lsb > 31):
+            _a64_wr(st, rd, None, sf)
+        else:
+            _a64_wr(st, rd, (((a << size) | b) >> lsb) & ((1 << size) - 1), sf)
+            if rn == rm:
+                st.ops.add("ror")
+        return "n", 0, "extr"
+    if (w & 0x7FE0F000) == 0x1AC02000:                                  # LSLV / LSRV / ASRV / RORV
+        a, c = _a64_rd(st, rn, sf), _a64_rd(st, rm, sf)
+        typ = (w >> 10) & 3
+        if a is None or c is None:
+            _a64_wr(st, rd, None, sf)
+        else:
+            _a64_wr(st, rd, _a64_shift(a, typ, c, sf), sf)
+            st.ops.add(("shl", "shr", "shr", "ror")[typ])
+        return "n", 0, ("lslv", "lsrv", "asrv", "rorv")[typ]
+    if (w & 0x7FE08000) in (0x1B000000, 0x1B008000):                    # MADD / MSUB
+        ra = (w >> 10) & 31
+        a, b, c = _a64_rd(st, rn, sf), _a64_rd(st, rm, sf), _a64_rd(st, ra, sf)
+        if a is None or b is None or c is None:
+            _a64_wr(st, rd, None, sf)
+        else:
+            p = a * b
+            _a64_wr(st, rd, (c - p) if (w >> 15) & 1 else (c + p), sf)
+        return "n", 0, "madd/msub"
+    if (w & 0x1FE00000) == 0x1A800000 and not (w >> 29) & 1:            # CSEL / CSINC / CSINV / CSNEG
+        cc, op, o2 = (w >> 12) & 15, (w >> 30) & 1, (w >> 10) & 1
+        a, b = _a64_rd(st, rn, sf), _a64_rd(st, rm, sf)
+        cv = _a64_cond(st.fl, cc)
+        m = _M64 if sf else 0xFFFFFFFF
+        if cv is None or (cv and a is None) or (not cv and b is None):
+            _a64_wr(st, rd, None, sf)
+        elif cv:
+            _a64_wr(st, rd, a, sf)
+        else:
+            _a64_wr(st, rd, [b, (b + 1), ~b, -b][op * 2 + o2] & m, sf)
+        return "n", 0, "csel"
+    ld = None
+    V = (w >> 26) & 1
+    if (w & 0x3B000000) == 0x39000000 and not V:                        # LDR / STR unsigned imm
+        size = (w >> 30) & 3
+        base = _a64_rd(st, rn, 1, zr=False)
+        ad = None if base is None else (base + (((w >> 10) & 0xFFF) << size)) & _M64
+        ld = (size, (w >> 22) & 3, ad, None)
+    elif (w & 0x3B200000) == 0x38000000 and not V:                      # imm9: ldur / post / pre
+        size, idx = (w >> 30) & 3, (w >> 10) & 3
+        if idx == 2:
+            return "s", "instruksi tak didukung", "?"
+        base = _a64_rd(st, rn, 1, zr=False)
+        off = _a64_s((w >> 12) & 0x1FF, 9)
+        ad = None if base is None else (base + (0 if idx == 1 else off)) & _M64
+        wb = None if base is None else (base + off) & _M64
+        ld = (size, (w >> 22) & 3, ad, (wb, idx) if idx in (1, 3) else None)
+    elif (w & 0x3B200C00) == 0x38200800 and not V:                      # reg offset
+        size, opt, s_ = (w >> 30) & 3, (w >> 13) & 7, (w >> 12) & 1
+        base, idx_ = _a64_rd(st, rn, 1, zr=False), _a64_rd(st, rm, 1)
+        if opt not in (2, 3, 6, 7) or base is None or idx_ is None:
+            ad = None
+            if opt not in (2, 3, 6, 7):
+                return "s", "instruksi tak didukung", "?"
+        else:
+            if opt & 1 == 0:
+                idx_ &= 0xFFFFFFFF
+                if opt == 6 and idx_ >> 31:
+                    idx_ -= 1 << 32
+            ad = (base + (idx_ << (size if s_ else 0))) & _M64
+        ld = (size, (w >> 22) & 3, ad, None)
+    elif (w & 0x3B000000) == 0x18000000 and not V:                      # LDR literal
+        opc = (w >> 30) & 3
+        if opc == 3:
+            return "s", "instruksi tak didukung", "?"
+        ld = (2 if opc == 0 else (3 if opc == 1 else 2), 2 if opc == 2 else 1, pc + (_a64_s((w >> 5) & 0x7FFFF, 19) << 2), None)
+    if ld is not None:
+        size, opc, ad, wb = ld
+        n = 1 << size
+        if opc == 0:                                                     # store
+            val = _a64_rd(st, rd, 1)
+            if ad is None:
+                st.unres += 1
+            else:
+                st.write(ad, n, None if val is None else val & ((1 << (8 * n)) - 1))
+        else:
+            if opc == 1:
+                v = None if ad is None else st.read(ad, n)
+                sfd = 1 if size == 3 else 0
+            elif size == 3 or (opc == 3 and size == 2):
+                return "s", "instruksi tak didukung", "?"
+            else:
+                raw = None if ad is None else st.read(ad, n)
+                v = None if raw is None else (raw - (1 << (8 * n)) if raw >> (8 * n - 1) else raw)
+                sfd = 1 if opc == 2 else 0
+            _a64_wr(st, rd, v, sfd)
+        if wb is not None:
+            _a64_wr(st, rn, wb[0], 1, zr=False)
+        return "n", 0, "str" if opc == 0 else "ldr"
+    if (w & 0x3A000000) == 0x28000000 and not V:                        # LDP / STP
+        opc, mode, L_ = (w >> 30) & 3, (w >> 23) & 3, (w >> 22) & 1
+        if opc not in (0, 2) or mode == 0:
+            return "s", "instruksi tak didukung", "?"
+        size = 8 if opc == 2 else 4
+        rt2 = (w >> 10) & 31
+        off = _a64_s((w >> 15) & 0x7F, 7) * size
+        base = _a64_rd(st, rn, 1, zr=False)
+        ad = None if base is None else (base + (0 if mode == 1 else off)) & _M64
+        sfd = 1 if opc == 2 else 0
+        if L_:
+            for k, r_ in enumerate((rd, rt2)):
+                _a64_wr(st, r_, None if ad is None else st.read(ad + k * size, size), sfd)
+        else:
+            if ad is None:
+                st.unres += 1
+            else:
+                for k, r_ in enumerate((rd, rt2)):
+                    v = _a64_rd(st, r_, sfd)
+                    st.write(ad + k * size, size, v)
+        if mode in (1, 3):
+            _a64_wr(st, rn, None if base is None else (base + off) & _M64, 1, zr=False)
+        return "n", 0, "ldp" if L_ else "stp"
+    return "s", "instruksi tak didukung", "?"
+
+
+def _a64_emu_func(d: bytes, L: dict, start: int, end: int, deadline: float, trace_max: int = 0, max_total: int = EMU_MAX_TOTAL) -> dict | None:
+    """Emulasi satu fungsi AArch64 [start, end). None bila awal tidak bisa dibaca. Tidak pernah melempar karena data biner."""
+    off0 = _va_off(L, start)
+    if off0 is None or end <= start:
+        return None
+    code = d[off0:off0 + ((end - start) & ~3)]
+    n_w = len(code) // 4
+    if n_w <= 0:
+        return None
+    words = struct.unpack("<%dI" % n_w, code[:n_w * 4])
+    lim = start + n_w * 4
+    top = 0x00007FFE00100000
+    s0 = _EmuSt(d, L, _M64, top - 0x100000, top + 0x10000, 32, start)
+    s0.rv[31], s0.rk[31] = top, _M64
+    work, finals, tr = [s0], [], []
+    total = forks = 0
+    stop = ""
+    timed = False
+    while work and not timed:
+        st = work.pop()
+        first = trace_max > 0 and not finals
+        while True:
+            pc = st.pc
+            if st.steps >= EMU_MAX_STEPS or total >= max_total:
+                stop = "batas langkah"
+                break
+            if not (st.steps & 255) and time.monotonic() > deadline:
+                stop, timed = "batas waktu", True
+                break
+            if not (start <= pc < lim):
+                stop = "keluar fungsi"
+                break
+            w = words[(pc - start) >> 2]
+            st.steps += 1
+            total += 1
+            if st.nw > EMU_MAX_WRITES:
+                stop = "batas tulis"
+                break
+            try:
+                act, val, mn = _a64_step(st, w, pc)
+            except (ValueError, OverflowError, IndexError):
+                act, val, mn = "s", "instruksi tak didukung", "?"
+            if first and len(tr) < trace_max:
+                tr.append((pc, "%08X  %s" % (w, mn), "diambil" if act == "j" else ""))
+            if act == "s":
+                stop = val
+                break
+            if act == "j":
+                if not (start <= val < lim):
+                    stop = "lompat keluar fungsi"
+                    break
+                st.pc = val
+                continue
+            if act == "f" and forks < EMU_MAX_FORKS and start <= val < lim and len(work) < 32:
+                forks += 1
+                work.append(st.fork(val))
+            st.pc = pc + 4
+        if len(finals) < EMU_MAX_FINALS:
+            finals.append(st)
+    return {"steps": total, "forks": forks, "stop": stop, "finals": finals, "trace": tr, "timed": timed}
+
+
+# ---------------------------------------------------------------------------
+# v99.36 (roadmap v2, Tier A butir 4, tahap 2d-2c-2b-2a: emulasi mikro ARM 32-bit mode A32; aditif): _a32_emu_func() / _a32_step() mengemulasi satu fungsi A32
+# (r0-r15, flag NZCV, memori overlay yang sama dengan emulator x86 / AArch64; hasil dikumpulkan _emu_collect() yang sama). Himpunan instruksi kecil: data
+# processing (AND/EOR/SUB/RSB/ADD/ADC/SBC/RSC/TST/TEQ/CMP/CMN/ORR/MOV/BIC/MVN; operand imm berotasi, register bergeser imm / register), MOVW / MOVT, MUL / MLA,
+# LDR / STR / LDRB / STRB (imm, register bergeser, pre/post, literal pc), LDRH / STRH / LDRSB / LDRSH, LDM / STM (push / pop), B / B<c> / BL / BLX / BX, SVC,
+# eksekusi bersyarat (cond tak tentu dijalankan di salinan lalu digabung: register / memori yang berubah menjadi tidak diketahui). BL / BLX / SVC dilangkahi
+# (r0-r3, r12, lr tak diketahui). Thumb / Thumb-2, VFP / NEON, LDREX / STREX, LDRD / STRD tidak didukung (jalur berhenti). Statis murni, hanya pustaka standar.
+# ---------------------------------------------------------------------------
+_M32 = 0xFFFFFFFF
+
+
+def _a32_rd(st, n: int, pc: int):
+    if n == 15:
+        return (pc + 8) & _M32
+    return _emu_rg(st, n)
+
+
+def _a32_wr(st, n: int, v) -> None:
+    if v is None:
+        st.rv[n], st.rk[n] = 0, 0
+    else:
+        st.rv[n], st.rk[n] = v & _M32, _M32
+
+
+def _a32_clobber(st) -> None:
+    for r_ in (0, 1, 2, 3, 12, 14):
+        st.rk[r_] = 0
+    st.fl = [None] * 4
+
+
+def _a32_shift(v: int, typ: int, amt: int, cin, by_reg: bool):
+    """Geser operand A32 -> (nilai, carry); carry bisa None bila cin tak diketahui."""
+    if by_reg:
+        if amt == 0:
+            return v, cin
+    elif amt == 0:
+        if typ == 0:
+            return v, cin
+        if typ == 3:                                       # RRX
+            if cin is None:
+                return None, None
+            return (v >> 1) | (cin << 31), v & 1
+        amt = 32
+    if typ == 0:
+        if amt < 32:
+            return (v << amt) & _M32, (v >> (32 - amt)) & 1
+        return 0, (v & 1) if amt == 32 else 0
+    if typ == 1:
+        if amt < 32:
+            return v >> amt, (v >> (amt - 1)) & 1
+        return 0, (v >> 31) if amt == 32 else 0
+    if typ == 2:
+        if amt >= 32:
+            return (_M32 if v >> 31 else 0), v >> 31
+        sv = v - (1 << 32) if v >> 31 else v
+        return (sv >> amt) & _M32, (v >> (amt - 1)) & 1
+    amt &= 31
+    if amt == 0:
+        return v, v >> 31
+    return ((v >> amt) | (v << (32 - amt))) & _M32, (v >> (amt - 1)) & 1
+
+
+def _a32_op2(st, w: int, pc: int):
+    """Operand kedua data processing -> (nilai | None, carry | None)."""
+    if w & 0x02000000:
+        rot = ((w >> 8) & 15) * 2
+        imm = w & 0xFF
+        v = ((imm >> rot) | (imm << (32 - rot))) & _M32 if rot else imm
+        return v, ((v >> 31) if rot else st.fl[2])
+    rm, typ = w & 15, (w >> 5) & 3
+    if w & 0x10:
+        rs = (w >> 8) & 15
+        if rs == 15:
+            raise ValueError("rs=pc")
+        a = _a32_rd(st, rs, pc)
+        amt = None if a is None else a & 0xFF
+        vm = ((pc + 12) & _M32) if rm == 15 else _a32_rd(st, rm, pc)
+        by = True
+    else:
+        amt, vm, by = (w >> 7) & 31, _a32_rd(st, rm, pc), False
+    if vm is None or amt is None:
+        return None, None
+    v, c = _a32_shift(vm, typ, amt, st.fl[2], by)
+    if v is not None and (amt or by):
+        st.ops.add(("shl", "shr", "shr", "ror")[typ])
+    return v, c
+
+
+def _a32_dp(st, w: int, pc: int):
+    opc, S, rn, rd = (w >> 21) & 15, (w >> 20) & 1, (w >> 16) & 15, (w >> 12) & 15
+    test = 8 <= opc <= 11
+    if rd == 15 and not test:                              # tulis ke pc: kembali / lompat register
+        return ("s", "ret", "ret") if (opc == 13 and not S and (w & 0x02000FFF) == 14) or (S and opc == 2 and rn == 14) else ("s", "br register", "br")
+    v2, c2 = _a32_op2(st, w, pc)
+    a = None if opc in (13, 15) else _a32_rd(st, rn, pc)
+    setf = bool(S) or test
+    if opc in (0, 1, 8, 9, 12, 13, 14, 15):                # logika
+        if v2 is None or (opc not in (13, 15) and a is None):
+            res = None
+        else:
+            res = {0: lambda: a & v2, 8: lambda: a & v2, 1: lambda: a ^ v2, 9: lambda: a ^ v2, 12: lambda: a | v2,
+                   13: lambda: v2, 14: lambda: a & ~v2 & _M32, 15: lambda: ~v2 & _M32}[opc]()
+            if opc == 1 and (w & 0x02000000 or (w & 15) != rn or (w & 0xFF0)):      # eor rX, rX, rX (nol) bukan operasi dekode
+                st.ops.add("xor")
+            elif opc == 15:
+                st.ops.add("not")
+        if setf:
+            st.fl = [None, None, c2, st.fl[3]] if res is None else [res >> 31, int(res == 0), c2, st.fl[3]]
+    else:                                                   # aritmetika
+        x, y = (v2, a) if opc in (3, 7) else (a, v2)
+        sub = opc in (2, 3, 6, 7, 10)
+        if opc in (5, 6, 7):
+            cin = st.fl[2]
+        else:
+            cin = 1 if sub else 0
+        if x is None or y is None or cin is None:
+            res = None
+            if setf:
+                st.fl = [None] * 4
+        else:
+            yy = (~y) & _M32 if sub else y
+            tot = x + yy + cin
+            res = tot & _M32
+            if setf:
+                st.fl = [res >> 31, int(res == 0), tot >> 32, ((x ^ res) & (yy ^ res)) >> 31 & 1]
+            if rn not in (13, 15):
+                if opc == 3 and v2 == 0 and not (w & 0x10):
+                    st.ops.add("neg")
+                elif opc in (4, 2):
+                    st.ops.add("add" if opc == 4 else "sub")
+    if not test:
+        _a32_wr(st, rd, res)
+    return "n", 0, "dp%d" % opc
+
+
+def _a32_xfer(st, pc: int, rn: int, rd: int, base, off, P: int, U: int, W: int, L: int, size: int, signed: bool):
+    if base is None or off is None:
+        ea = nb = None
+    else:
+        nb = (base + off if U else base - off) & _M32
+        ea = nb if P else base
+    wb = (not P or bool(W)) and rn != 15
+    if wb:
+        _a32_wr(st, rn, nb)
+    if L:
+        v = None if ea is None else st.read(ea, size)
+        if signed and v is not None and v >> (size * 8 - 1):
+            v -= 1 << (size * 8)
+        if rd == 15:
+            return "s", "ret" if rn == 13 else "br register", "ldr pc"
+        _a32_wr(st, rd, v)
+        return "n", 0, "ldr"
+    v = _a32_rd(st, rd, pc)
+    if ea is None:
+        st.unres += 1
+    else:
+        st.write(ea, size, None if v is None else v & ((1 << (size * 8)) - 1))
+    return "n", 0, "str"
+
+
+def _a32_mem(st, w: int, pc: int):
+    P, U, B, W, L = (w >> 24) & 1, (w >> 23) & 1, (w >> 22) & 1, (w >> 21) & 1, (w >> 20) & 1
+    rn, rd = (w >> 16) & 15, (w >> 12) & 15
+    if w & 0x02000000:
+        vm = _a32_rd(st, w & 15, pc)
+        off = None if vm is None else _a32_shift(vm, (w >> 5) & 3, (w >> 7) & 31, st.fl[2], False)[0]
+    else:
+        off = w & 0xFFF
+    return _a32_xfer(st, pc, rn, rd, _a32_rd(st, rn, pc), off, P, U, W, L, 1 if B else 4, False)
+
+
+def _a32_half(st, w: int, pc: int):
+    P, U, W, L = (w >> 24) & 1, (w >> 23) & 1, (w >> 21) & 1, (w >> 20) & 1
+    rn, rd, sh = (w >> 16) & 15, (w >> 12) & 15, (w >> 5) & 3
+    if not L and sh != 1:
+        return "s", "instruksi tak didukung", "?"          # LDRD / STRD
+    off = (((w >> 8) & 15) << 4) | (w & 15) if w & 0x00400000 else _a32_rd(st, w & 15, pc)
+    return _a32_xfer(st, pc, rn, rd, _a32_rd(st, rn, pc), off, P, U, W, L, 1 if sh == 2 else 2, sh >= 2)
+
+
+def _blk(st, pc: int, rn: int, regs: list, U: int, P: int, W: int, L: int):
+    """Transfer blok (A32 LDM / STM dan Thumb PUSH / POP / LDM / STM): regs urut naik; pc untuk pembacaan r15 (nilai A32: pc + 8)."""
+    n4 = 4 * len(regs)
+    base = _a32_rd(st, rn, pc)
+    if base is None:
+        if L:
+            for r in regs:
+                if r != 15:
+                    _a32_wr(st, r, None)
+        else:
+            st.unres += 1
+        if W and not (L and rn in regs):
+            _a32_wr(st, rn, None)
+    else:
+        lo = base + (4 if P else 0) if U else base - n4 + (0 if P else 4)
+        nb = (base + n4 if U else base - n4) & _M32
+        for k, r in enumerate(regs):
+            a = (lo + 4 * k) & _M32
+            if L:
+                if r != 15:
+                    _a32_wr(st, r, st.read(a, 4))
+            else:
+                st.write(a, 4, (pc + 8) & _M32 if r == 15 else _a32_rd(st, r, pc))
+        if W and not (L and rn in regs):
+            _a32_wr(st, rn, nb)
+    if L and 15 in regs:
+        return "s", "ret" if rn == 13 else "br register", "ldm pc"
+    return "n", 0, "ldm" if L else "stm"
+
+
+def _a32_block(st, w: int, pc: int):
+    P, U, S, W, L = (w >> 24) & 1, (w >> 23) & 1, (w >> 22) & 1, (w >> 21) & 1, (w >> 20) & 1
+    rn, lst = (w >> 16) & 15, w & 0xFFFF
+    if S or rn == 15 or not lst:
+        return "s", "instruksi tak didukung", "?"
+    return _blk(st, pc, rn, [i for i in range(16) if lst >> i & 1], U, P, W, L)
+
+
+def _a32_exec(st, w: int, pc: int):
+    """Eksekusi satu kata A32 yang syaratnya sudah terpenuhi (bukan cabang B / BL)."""
+    top = (w >> 25) & 7
+    if (w & 0x0FFFFFD0) == 0x012FFF10:                     # BX / BLX register
+        if w & 0x20:
+            _a32_clobber(st)
+            return "n", 0, "blx"
+        return ("s", "ret", "bx lr") if (w & 15) == 14 else ("s", "br register", "bx")
+    if (w & 0x0FFFFF00) == 0x0320F000:
+        return "n", 0, "nop/hint"
+    if (w & 0x0F000000) == 0x0F000000:                     # SVC: hanya r0 berubah
+        st.rk[0] = 0
+        return "n", 0, "svc"
+    if top >= 6:
+        return "s", "instruksi tak didukung", "?"          # koprosesor / VFP / NEON
+    if top == 4:
+        return _a32_block(st, w, pc)
+    if top in (2, 3):
+        if top == 3 and w & 0x10:
+            return "s", "instruksi tak didukung", "?"
+        return _a32_mem(st, w, pc)
+    if top == 0 and (w & 0x90) == 0x90:
+        if not (w & 0x60):
+            if (w & 0x0FC000F0) == 0x00000090:             # MUL / MLA
+                rd, ra, rs, rm = (w >> 16) & 15, (w >> 12) & 15, (w >> 8) & 15, w & 15
+                a, b = _a32_rd(st, rm, pc), _a32_rd(st, rs, pc)
+                acc = _a32_rd(st, ra, pc) if (w >> 21) & 1 else 0
+                r = None if a is None or b is None or acc is None else (a * b + acc) & _M32
+                if (w >> 20) & 1:
+                    st.fl = [None, None, st.fl[2], st.fl[3]] if r is None else [r >> 31, int(r == 0), st.fl[2], st.fl[3]]
+                _a32_wr(st, rd, r)
+                return "n", 0, "mul"
+            if (w & 0x0F8000F0) == 0x00800090:             # UMULL / SMLAL ...
+                _a32_wr(st, (w >> 16) & 15, None)
+                _a32_wr(st, (w >> 12) & 15, None)
+                if (w >> 20) & 1:
+                    st.fl = [None] * 4
+                return "n", 0, "mull"
+            return "s", "instruksi tak didukung", "?"      # SWP / LDREX / STREX
+        return _a32_half(st, w, pc)
+    if top == 1 and (w & 0x0FB00000) == 0x03000000:        # MOVW / MOVT
+        rd, imm = (w >> 12) & 15, ((w >> 4) & 0xF000) | (w & 0xFFF)
+        if rd == 15:
+            return "s", "instruksi tak didukung", "?"
+        if w & 0x00400000:
+            old = _a32_rd(st, rd, pc)
+            _a32_wr(st, rd, None if old is None else (old & 0xFFFF) | (imm << 16))
+            return "n", 0, "movt"
+        _a32_wr(st, rd, imm)
+        return "n", 0, "movw"
+    if (w & 0x01900000) == 0x01000000:                     # ruang misc (MRS / MSR / CLZ / QADD ...)
+        return "s", "instruksi tak didukung", "?"
+    return _a32_dp(st, w, pc)
+
+
+def _a32_step(st, w: int, pc: int):
+    """Satu instruksi A32. (aksi, nilai, mnemonik): 'n' lanjut, 'j' lompat, 'f' fork ke nilai lalu lanjut, 's' berhenti dengan alasan nilai."""
+    cond = w >> 28
+    if cond == 15:
+        if (w & 0xFE000000) == 0xFA000000:                 # BLX imm
+            _a32_clobber(st)
+            return "n", 0, "blx"
+        if (w & 0xFD70F000) == 0xF550F000:                 # PLD
+            return "n", 0, "pld"
+        return "s", "instruksi tak didukung", "?"
+    cv = True if cond == 14 else _a64_cond(st.fl, cond)
+    if (w >> 25) & 7 == 5:                                 # B / BL
+        if cv is False:
+            return "n", 0, "b?"
+        if (w >> 24) & 1:
+            _a32_clobber(st)
+            return "n", 0, "bl"
+        t = (pc + 8 + (_a64_s(w & 0xFFFFFF, 24) << 2)) & _M32
+        if t & 3:
+            return "s", "instruksi tak didukung", "?"
+        if cv is None:
+            return "f", t, "b." + _A64_COND[cond]
+        return "j", t, "b"
+    if cv is False:
+        return "n", 0, "skip"
+    if cv is None:                                         # syarat tak tentu: jalankan di salinan, lalu gabungkan
+        s2 = st.fork(pc)
+        act, val, mn = _a32_exec(s2, w, pc)
+        if act == "s" and val in ("ret", "br register"):
+            return "n", 0, mn + "?"                        # kembali / lompat bersyarat: lanjutkan jalur jatuh-tembus
+        if act != "n":
+            return act, val, mn
+        for i in range(16):
+            if (s2.rv[i], s2.rk[i]) != (st.rv[i], st.rk[i]):
+                st.rk[i] = 0
+        if s2.fl != st.fl:
+            st.fl = [None] * 4
+        for k, v in s2.ov.items():
+            if st.ov.get(k, -1) != v:
+                st.ov[k] = None
+        st.nw, st.unres, st.ops = max(st.nw, s2.nw), s2.unres, st.ops | s2.ops
+        return "n", 0, mn + "?"
+    return _a32_exec(st, w, pc)
+
+
+def _a32_emu_func(d: bytes, L: dict, start: int, end: int, deadline: float, trace_max: int = 0, max_total: int = EMU_MAX_TOTAL) -> dict | None:
+    """Emulasi satu fungsi A32 [start, end). None bila awal tidak bisa dibaca. Tidak pernah melempar karena data biner."""
+    off0 = _va_off(L, start)
+    if off0 is None or end <= start or start & 3:
+        return None
+    n_w = min((end - start) // 4, (len(d) - off0) // 4)
+    if n_w <= 0:
+        return None
+    words = struct.unpack("<%dI" % n_w, d[off0:off0 + n_w * 4])
+    lim = start + n_w * 4
+    top = 0x7FD00000
+    s0 = _EmuSt(d, L, _M32, top - 0x100000, top + 0x10000, 16, start)
+    s0.rv[13], s0.rk[13] = top, _M32
+    work, finals, tr = [s0], [], []
+    total = forks = 0
+    stop = ""
+    timed = False
+    while work and not timed:
+        st = work.pop()
+        first = trace_max > 0 and not finals
+        while True:
+            pc = st.pc
+            if st.steps >= EMU_MAX_STEPS or total >= max_total:
+                stop = "batas langkah"
+                break
+            if not (st.steps & 255) and time.monotonic() > deadline:
+                stop, timed = "batas waktu", True
+                break
+            if not (start <= pc < lim):
+                stop = "keluar fungsi"
+                break
+            w = words[(pc - start) >> 2]
+            st.steps += 1
+            total += 1
+            if st.nw > EMU_MAX_WRITES:
+                stop = "batas tulis"
+                break
+            try:
+                act, val, mn = _a32_step(st, w, pc)
+            except (ValueError, OverflowError, IndexError, KeyError):
+                act, val, mn = "s", "instruksi tak didukung", "?"
+            if first and len(tr) < trace_max:
+                tr.append((pc, "%08X  %s" % (w, mn), "diambil" if act == "j" else ""))
+            if act == "s":
+                stop = val
+                break
+            if act == "j":
+                if not (start <= val < lim):
+                    stop = "lompat keluar fungsi"
+                    break
+                st.pc = val
+                continue
+            if act == "f" and forks < EMU_MAX_FORKS and start <= val < lim and len(work) < 32:
+                forks += 1
+                work.append(st.fork(val))
+            st.pc = pc + 4
+        if len(finals) < EMU_MAX_FINALS:
+            finals.append(st)
+    return {"steps": total, "forks": forks, "stop": stop, "finals": finals, "trace": tr, "timed": timed}
+
+
+# ---------------------------------------------------------------------------
+# v99.37 (roadmap v2, Tier A butir 4, tahap 2d-2c-2b-2b: emulasi mikro ARM 32-bit Thumb / Thumb-2; aditif): _thumb_emu_func() / _t_step() mengemulasi satu fungsi Thumb
+# memakai pembantu A32 (_a32_shift / _a32_xfer / _blk / _a32_wr) dan _emu_collect() yang sama. PC Thumb = alamat + 4 (pembantu A32 dipanggil dengan pc - 4).
+# 16-bit: geser imm, ADD / SUB (reg, imm3, imm8), MOV / CMP imm8, ALU 010000 (AND ... MVN), MOV / ADD / CMP register tinggi, BX / BLX, LDR literal, LDR / STR
+# (reg, imm5, SP, half, signed), ADR, ADD Rd, SP, PUSH / POP, LDM / STM, ADD / SUB SP, UXT / SXT, REV, CBZ / CBNZ, IT, B, B<c>, SVC. 32-bit: MOVW / MOVT, ADDW / SUBW, UBFX,
+# data processing (imm berekspansi, register bergeser), LDR / STR single (imm12, imm8 pre / post, reg, literal), LDM / STM / PUSH.W / POP.W, MUL / MLA, geser register,
+# UXT / SXT.W, B.W, B<c>.W, BL / BLX imm, hint. Blok IT: kondisi per instruksi (kondisi tak tentu dijalankan di salinan lalu digabung). Flag narrow hanya di luar IT.
+# TBB / TBH, VFP / NEON, LDREX / STREX, LDRD / STRD tidak didukung (jalur berhenti). Statis murni, hanya pustaka standar.
+# ---------------------------------------------------------------------------
+class _EmuStT(_EmuSt):
+    """_EmuSt + sisa kondisi blok IT (daftar kode kondisi untuk instruksi berikutnya)."""
+    __slots__ = ("it",)
+
+    def __init__(self, d, L, am, lo, hi, nreg, pc):
+        _EmuSt.__init__(self, d, L, am, lo, hi, nreg, pc)
+        self.it = []
+
+    def fork(self, pc):
+        s = _EmuStT.__new__(_EmuStT)
+        s.rv, s.rk, s.fl, s.ov, s.nw = self.rv[:], self.rk[:], self.fl[:], dict(self.ov), self.nw
+        s.pc, s.steps, s.ops, s.am, s.d, s.L, s.lo, s.hi, s.unres = pc, self.steps, set(self.ops), self.am, self.d, self.L, self.lo, self.hi, self.unres
+        s.it = []
+        return s
+
+
+_T_LOGIC = frozenset((0, 1, 8, 9, 12, 13, 14, 15, 16))
+_T_BAD = ("s", "instruksi tak didukung", "?")
+
+
+def _t_alu(st, opc: int, a, v2, c2, setf: bool, ops_ok: bool = True):
+    """ALU Thumb (penomoran opcode A32; 16 = ORN). Mengembalikan hasil (None bila tak diketahui) dan mengatur flag bila setf."""
+    if opc in _T_LOGIC:
+        if v2 is None or (opc not in (13, 15) and a is None):
+            res = None
+        else:
+            if opc in (0, 8):
+                res = a & v2
+            elif opc in (1, 9):
+                res = a ^ v2
+            elif opc == 12:
+                res = a | v2
+            elif opc == 13:
+                res = v2
+            elif opc == 14:
+                res = a & ~v2 & _M32
+            elif opc == 15:
+                res = ~v2 & _M32
+            else:
+                res = (a | ~v2) & _M32
+            if ops_ok and opc == 1:
+                st.ops.add("xor")
+            elif opc == 15:
+                st.ops.add("not")
+        if setf:
+            st.fl = [None, None, c2, st.fl[3]] if res is None else [res >> 31, int(res == 0), c2, st.fl[3]]
+        return res
+    x, y = (v2, a) if opc in (3, 7) else (a, v2)
+    sub = opc in (2, 3, 6, 7, 10)
+    cin = st.fl[2] if opc in (5, 6, 7) else (1 if sub else 0)
+    if x is None or y is None or cin is None:
+        if setf:
+            st.fl = [None] * 4
+        return None
+    yy = (~y) & _M32 if sub else y
+    tot = x + yy + cin
+    res = tot & _M32
+    if setf:
+        st.fl = [res >> 31, int(res == 0), tot >> 32, ((x ^ res) & (yy ^ res)) >> 31 & 1]
+    if opc == 3 and v2 == 0:
+        st.ops.add("neg")
+    return res
+
+
+def _t_nz(st, res, c) -> None:
+    st.fl = [None, None, c, st.fl[3]] if res is None else [res >> 31, int(res == 0), c, st.fl[3]]
+
+
+def _t_expand(imm12: int, cin):
+    """ThumbExpandImm_C -> (nilai, carry)."""
+    if imm12 >> 10 == 0:
+        b = imm12 & 0xFF
+        return (b, (b << 16) | b, (b << 24) | (b << 8), b * 0x01010101)[(imm12 >> 8) & 3], cin
+    u, r = 0x80 | (imm12 & 0x7F), (imm12 >> 7) & 31
+    v = ((u >> r) | (u << (32 - r))) & _M32
+    return v, v >> 31
+
+
+def _t_regs_ret(rn: int):
+    return "s", "ret" if rn == 13 else "br register", "pop pc"
+
+
+def _t16(st, h: int, pc: int, setf: bool):
+    pcx = pc - 4
+    t5 = h >> 11
+    rd = h & 7
+    if t5 < 3:                                                                  # LSL / LSR / ASR imm
+        vm, imm = _a32_rd(st, (h >> 3) & 7, pcx), (h >> 6) & 31
+        if vm is None:
+            res = c = None
+        else:
+            res, c = _a32_shift(vm, t5, imm, st.fl[2], False)
+            if imm:
+                st.ops.add(("shl", "shr", "shr")[t5])
+        _a32_wr(st, rd, res)
+        if setf:
+            _t_nz(st, res, c)
+        return "n", 0, "shift"
+    if t5 == 3:                                                                 # ADD / SUB reg, imm3
+        a = _a32_rd(st, (h >> 3) & 7, pcx)
+        b = _a32_rd(st, (h >> 6) & 7, pcx) if not (h & 0x0400) else (h >> 6) & 7
+        _a32_wr(st, rd, _t_alu(st, 2 if h & 0x0200 else 4, a, b, None, setf, False))
+        return "n", 0, "addsub"
+    if 4 <= t5 <= 7:                                                            # MOV / CMP / ADD / SUB imm8
+        k, rdn, imm = t5 & 3, (h >> 8) & 7, h & 0xFF
+        opc = (13, 10, 4, 2)[k]
+        res = _t_alu(st, opc, _a32_rd(st, rdn, pcx), imm, st.fl[2], setf or k == 1, False)
+        if k != 1:
+            _a32_wr(st, rdn, res)
+        return "n", 0, "imm8"
+    top6 = h >> 10
+    if top6 == 0x10:                                                            # ALU register
+        op, rm = (h >> 6) & 15, (h >> 3) & 7
+        a, b = _a32_rd(st, rd, pcx), _a32_rd(st, rm, pcx)
+        if op in (2, 3, 4, 7):                                                  # LSL / LSR / ASR / ROR register
+            if a is None or b is None:
+                res = c = None
+            else:
+                typ = {2: 0, 3: 1, 4: 2, 7: 3}[op]
+                res, c = _a32_shift(a, typ, b & 0xFF, st.fl[2], True)
+                if b & 0xFF:
+                    st.ops.add(("shl", "shr", "shr", "ror")[typ])
+            _a32_wr(st, rd, res)
+            if setf:
+                _t_nz(st, res, c)
+            return "n", 0, "shiftreg"
+        if op == 13:                                                            # MUL
+            res = None if a is None or b is None else (a * b) & _M32
+            _a32_wr(st, rd, res)
+            if setf:
+                _t_nz(st, res, st.fl[2])
+            return "n", 0, "mul"
+        amap = {0: 0, 1: 1, 5: 5, 6: 6, 8: 8, 9: 3, 10: 10, 11: 11, 12: 12, 14: 14, 15: 15}
+        opc = amap[op]
+        if opc == 3:
+            res = _t_alu(st, 3, b, 0, st.fl[2], setf)
+        elif opc == 15:
+            res = _t_alu(st, 15, None, b, st.fl[2], setf)
+        else:
+            res = _t_alu(st, opc, a, b, st.fl[2], setf or opc in (8, 10, 11), opc != 1 or rd != rm)
+        if opc not in (8, 10, 11):
+            _a32_wr(st, rd, res)
+        return "n", 0, "alu"
+    if top6 == 0x11:                                                            # register tinggi
+        op, rm = (h >> 8) & 3, (h >> 3) & 15
+        rdn = (h & 7) | ((h >> 4) & 8)
+        if op == 3:
+            if h & 0x80:
+                _a32_clobber(st)
+                return "n", 0, "blx"
+            return ("s", "ret", "bx lr") if rm == 14 else ("s", "br register", "bx")
+        if op == 1:
+            _t_alu(st, 10, _a32_rd(st, rdn, pcx), _a32_rd(st, rm, pcx), None, True, False)
+            return "n", 0, "cmp"
+        if rdn == 15:
+            return ("s", "ret", "mov pc") if op == 2 and rm == 14 else ("s", "br register", "br")
+        v = _a32_rd(st, rm, pcx)
+        if op == 0:
+            a = _a32_rd(st, rdn, pcx)
+            v = None if a is None or v is None else (a + v) & _M32
+        _a32_wr(st, rdn, v)
+        return "n", 0, "hi"
+    if t5 == 9:                                                                 # LDR literal
+        return _a32_xfer(st, pcx, 15, (h >> 8) & 7, ((pc + 4) & ~3) + (h & 0xFF) * 4, 0, 1, 1, 0, 1, 4, False)
+    top4 = h >> 12
+    if top4 == 5:                                                               # LDR / STR register
+        op = (h >> 9) & 7
+        off = _a32_rd(st, (h >> 6) & 7, pcx)
+        size, L, sg = ((4, 0, 0), (2, 0, 0), (1, 0, 0), (1, 1, 1), (4, 1, 0), (2, 1, 0), (1, 1, 0), (2, 1, 1))[op]
+        return _a32_xfer(st, pcx, (h >> 3) & 7, rd, _a32_rd(st, (h >> 3) & 7, pcx), off, 1, 1, 0, L, size, bool(sg))
+    if top4 in (6, 7, 8):                                                       # LDR / STR imm5 (word, byte, half)
+        rn, imm, L = (h >> 3) & 7, (h >> 6) & 31, (h >> 11) & 1
+        size = 4 if top4 == 6 else (1 if top4 == 7 else 2)
+        return _a32_xfer(st, pcx, rn, rd, _a32_rd(st, rn, pcx), imm * size, 1, 1, 0, L, size, False)
+    if top4 == 9:                                                               # LDR / STR sp
+        rt = (h >> 8) & 7
+        return _a32_xfer(st, pcx, 13, rt, _a32_rd(st, 13, pcx), (h & 0xFF) * 4, 1, 1, 0, (h >> 11) & 1, 4, False)
+    if top4 == 10:                                                              # ADR / ADD Rd, sp
+        rdd, imm = (h >> 8) & 7, (h & 0xFF) * 4
+        if h & 0x0800:
+            b = _a32_rd(st, 13, pcx)
+            _a32_wr(st, rdd, None if b is None else b + imm)
+        else:
+            _a32_wr(st, rdd, ((pc + 4) & ~3) + imm)
+        return "n", 0, "adr"
+    if top4 == 11:
+        if (h & 0xFF00) == 0xB000:                                              # ADD / SUB sp, #imm7 * 4
+            b = _a32_rd(st, 13, pcx)
+            imm = (h & 0x7F) * 4
+            _a32_wr(st, 13, None if b is None else (b - imm if h & 0x80 else b + imm))
+            return "n", 0, "addsp"
+        if (h & 0xFE00) == 0xB400 or (h & 0xFE00) == 0xBC00:                    # PUSH / POP
+            pop = bool(h & 0x0800)
+            regs = [i for i in range(8) if h >> i & 1] + ([15 if pop else 14] if h & 0x100 else [])
+            if not regs:
+                return _T_BAD
+            return _blk(st, pcx, 13, regs, 1 if pop else 0, 0 if pop else 1, 1, int(pop))
+        if (h & 0xFF00) == 0xBF00:
+            return "n", 0, "nop/hint"
+        if (h & 0xFF00) == 0xB200:                                              # SXTH / SXTB / UXTH / UXTB
+            v = _a32_rd(st, (h >> 3) & 7, pcx)
+            k = (h >> 6) & 3
+            if v is not None:
+                v &= 0xFFFF if k in (0, 2) else 0xFF
+                if k == 0 and v >> 15:
+                    v |= 0xFFFF0000
+                elif k == 1 and v >> 7:
+                    v |= 0xFFFFFF00
+            _a32_wr(st, rd, v)
+            return "n", 0, "ext"
+        if (h & 0xFFC0) == 0xBA00:                                              # REV
+            v = _a32_rd(st, (h >> 3) & 7, pcx)
+            _a32_wr(st, rd, None if v is None else int.from_bytes(v.to_bytes(4, "little"), "big"))
+            return "n", 0, "rev"
+        return _T_BAD
+    if top4 == 12:                                                              # LDM / STM
+        rn, regs, L = (h >> 8) & 7, [i for i in range(8) if h >> i & 1], (h >> 11) & 1
+        if not regs:
+            return _T_BAD
+        return _blk(st, pcx, rn, regs, 1, 0, 0 if (L and rn in regs) else 1, L)
+    if (h >> 8) == 0xDF:
+        st.rk[0] = 0
+        return "n", 0, "svc"
+    return _T_BAD
+
+
+def _t32(st, h1: int, h2: int, pc: int):
+    pcx = pc - 4
+    if (h1 & 0xF800) == 0xF000 and not h2 & 0x8000:
+        if not h1 & 0x0200:                                                     # data processing, imm berekspansi
+            return _t_dp32(st, h1, h2, pc, True)
+        imm12 = ((h1 >> 10) & 1) << 11 | ((h2 >> 12) & 7) << 8 | (h2 & 0xFF)
+        rd, rn = (h2 >> 8) & 15, h1 & 15
+        if (h1 & 0xFBF0) in (0xF240, 0xF2C0):                                   # MOVW / MOVT
+            imm16 = (h1 & 15) << 12 | imm12
+            if rd == 15:
+                return _T_BAD
+            if h1 & 0x0080:
+                old = _a32_rd(st, rd, pcx)
+                _a32_wr(st, rd, None if old is None else (old & 0xFFFF) | (imm16 << 16))
+            else:
+                _a32_wr(st, rd, imm16)
+            return "n", 0, "movw/t"
+        if (h1 & 0xFBF0) in (0xF200, 0xF2A0) and rd != 15:                      # ADDW / SUBW (rn = pc: ADR)
+            b = (pc + 4) & ~3 if rn == 15 else _a32_rd(st, rn, pcx)
+            _a32_wr(st, rd, None if b is None else (b - imm12 if h1 & 0x0080 else b + imm12))
+            return "n", 0, "addw"
+        if (h1 & 0xFBF0) == 0xF3C0 and rd != 15:                                # UBFX
+            v, lsb, wd = _a32_rd(st, rn, pcx), ((h2 >> 12) & 7) << 2 | ((h2 >> 6) & 3), (h2 & 31) + 1
+            if lsb + wd > 32:
+                return _T_BAD
+            _a32_wr(st, rd, None if v is None else (v >> lsb) & ((1 << wd) - 1))
+            return "n", 0, "ubfx"
+        return _T_BAD
+    if (h1 & 0xFE00) == 0xEA00 and not h2 & 0x8000:                             # data processing, register bergeser
+        return _t_dp32(st, h1, h2, pc, False)
+    if (h1 & 0xFE00) == 0xE800:
+        if (h1 & 0xFFF0) == 0xE8D0 and (h2 & 0xFFE0) == 0xF000:
+            return "s", "br register", "tbb"
+        if h1 & 0x0040 or (h1 >> 7) & 3 not in (1, 2):
+            return _T_BAD                                                       # LDRD / STRD / LDREX / SRS / RFE
+        rn, L = h1 & 15, (h1 >> 4) & 1
+        regs = [i for i in range(16) if h2 >> i & 1]
+        if not regs or rn == 15 or (h2 & 0x2000):
+            return _T_BAD
+        ia = ((h1 >> 7) & 3) == 1
+        return _blk(st, pcx, rn, regs, int(ia), int(not ia), (h1 >> 5) & 1 if not (L and rn in regs) else 0, L)
+    if (h1 & 0xFE00) == 0xF800:                                                 # LDR / STR single
+        S, U7, sc, L, rn, rt = (h1 >> 8) & 1, (h1 >> 7) & 1, (h1 >> 5) & 3, (h1 >> 4) & 1, h1 & 15, (h2 >> 12) & 15
+        size = {0: 1, 1: 2, 2: 4}.get(sc)
+        if size is None or (S and (not L or size == 4)):
+            return _T_BAD
+        if L and rt == 15 and size != 4:
+            return "n", 0, "pld"
+        if not L and rt == 15:
+            return _T_BAD
+        if rn == 15:
+            if not L:
+                return _T_BAD
+            return _a32_xfer(st, pcx, 15, rt, (pc + 4) & ~3, h2 & 0xFFF, 1, U7, 0, 1, size, bool(S))
+        if U7:
+            P, U, W, off = 1, 1, 0, h2 & 0xFFF
+        elif h2 & 0x0800:
+            P, U, W, off = (h2 >> 10) & 1, (h2 >> 9) & 1, (h2 >> 8) & 1, h2 & 0xFF
+            if (h2 & 0x0F00) == 0x0E00 or (not P and not W):
+                return _T_BAD
+        elif (h2 & 0x07C0) == 0:
+            P, U, W = 1, 1, 0
+            vm = _a32_rd(st, h2 & 15, pcx)
+            off = None if vm is None else (vm << ((h2 >> 4) & 3)) & _M32
+        else:
+            return _T_BAD
+        return _a32_xfer(st, pcx, rn, rt, _a32_rd(st, rn, pcx), off, P, U, W, L, size, bool(S))
+    if (h1 & 0xFFF0) == 0xFB00 and not h2 & 0x00F0:                             # MUL / MLA
+        rd, ra, rm, rn = (h2 >> 8) & 15, (h2 >> 12) & 15, h2 & 15, h1 & 15
+        a, b = _a32_rd(st, rn, pcx), _a32_rd(st, rm, pcx)
+        acc = 0 if ra == 15 else _a32_rd(st, ra, pcx)
+        _a32_wr(st, rd, None if a is None or b is None or acc is None else (a * b + acc) & _M32)
+        return "n", 0, "mul"
+    if (h1 & 0xFF80) == 0xFA00 and (h2 & 0xF0F0) == 0xF000:                    # geser register
+        typ, S, rn, rd, rm = (h1 >> 5) & 3, (h1 >> 4) & 1, h1 & 15, (h2 >> 8) & 15, h2 & 15
+        a, b = _a32_rd(st, rn, pcx), _a32_rd(st, rm, pcx)
+        if a is None or b is None:
+            res = c = None
+        else:
+            res, c = _a32_shift(a, typ, b & 0xFF, st.fl[2], True)
+            if b & 0xFF:
+                st.ops.add(("shl", "shr", "shr", "ror")[typ])
+        _a32_wr(st, rd, res)
+        if S:
+            _t_nz(st, res, c)
+        return "n", 0, "shift.w"
+    if (h1 & 0xFF8F) == 0xFA0F and (h2 & 0xF0C0) == 0xF080:                    # SXTH / UXTH / SXTB / UXTB .W
+        k = (h1 >> 4) & 7
+        if k not in (0, 1, 4, 5):
+            return _T_BAD
+        v = _a32_rd(st, h2 & 15, pcx)
+        if v is not None:
+            rot = ((h2 >> 4) & 3) * 8
+            v = ((v >> rot) | (v << (32 - rot))) & _M32 if rot else v
+            v &= 0xFFFF if k < 4 else 0xFF
+            if k == 0 and v >> 15:
+                v |= 0xFFFF0000
+            elif k == 4 and v >> 7:
+                v |= 0xFFFFFF00
+        _a32_wr(st, (h2 >> 8) & 15, v)
+        return "n", 0, "ext.w"
+    if (h1 & 0xF800) == 0xF000 and h2 & 0x8000:                                 # hint / barrier
+        if h1 == 0xF3AF or h1 == 0xF3BF:
+            return "n", 0, "nop.w"
+    return _T_BAD
+
+
+def _t_dp32(st, h1: int, h2: int, pc: int, imm_form: bool):
+    pcx = pc - 4
+    op4, S, rn, rd = (h1 >> 5) & 15, (h1 >> 4) & 1, h1 & 15, (h2 >> 8) & 15
+    zi = False
+    if imm_form:
+        v2, c2 = _t_expand(((h1 >> 10) & 1) << 11 | ((h2 >> 12) & 7) << 8 | (h2 & 0xFF), st.fl[2])
+    else:
+        rm, typ, amt = h2 & 15, (h2 >> 4) & 3, ((h2 >> 12) & 7) << 2 | ((h2 >> 6) & 3)
+        vm = _a32_rd(st, rm, pcx)
+        if vm is None:
+            v2 = c2 = None
+        else:
+            v2, c2 = _a32_shift(vm, typ, amt, st.fl[2], False)
+            if amt:
+                st.ops.add(("shl", "shr", "shr", "ror")[typ])
+        zi = op4 == 4 and rn == rm and not amt
+    tab = {0: 0, 1: 14, 2: 12, 3: 16, 4: 1, 8: 4, 10: 5, 11: 6, 13: 2, 14: 3}
+    if op4 not in tab:
+        return _T_BAD
+    opc, test = tab[op4], False
+    if rd == 15:
+        if not S or op4 not in (0, 4, 8, 13):
+            return _T_BAD
+        opc, test = {0: 8, 4: 9, 8: 11, 13: 10}[op4], True
+    if op4 in (2, 3) and rn == 15:
+        opc, a = (13 if op4 == 2 else 15), None
+    else:
+        a = _a32_rd(st, rn, pcx)
+    res = _t_alu(st, opc, a, v2, c2, bool(S) or test, not zi)
+    if not test:
+        _a32_wr(st, rd, res)
+    return "n", 0, "dp32"
+
+
+def _t_branch(h1: int, h2: int, pc: int, n: int):
+    """-> (jenis, target, cond): 'b' tanpa syarat, 'bc' bersyarat, 'bl' panggilan, None bila bukan cabang."""
+    if n == 2:
+        if (h1 >> 11) == 0x1C:
+            return "b", pc + 4 + (_a64_s(h1 & 0x7FF, 11) << 1), 14
+        if (h1 >> 12) == 13 and ((h1 >> 8) & 15) < 14:
+            return "bc", pc + 4 + (_a64_s(h1 & 0xFF, 8) << 1), (h1 >> 8) & 15
+        return None, 0, 0
+    if (h1 & 0xF800) != 0xF000 or not h2 & 0x8000:
+        return None, 0, 0
+    S, J1, J2 = (h1 >> 10) & 1, (h2 >> 13) & 1, (h2 >> 11) & 1
+    if (h2 & 0xD000) == 0x8000 and ((h1 >> 6) & 15) < 14:                       # B<c>.W (T3)
+        off = _a64_s(S << 20 | J2 << 19 | J1 << 18 | (h1 & 0x3F) << 12 | (h2 & 0x7FF) << 1, 21)
+        return "bc", pc + 4 + off, (h1 >> 6) & 15
+    if (h2 & 0xC000) == 0xC000 or (h2 & 0xD000) == 0x9000:
+        i1, i2 = (~(J1 ^ S)) & 1, (~(J2 ^ S)) & 1
+        off = _a64_s(S << 24 | i1 << 23 | i2 << 22 | (h1 & 0x3FF) << 12 | (h2 & 0x7FF) << 1, 25)
+        return ("bl" if h2 & 0x4000 else "b"), pc + 4 + off, 14
+    return None, 0, 0
+
+
+def _t_exec(st, h1: int, h2: int, pc: int, n: int, in_it: bool):
+    if n == 2:
+        if (h1 & 0xF500) == 0xB100:                                                         # CBZ / CBNZ
+            v = _a32_rd(st, h1 & 7, pc - 4)
+            t = pc + 4 + (((h1 >> 9) & 1) << 6 | ((h1 >> 3) & 31) << 1)
+            nz = (h1 >> 11) & 1
+            if v is None:
+                return "f", t, "cbnz" if nz else "cbz"
+            return ("j", t, "cb") if (v != 0) == bool(nz) else ("n", 0, "cb")
+        return _t16(st, h1, pc, not in_it)
+    return _t32(st, h1, h2, pc)
+
+
+def _t_step(st, h1: int, h2: int, pc: int, n: int):
+    """Satu instruksi Thumb. (aksi, nilai, mnemonik) seperti _a32_step."""
+    if n == 2 and (h1 & 0xFF00) == 0xBF00 and h1 & 15:                         # IT
+        fc, mask = (h1 >> 4) & 15, h1 & 15
+        cnt = 4 - ((mask & -mask).bit_length() - 1)
+        st.it = [fc] + [fc if ((mask >> (4 - k)) & 1) == (fc & 1) else fc ^ 1 for k in range(1, cnt)]
+        return "n", 0, "it"
+    it_cond = st.it.pop(0) if st.it else None
+    kind, tgt, cc = _t_branch(h1, h2, pc, n)
+    if it_cond is not None and kind in ("b", "bc"):
+        kind, cc = "bc", it_cond
+    if kind == "bc" or it_cond is not None or kind == "bl":
+        cond = cc if kind == "bc" else (it_cond if it_cond is not None else 14)
+    else:
+        cond = 14
+    cv = True if cond == 14 else _a64_cond(st.fl, cond)
+    if kind in ("b", "bc"):
+        if cv is False:
+            return "n", 0, "b?"
+        if tgt & 1:
+            return _T_BAD
+        if cv is None:
+            return "f", tgt, "b." + _A64_COND[cond]
+        return "j", tgt, "b"
+    if kind == "bl":
+        if cv is False:
+            return "n", 0, "bl?"
+        _a32_clobber(st)
+        return "n", 0, "bl"
+    if cv is False:
+        return "n", 0, "skip"
+    in_it = it_cond is not None
+    if cv is None:
+        s2 = st.fork(pc)
+        act, val, mn = _t_exec(s2, h1, h2, pc, n, True)
+        if act == "s" and val in ("ret", "br register"):
+            return "n", 0, mn + "?"
+        if act != "n":
+            return act, val, mn
+        for i in range(16):
+            if (s2.rv[i], s2.rk[i]) != (st.rv[i], st.rk[i]):
+                st.rk[i] = 0
+        if s2.fl != st.fl:
+            st.fl = [None] * 4
+        for k, v in s2.ov.items():
+            if st.ov.get(k, -1) != v:
+                st.ov[k] = None
+        st.nw, st.unres, st.ops = max(st.nw, s2.nw), s2.unres, st.ops | s2.ops
+        return "n", 0, mn + "?"
+    return _t_exec(st, h1, h2, pc, n, in_it)
+
+
+def _thumb_emu_func(d: bytes, L: dict, start: int, end: int, deadline: float, trace_max: int = 0, max_total: int = EMU_MAX_TOTAL) -> dict | None:
+    """Emulasi satu fungsi Thumb / Thumb-2 [start, end). None bila awal tidak bisa dibaca. Tidak pernah melempar karena data biner."""
+    off0 = _va_off(L, start)
+    if off0 is None or end <= start or start & 1:
+        return None
+    n_h = min((end - start) // 2, (len(d) - off0) // 2)
+    if n_h <= 0:
+        return None
+    hws = struct.unpack("<%dH" % n_h, d[off0:off0 + n_h * 2])
+    lim = start + n_h * 2
+    top = 0x7FD00000
+    s0 = _EmuStT(d, L, _M32, top - 0x100000, top + 0x10000, 16, start)
+    s0.rv[13], s0.rk[13] = top, _M32
+    work, finals, tr = [s0], [], []
+    total = forks = 0
+    stop = ""
+    timed = False
+    while work and not timed:
+        st = work.pop()
+        first = trace_max > 0 and not finals
+        while True:
+            pc = st.pc
+            if st.steps >= EMU_MAX_STEPS or total >= max_total:
+                stop = "batas langkah"
+                break
+            if not (st.steps & 255) and time.monotonic() > deadline:
+                stop, timed = "batas waktu", True
+                break
+            if not (start <= pc < lim) or pc & 1:
+                stop = "keluar fungsi"
+                break
+            j = (pc - start) >> 1
+            h1 = hws[j]
+            n = 4 if (h1 >> 11) in (0x1D, 0x1E, 0x1F) else 2
+            if j + (n >> 1) > n_h:
+                stop = "keluar fungsi"
+                break
+            h2 = hws[j + 1] if n == 4 else 0
+            st.steps += 1
+            total += 1
+            if st.nw > EMU_MAX_WRITES:
+                stop = "batas tulis"
+                break
+            try:
+                act, val, mn = _t_step(st, h1, h2, pc, n)
+            except (ValueError, OverflowError, IndexError, KeyError):
+                act, val, mn = "s", "instruksi tak didukung", "?"
+            if first and len(tr) < trace_max:
+                tr.append((pc, ("%04X %04X  %s" % (h1, h2, mn)) if n == 4 else ("%04X       %s" % (h1, mn)), "diambil" if act == "j" else ""))
+            if act == "s":
+                stop = val
+                break
+            if act == "j":
+                if not (start <= val < lim):
+                    stop = "lompat keluar fungsi"
+                    break
+                st.pc = val
+                continue
+            if act == "f" and forks < EMU_MAX_FORKS and start <= val < lim and len(work) < 32:
+                forks += 1
+                work.append(st.fork(val))
+            st.pc = pc + n
+        if len(finals) < EMU_MAX_FINALS:
+            finals.append(st)
+    return {"steps": total, "forks": forks, "stop": stop, "finals": finals, "trace": tr, "timed": timed}
+
+
+def _arm32_emu_func(d: bytes, L: dict, start: int, end: int, deadline: float, trace_max: int = 0, max_total: int = EMU_MAX_TOTAL) -> dict | None:
+    """v99.36 / v99.37: emulasi fungsi ARM 32-bit; mode (A32 / Thumb) dari wilayah di `start`."""
+    m = _arm_mode_at(L, start)
+    if m is None:
+        return None
+    return (_thumb_emu_func if m[0] == "t" else _a32_emu_func)(d, L, start, min(end, m[1]), deadline, trace_max, max_total)
+
+
+
 def _emu_runs(m: dict) -> list:
     out: list = []
     cur = None
@@ -7080,7 +9118,7 @@ def emu_text(path, at=None, defang: bool = True) -> str:
     """Ringkasan emulasi mikro (tanpa `at`) atau jejak + hasil satu fungsi (at = 'entry' / 0xVA). CLI --emu, API action 'emu'."""
     try:
         d, size = _cfg_read(path)
-        info, ctx, err = _relab_any(d, size)
+        info, ctx, err = _relab_multi(d, size)
     except Exception as e:
         return "Emulasi gagal (%s: %s)." % (type(e).__name__, str(e)[:120])
     if not info:
@@ -7119,10 +9157,15 @@ def emu_text(path, at=None, defang: bool = True) -> str:
 def _v98_enrich(d: bytes, rep: dict) -> None:
     pe = rep.get("pe")
     rep["relab"] = None
-    if not (pe and not pe.get("broken")) and not rep.get("elf"):
+    if not (pe and not pe.get("broken")) and not rep.get("elf") and not rep.get("macho"):
         return
     try:
-        info, _ctx = _re_lab(d, pe) if (pe and not pe.get("broken")) else _relab_elf(d)
+        if pe and not pe.get("broken"):
+            info, _ctx = _re_lab(d, pe)
+        else:
+            info, _ctx = _relab_elf(d) if rep.get("elf") else (None, None)
+            if info is None:                          # v99.26: ELF / Mach-O AArch64 (x86 / x64 tidak berubah)
+                info, _ctx, _err = _relab_arm(d)
     except Exception as e:
         rep["warn"].append("RE Lab gagal: %s" % type(e).__name__)
         return
@@ -7220,10 +9263,10 @@ def re_lab_path(path) -> dict:
                 if hit is not None:
                     return hit
             d = f.read(MAX_SCAN)
-        info, _c, err = _relab_any(d, size)
+        info, _c, err = _relab_multi(d, size)
         if info and sha:
             _cache_store(sha, "re", info, lambda back: _verify_relab(info, back))
-        return info or {"error": (err or "tidak ada bagian kode yang bisa dianalisis") + "; RE Lab mendukung PE dan ELF x86 / x64"}
+        return info or {"error": (err or "tidak ada bagian kode yang bisa dianalisis") + "; RE Lab mendukung PE dan ELF x86 / x64, serta ELF / Mach-O AArch64"}
     except Exception as e:
         return {"error": "%s: %s" % (type(e).__name__, str(e)[:120])}
 
@@ -7243,7 +9286,7 @@ def xref_text(path, query: str, max_items: int = 40) -> str:
         f, size = _open_regular(path)
         with f:
             d = f.read(MAX_SCAN)
-        info, ctx, err = _relab_any(d, size)
+        info, ctx, err = _relab_multi(d, size)
         if not ctx:
             return "XREF gagal: %s." % (err or "tidak bisa dianalisis")
         q = str(query).strip()
@@ -7369,6 +9412,1368 @@ def _gen_macho_map(d: bytes):
     return arch, entry, segs, "Mach-O"
 
 
+# ----------------------- v99.38 [A1]: disassembler ARM 32-bit (A32) murni Python (tahap 2d-2c-2b-3a) -----------------------
+# Dipakai `--disasm` / disasm_text untuk ELF / Mach-O ARM 32-bit bila capstone TIDAK terpasang (capstone, bila ada, tetap didahulukan).
+# Statis, tanpa dependensi. Instruksi umum saja: data processing (reg / imm / geser), MOVW / MOVT, MUL / MLA / UMULL.., LDR / STR (word, byte,
+# half, signed, dual), LDM / STM / PUSH / POP, B / BL / BLX / BX, SVC, CLZ, BKPT, UBFX / SBFX / BFI / BFC, UXT / SXT, REV; sisanya `.word`
+# (VFP / NEON / koprosesor / atomik / sistem). Format keluaran meniru capstone; diuji terhadap capstone 5.0.7 pada jutaan kata acak (100% sama).
+# Thumb / Thumb-2 sudah (v99.39, blok di bawah); AArch64 tanpa capstone sudah (v99.40, blok sebelum _disasm_generic).
+
+_A32_CC = ("eq", "ne", "hs", "lo", "mi", "pl", "vs", "vc", "hi", "ls", "ge", "lt", "gt", "le", "", "")
+_A32_REG = ("r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "sb", "sl", "fp", "ip", "sp", "lr", "pc")
+_A32_DP = ("and", "eor", "sub", "rsb", "add", "adc", "sbc", "rsc", "tst", "teq", "cmp", "cmn", "orr", "mov", "bic", "mvn")
+_A32_SH = ("lsl", "lsr", "asr", "ror")
+
+
+def _a32_imm(v: int) -> str:
+    return "#%d" % v if v < 10 else "#0x%x" % v
+
+
+def _a32_simm(v: int) -> str:
+    return _a32_imm(v) if v >= 0 else "#-" + _a32_imm(-v)[1:]
+
+
+def _a32_off(off: int, u: int, p: int, wb: int) -> str:
+    """Offset imediat memori: pasca-indeks selalu tampil; pra-indeks kosong bila 0 dan naik tanpa writeback (gaya capstone: '#-0' bila turun)."""
+    if off:
+        return ", " + _a32_simm(off if u else -off)
+    if not u:
+        return ", #-0"
+    return ", #0" if (not p or wb) else ""
+
+
+def _a32_shift_txt(w: int) -> str:
+    """Bagian geser operand register (bit 11..4) -> ', lsl #2' / ', lsl r3' / ', rrx' / ''."""
+    st = (w >> 5) & 3
+    if (w >> 4) & 1:
+        return ", %s %s" % (_A32_SH[st], _A32_REG[(w >> 8) & 15])
+    n = (w >> 7) & 31
+    if st == 0:
+        return ", lsl #%d" % n if n else ""
+    if st == 3 and n == 0:
+        return ", rrx"
+    return ", %s #%d" % (_A32_SH[st], n or (32 if st in (1, 2) else n))
+
+
+def _a32_reglist(m: int) -> str:
+    return "{" + ", ".join(_A32_REG[i] for i in range(16) if m >> i & 1) + "}"
+
+
+def _a32_dis(w: int, pc: int):
+    """Satu kata A32 -> (mnemonik, operand, target). Target = alamat percabangan langsung (atau None). Tak dikenal -> ('.word', '0x...', None).
+    Hanya instruksi umum (data processing, MOVW/MOVT, MUL/MLA/UMULL.., LDR/STR/LDRH/LDRSB/LDRD, LDM/STM/PUSH/POP, B/BL/BLX/BX, SVC, CLZ, BKPT,
+    UBFX/SBFX/BFI/BFC, UXTB/UXTH/SXTB/SXTH, REV); VFP / NEON / koprosesor / atomik / sistem -> .word."""
+    bad = (".word", "0x%08x" % w, None)
+    cond = w >> 28
+    cc = _A32_CC[cond] if cond != 15 else ""
+    R = _A32_REG
+    top = (w >> 25) & 7
+    if cond == 15:
+        if (w & 0xFE000000) == 0xFA000000:                                   # BLX imm
+            t = (pc + 8 + (((w & 0xFFFFFF) ^ 0x800000) - 0x800000) * 4 + ((w >> 24) & 1) * 2) & 0xFFFFFFFF
+            return "blx", "#0x%x" % t, t
+        return bad
+    if top == 0:
+        if (w & 0x0FFFFFF0) == 0x012FFF10:
+            return "bx" + cc, R[w & 15], None
+        if (w & 0x0FFFFFF0) == 0x012FFF30:
+            return "blx" + cc, R[w & 15], None
+        if (w & 0x0FFF0FF0) == 0x016F0F10:
+            return "clz" + cc, "%s, %s" % (R[(w >> 12) & 15], R[w & 15]), None
+        if (w & 0x0FF000F0) == 0x01200070 and cond == 14:
+            v = ((w >> 4) & 0xFFF0) | (w & 15)
+            return "bkpt", _a32_imm(v), None
+        if (w & 0x90) == 0x90:
+            sh = (w >> 5) & 3
+            if sh == 0:                                                      # multiply / swap / exclusive
+                rd, rn, rs, rm = (w >> 16) & 15, (w >> 12) & 15, (w >> 8) & 15, w & 15
+                s = "s" if (w >> 20) & 1 else ""
+                if (w & 0x0FE000F0) == 0x00000090:
+                    return "mul" + s + cc, "%s, %s, %s" % (R[rd], R[rm], R[rs]), None
+                if (w & 0x0FE000F0) == 0x00200090:
+                    return "mla" + s + cc, "%s, %s, %s, %s" % (R[rd], R[rm], R[rs], R[rn]), None
+                if (w & 0x0F8000F0) == 0x00800090:
+                    nm = ("umull", "umlal", "smull", "smlal")[(w >> 21) & 3]
+                    return nm + s + cc, "%s, %s, %s, %s" % (R[rn], R[rd], R[rm], R[rs]), None
+                return bad
+            p, u, i, wb, l = (w >> 24) & 1, (w >> 23) & 1, (w >> 22) & 1, (w >> 21) & 1, (w >> 20) & 1
+            if not l and sh == 1:
+                nm = "strh"
+            elif not l:
+                nm = "ldrd" if sh == 2 else "strd"
+            else:
+                nm = ("", "ldrh", "ldrsb", "ldrsh")[sh]
+            rt, rn = (w >> 12) & 15, (w >> 16) & 15
+            if not i and (w & 0xF00):
+                return bad
+            if (nm in ("ldrd", "strd") and (rt & 1)) or (not p and wb):
+                return bad
+            if i:
+                off = ((w >> 4) & 0xF0) | (w & 15)
+                o = _a32_off(off, u, p, wb)
+            else:
+                o = ", %s%s" % ("" if u else "-", R[w & 15])
+            if nm in ("ldrd", "strd"):
+                rt_s = "%s, %s" % (R[rt], R[rt + 1])
+            else:
+                rt_s = R[rt]
+            if p:
+                return nm + cc, "%s, [%s%s]%s" % (rt_s, R[rn], o, "!" if wb else ""), None
+            return nm + cc, "%s, [%s]%s" % (rt_s, R[rn], o), None
+        # data processing, operando register
+        op, s = (w >> 21) & 15, (w >> 20) & 1
+        if 8 <= op <= 11 and not s:
+            return bad
+        return _a32_dp_dis(w, op, s, cc, "reg")
+    if top == 1:
+        op, s = (w >> 21) & 15, (w >> 20) & 1
+        if (w & 0x0FF00000) == 0x03000000:
+            return "movw" + cc, "%s, %s" % (R[(w >> 12) & 15], _a32_imm(((w >> 4) & 0xF000) | (w & 0xFFF))), None
+        if (w & 0x0FF00000) == 0x03400000:
+            return "movt" + cc, "%s, %s" % (R[(w >> 12) & 15], _a32_imm(((w >> 4) & 0xF000) | (w & 0xFFF))), None
+        if 8 <= op <= 11 and not s:
+            return bad
+        return _a32_dp_dis(w, op, s, cc, "imm")
+    if top in (2, 3):
+        if top == 3 and (w & 0x10):
+            return _a32_media(w, cc, bad)
+        p, u, b, wb, l = (w >> 24) & 1, (w >> 23) & 1, (w >> 22) & 1, (w >> 21) & 1, (w >> 20) & 1
+        rt, rn = (w >> 12) & 15, (w >> 16) & 15
+        nm = ("ldr" if l else "str") + ("b" if b else "")
+        if not p and wb:
+            nm += "t"
+            wb = 0
+        if top == 2:
+            off = w & 0xFFF
+            o = _a32_off(off, u, p, wb)
+        else:
+            o = ", %s%s%s" % ("" if u else "-", R[w & 15], _a32_shift_txt(w & ~0x10))
+        if p:
+            return nm + cc, "%s, [%s%s]%s" % (R[rt], R[rn], o, "!" if wb else ""), None
+        return nm + cc, "%s, [%s]%s" % (R[rt], R[rn], o), None
+    if top == 4:
+        p, u, sbit, wb, l = (w >> 24) & 1, (w >> 23) & 1, (w >> 22) & 1, (w >> 21) & 1, (w >> 20) & 1
+        rn, m = (w >> 16) & 15, w & 0xFFFF
+        if not m:
+            return bad
+        if rn == 13 and wb and not sbit:
+            if not l and p and not u:
+                return "push" + cc, _a32_reglist(m), None
+            if l and not p and u:
+                return "pop" + cc, _a32_reglist(m), None
+        md = {(0, 0): "da", (0, 1): "ia", (1, 0): "db", (1, 1): "ib"}[(p, u)]
+        nm = ("ldm" if l else "stm") + ("" if md == "ia" else md)
+        return nm + cc, "%s%s, %s%s" % (R[rn], "!" if wb else "", _a32_reglist(m), " ^" if sbit else ""), None
+    if top == 5:
+        t = (pc + 8 + (((w & 0xFFFFFF) ^ 0x800000) - 0x800000) * 4) & 0xFFFFFFFF
+        return ("bl" if (w >> 24) & 1 else "b") + cc, "#0x%x" % t, t
+    if top == 7 and (w & 0x0F000000) == 0x0F000000:
+        return "svc" + cc, _a32_imm(w & 0xFFFFFF), None
+    return bad
+
+
+def _a32_dp_dis(w, op, s, cc, kind):
+    R = _A32_REG
+    rn, rd = (w >> 16) & 15, (w >> 12) & 15
+    if kind == "imm":
+        v = w & 0xFF
+        r = ((w >> 8) & 15) * 2
+        v = ((v >> r) | (v << (32 - r))) & 0xFFFFFFFF if r else v
+        o2 = _a32_imm(v)
+        sh = None
+    else:
+        o2 = R[w & 15] + _a32_shift_txt(w)
+        sh = ((w >> 4) & 1) or ((w >> 5) & 3) or ((w >> 7) & 31)
+    nm = _A32_DP[op]
+    if (8 <= op <= 11 and rd) or (op in (13, 15) and rn):                   # bidang SBZ tidak nol: bukan kode normal
+        return ".word", "0x%08x" % w, None
+    if 8 <= op <= 11:
+        return nm + cc, "%s, %s" % (R[rn], o2), None
+    sx = "s" if s else ""
+    if op in (13, 15):
+        if op == 13 and kind == "reg" and sh:                                # mov Rd, Rm, lsl #n -> lsl Rd, Rm, #n (gaya capstone / GNU)
+            st = (w >> 5) & 3
+            if (w >> 4) & 1:
+                return _A32_SH[st] + sx + cc, "%s, %s, %s" % (R[rd], R[w & 15], R[(w >> 8) & 15]), None
+            if not (st == 3 and not (w >> 7) & 31):
+                n = (w >> 7) & 31
+                return _A32_SH[st] + sx + cc, "%s, %s, %s" % (R[rd], R[w & 15], _a32_imm(n or (32 if st in (1, 2) else 0))), None
+            return "rrx" + sx + cc, "%s, %s" % (R[rd], R[w & 15]), None
+        return nm + sx + cc, "%s, %s" % (R[rd], o2), None
+    return nm + sx + cc, "%s, %s, %s" % (R[rd], R[rn], o2), None
+
+
+def _a32_media(w, cc, bad):
+    R = _A32_REG
+    rd, rn, rm = (w >> 12) & 15, (w >> 16) & 15, w & 15
+    if (w & 0x0FFF03F0) == 0x06EF0070:
+        return "uxtb" + cc, "%s, %s%s" % (R[rd], R[rm], (", ror #%d" % (8 * ((w >> 10) & 3))) if (w >> 10) & 3 else ""), None
+    if (w & 0x0FFF03F0) == 0x06FF0070:
+        return "uxth" + cc, "%s, %s%s" % (R[rd], R[rm], (", ror #%d" % (8 * ((w >> 10) & 3))) if (w >> 10) & 3 else ""), None
+    if (w & 0x0FFF03F0) == 0x06AF0070:
+        return "sxtb" + cc, "%s, %s%s" % (R[rd], R[rm], (", ror #%d" % (8 * ((w >> 10) & 3))) if (w >> 10) & 3 else ""), None
+    if (w & 0x0FFF03F0) == 0x06BF0070:
+        return "sxth" + cc, "%s, %s%s" % (R[rd], R[rm], (", ror #%d" % (8 * ((w >> 10) & 3))) if (w >> 10) & 3 else ""), None
+    if (w & 0x0FFF0FF0) == 0x06BF0F30:
+        return "rev" + cc, "%s, %s" % (R[rd], R[rm]), None
+    if (w & 0x0FA00070) == 0x07A00050:
+        lsb, wd = (w >> 7) & 31, ((w >> 16) & 31) + 1
+        return ("sbfx" if not (w >> 22) & 1 else "ubfx") + cc, "%s, %s, %s, %s" % (R[rd], R[rm], _a32_imm(lsb), _a32_imm(wd)), None
+    if (w & 0x0FE00070) == 0x07C00010:
+        lsb, msb = (w >> 7) & 31, (w >> 16) & 31
+        if msb < lsb:
+            return bad
+        if rm == 15:
+            return "bfc" + cc, "%s, %s, %s" % (R[rd], _a32_imm(lsb), _a32_imm(msb - lsb + 1)), None
+        return "bfi" + cc, "%s, %s, %s, %s" % (R[rd], R[rm], _a32_imm(lsb), _a32_imm(msb - lsb + 1)), None
+    return bad
+
+
+def _a32_disasm_lines(code: bytes, va: int, count: int, names: dict | None = None, read32=None) -> list[str]:
+    """Baris disassembly A32 (alamat, hex, mnemonik, operand, catatan nama / literal)."""
+    names = names or {}
+    out = []
+    for i in range(0, min(len(code) // 4, count) * 4, 4):
+        w = struct.unpack_from("<I", code, i)[0]
+        pc = va + i
+        m, o, t = _a32_dis(w, pc)
+        note = ""
+        if t is not None:
+            note = names.get(t, "")
+        elif m.startswith(("ldr", "str")) and (w & 0x0F7F0000) == 0x051F0000 and (w >> 28) != 15:    # literal pool: [pc, #+-imm]
+            lit = pc + 8 + ((w & 0xFFF) if (w >> 23) & 1 else -(w & 0xFFF))
+            v = read32(lit) if read32 else None
+            note = names.get(lit) or ("=0x%x" % v if v is not None else "")
+            if v is not None and not names.get(lit) and names.get(v):
+                note = "=%s" % names[v]
+        out.append("   %08X  %-24s %s %s%s" % (pc, code[i:i + 4].hex(" "), m, o, ("   ; " + note) if note else ""))
+    return out
+
+
+# ----------------------- v99.39 [A1]: disassembler Thumb / Thumb-2 murni Python (tahap 2d-2c-2b-3b-1) -----------------------
+# Dipakai `--disasm` / disasm_text untuk ELF / Mach-O ARM 32-bit (wilayah Thumb) dan arch=thumb bila capstone TIDAK terpasang (capstone tetap didahulukan).
+# Statis, tanpa dependensi. Thumb 16-bit: seluruh himpunan umum; Thumb-2 32-bit: B / B<c>.W / BL / BLX, data processing (imediat termodifikasi,
+# imediat biasa, register bergeser), LDR / STR (imm12, imm8, register, literal), LDM / STM / PUSH / POP, LDRD / STRD, TBB / TBH, MUL / MLA / MLS /
+# UMULL.. / SDIV / UDIV, CLZ / REV / RBIT / UXT / SXT, geser register, NOP / DMB / DSB / ISB; sisanya `.short` / `.word` (VFP / NEON / koprosesor /
+# atomik / sistem). Blok IT diikuti (akhiran kondisi + flag narrow). Format keluaran meniru capstone; diuji terhadap capstone 5.0.7.
+
+_T_ALU = ("and", "eor", "lsl", "lsr", "asr", "adc", "sbc", "ror", "tst", "rsb", "cmp", "cmn", "orr", "mul", "bic", "mvn")
+_T_BARRIER = {15: "sy", 14: "st", 11: "ish", 10: "ishst", 7: "nsh", 6: "nshst", 3: "osh", 2: "oshst"}
+
+
+def _t_sx(v: int, bits: int) -> int:
+    return v - (1 << bits) if v >> (bits - 1) else v
+
+
+def _t_expand_imm(imm12: int):
+    """ThumbExpandImm (12 bit -> 32 bit); None bila pola tak valid (byte nol pada bentuk berulang)."""
+    if imm12 >> 10 == 0:
+        b, m = imm12 & 0xFF, (imm12 >> 8) & 3
+        if m == 0:
+            return b
+        if not b:
+            return None
+        return (b | b << 16) if m == 1 else ((b << 8) | (b << 24)) if m == 2 else (b | b << 8 | b << 16 | b << 24)
+    v, r = 0x80 | (imm12 & 0x7F), imm12 >> 7
+    return ((v >> r) | (v << (32 - r))) & 0xFFFFFFFF
+
+
+def _t_shop(typ: int, imm5: int) -> str:
+    if typ == 0:
+        return ", lsl #%d" % imm5 if imm5 else ""
+    if typ == 3 and imm5 == 0:
+        return ", rrx"
+    return ", %s #%d" % (_A32_SH[typ], imm5 or 32)
+
+
+def _t_simm(v: int) -> str:
+    """Imediat bertanda gaya Thumb-2 capstone: negatif selalu heksadesimal ('#-0x7')."""
+    return "#-0x%x" % -v if v < 0 else _a32_imm(v)
+
+
+def _t_mem(rn: int, off: int, mode: str = "o", negz: bool = False) -> str:
+    """Operand memori imediat: mode 'o' offset, 'p' pra-indeks (!), 'q' pasca-indeks. off bertanda; negz = bit U nol dengan offset 0 ('#-0')."""
+    R = _A32_REG
+    if mode == "q":
+        return "[%s], %s" % (R[rn], "#-0" if negz else _a32_simm(off))
+    s = (", " + ("#-0x0" if negz else _t_simm(off))) if (off or mode == "p" or negz) else ""
+    return "[%s%s]%s" % (R[rn], s, "!" if mode == "p" else "")
+
+
+def _thumb_dis(h1: int, h2: int | None, pc: int, itc: int | None = None):
+    """Satu instruksi Thumb / Thumb-2 -> (mnemonik, operand, target, ukuran). h2 = halfword kedua (None bila tak ada). itc = indeks kondisi bila di dalam blok IT.
+    Target = alamat percabangan langsung (atau None). Tak dikenal -> ('.short' / '.word', ...)."""
+    R = _A32_REG
+    in_it = itc is not None
+    cc = _A32_CC[itc] if in_it else ""
+    sn = "" if in_it else "s"                                    # flag narrow: hanya di luar blok IT
+    if (h1 >> 11) in (0x1D, 0x1E, 0x1F):
+        if h2 is None:
+            return ".short", "0x%04x" % h1, None, 2
+        r = _t32_dis(h1, h2, pc, in_it, cc)
+        if r is None:
+            return ".word", "0x%04x%04x" % (h1, h2), None, 4
+        return r[0], r[1], r[2], 4
+    r = _t16_dis(h1, pc, in_it, cc, sn)
+    if r is None:
+        return ".short", "0x%04x" % h1, None, 2
+    return r[0], r[1], r[2], 2
+
+
+def _t16_dis(h: int, pc: int, in_it: bool, cc: str, sn: str):
+    R = _A32_REG
+    top = h >> 11
+    rd, rm3, rn3 = h & 7, (h >> 3) & 7, (h >> 6) & 7
+    if top < 3:                                                   # geser imediat
+        imm = (h >> 6) & 31
+        if top == 0:
+            if imm == 0:
+                return "mov" + sn + cc, "%s, %s" % (R[rd], R[rm3]), None
+            return "lsl" + sn + cc, "%s, %s, %s" % (R[rd], R[rm3], _a32_imm(imm)), None
+        return ("lsr", "asr")[top - 1] + sn + cc, "%s, %s, %s" % (R[rd], R[rm3], _a32_imm(imm or 32)), None
+    if top == 3:                                                  # add / sub register / imm3
+        nm = "sub" if (h >> 9) & 1 else "add"
+        v = ("#%d" % rn3 if rn3 < 10 else "#0x%x" % rn3) if (h >> 10) & 1 else R[rn3]
+        return nm + sn + cc, "%s, %s, %s" % (R[rd], R[rm3], v), None
+    if top < 8:                                                   # mov / cmp / add / sub imm8
+        op, rdn, imm = top & 3, (h >> 8) & 7, h & 0xFF
+        nm = ("mov", "cmp", "add", "sub")[op]
+        return nm + ("" if op == 1 else sn) + cc, "%s, %s" % (R[rdn], _a32_imm(imm)), None
+    if top == 8:
+        if (h >> 10) == 0x10:                                     # ALU
+            op = (h >> 6) & 15
+            nm = _T_ALU[op]
+            sx = "" if op in (8, 10, 11) else sn
+            if op == 9:
+                return "rsb" + sx + cc, "%s, %s, #0" % (R[rd], R[rm3]), None
+            if op == 13:
+                return "mul" + sx + cc, "%s, %s, %s" % (R[rd], R[rm3], R[rd]), None
+            return nm + sx + cc, "%s, %s" % (R[rd], R[rm3]), None
+        op = (h >> 8) & 3                                         # hi register / BX / BLX
+        rm = (h >> 3) & 15
+        rdh = (h & 7) | ((h >> 4) & 8)
+        if op == 3:
+            if h & 7 not in (0, 7):
+                return None
+            return ("blx" if (h >> 7) & 1 else "bx") + ("ns" if h & 7 else "") + cc, R[rm], None
+        if op == 0:
+            if rm == 13:
+                return "add" + cc, "%s, sp, %s" % (R[rdh], R[rdh]), None
+            return "add" + cc, "%s, %s" % (R[rdh], R[rm]), None
+        if op == 1:
+            return "cmp" + cc, "%s, %s" % (R[rdh], R[rm]), None
+        return "mov" + cc, "%s, %s" % (R[rdh], R[rm]), None
+    if top == 9:                                                  # LDR literal
+        return "ldr" + cc, "%s, [pc, #%s]" % (R[(h >> 8) & 7], _a32_imm((h & 0xFF) * 4)[1:]), None
+    if (h >> 12) == 5:                                            # load / store register
+        op = (h >> 9) & 7
+        nm = ("str", "strh", "strb", "ldrsb", "ldr", "ldrh", "ldrb", "ldrsh")[op]
+        return nm + cc, "%s, [%s, %s]" % (R[rd], R[rm3], R[rn3]), None
+    if (h >> 13) == 3:                                            # load / store imm5 (word / byte)
+        b, ld, imm = (h >> 12) & 1, (h >> 11) & 1, (h >> 6) & 31
+        nm = ("ldr" if ld else "str") + ("b" if b else "")
+        off = imm if b else imm * 4
+        return nm + cc, "%s, %s" % (R[rd], _t_mem(rm3, off)), None
+    if top in (16, 17):                                           # halfword imm5
+        off = ((h >> 6) & 31) * 2
+        return ("ldrh" if top & 1 else "strh") + cc, "%s, %s" % (R[rd], _t_mem(rm3, off)), None
+    if top in (18, 19):                                           # SP-relative
+        return ("ldr" if top & 1 else "str") + cc, "%s, %s" % (R[(h >> 8) & 7], _t_mem(13, (h & 0xFF) * 4)), None
+    if top in (20, 21):                                           # ADR / ADD Rd, SP, #imm
+        rdd, imm = (h >> 8) & 7, (h & 0xFF) * 4
+        if top == 20:
+            return "adr" + cc, "%s, %s" % (R[rdd], _a32_imm(imm)), None
+        return "add" + cc, "%s, sp, %s" % (R[rdd], _a32_imm(imm)), None
+    if top in (22, 23):                                           # misc 16-bit
+        hi = (h >> 8) & 15
+        if hi == 0:
+            return ("sub" if (h >> 7) & 1 else "add") + cc, "sp, %s" % _a32_imm((h & 0x7F) * 4), None
+        if hi == 2:
+            return ("sxth", "sxtb", "uxth", "uxtb")[(h >> 6) & 3] + cc, "%s, %s" % (R[rd], R[rm3]), None
+        if (h & 0xF500) == 0xB100:
+            if in_it:
+                return None
+            t = (pc + 4 + (((h >> 9) & 1) << 6 | ((h >> 3) & 31) << 1)) & 0xFFFFFFFF
+            return ("cbnz" if (h >> 11) & 1 else "cbz") + cc, "%s, #0x%x" % (R[rd], t), t
+        if (h & 0xF600) == 0xB400:
+            m = h & 0xFF
+            if not m and not (h & 0x100):
+                return None
+            lst = [R[i] for i in range(8) if m >> i & 1]
+            if h & 0x100:
+                lst.append("pc" if (h >> 11) & 1 else "lr")
+            return ("pop" if (h >> 11) & 1 else "push") + cc, "{" + ", ".join(lst) + "}", None
+        if (h & 0xFFC0) in (0xBA00, 0xBA40, 0xBAC0):
+            return {0xBA00: "rev", 0xBA40: "rev16", 0xBAC0: "revsh"}[h & 0xFFC0] + cc, "%s, %s" % (R[rd], R[rm3]), None
+        if (h & 0xFF00) == 0xBE00:
+            return "bkpt", _a32_imm(h & 0xFF), None
+        if (h & 0xFF00) == 0xBF00:
+            if h & 15:
+                return None                                       # IT: ditangani pemanggil (_thumb_it)
+            k = (h >> 4) & 15
+            nm = {0: "nop", 1: "yield", 2: "wfe", 3: "wfi", 4: "sev"}.get(k)
+            return (nm + cc, "", None) if nm else ("hint" + cc, _a32_imm(k), None)
+        if (h & 0xFFE8) == 0xB660:
+            return ("cpsid" if (h >> 4) & 1 else "cpsie"), ("".join(c_ for c_, b_ in (("a", 4), ("i", 2), ("f", 1)) if h & b_) or "none"), None
+        return None
+    if top in (24, 25):                                           # LDM / STM
+        rn, m = (h >> 8) & 7, h & 0xFF
+        if not m:
+            return None
+        ld = (h >> 11) & 1
+        wb = "" if (ld and (m >> rn) & 1) else "!"
+        return ("ldm" if ld else "stm") + cc, "%s%s, {%s}" % (R[rn], wb, ", ".join(R[i] for i in range(8) if m >> i & 1)), None
+    if top in (26, 27):                                           # B<c> / UDF / SVC
+        c = (h >> 8) & 15
+        if c == 15:
+            return "svc" + cc, _a32_imm(h & 0xFF), None
+        if c == 14:
+            return None
+        if in_it:
+            return None
+        t = (pc + 4 + _t_sx(h & 0xFF, 8) * 2) & 0xFFFFFFFF
+        return "b" + _A32_CC[c], "#0x%x" % t, t
+    if top == 28:                                                 # B
+        t = (pc + 4 + _t_sx(h & 0x7FF, 11) * 2) & 0xFFFFFFFF
+        return "b" + cc, "#0x%x" % t, t
+    return None
+
+
+def _thumb_it(h: int):
+    """Halfword IT -> (mnemonik, operand, [indeks kondisi tiap instruksi]) atau None."""
+    if (h & 0xFF00) != 0xBF00 or not h & 15:
+        return None
+    fc, mask = (h >> 4) & 15, h & 15
+    if fc == 15:
+        return None
+    cnt = 4 - ((mask & -mask).bit_length() - 1)
+    letters, conds = "", [fc]
+    for k in range(1, cnt):
+        same = ((mask >> (4 - k)) & 1) == (fc & 1)
+        letters += "t" if same else "e"
+        conds.append(fc if same else fc ^ 1)
+    if fc == 14 and "e" in letters:
+        return None
+    return "it" + letters, _A32_CC[fc] or "al", conds
+
+
+def _t32_dis(h1: int, h2: int, pc: int, in_it: bool, cc: str):
+    R = _A32_REG
+    sn = "" if in_it else "s"
+    op1 = (h1 >> 11) & 3
+    if op1 == 2 and (h2 & 0x8000):                                # cabang + kontrol misc
+        return _t32_branch(h1, h2, pc, in_it, cc)
+    if op1 == 2:                                                  # imediat (termodifikasi / biasa)
+        if not (h1 & 0x0200):
+            return _t32_modimm(h1, h2, in_it, cc)
+        return _t32_plainimm(h1, h2, in_it, cc)
+    if op1 == 1:
+        op2 = (h1 >> 4) & 0x7F
+        if op2 & 0x60 == 0x00 and not op2 & 4:
+            return _t32_ldstm(h1, h2, cc)
+        if op2 & 0x64 == 0x04:
+            return _t32_dualtb(h1, h2, cc)
+        if op2 & 0x60 == 0x20:
+            return _t32_shreg(h1, h2, in_it, cc)
+        return None
+    # op1 == 3
+    op2 = (h1 >> 4) & 0x7F
+    if op2 & 0x71 == 0x00 or (op2 & 0x67 in (0x01, 0x03, 0x05)):
+        return _t32_ldst(h1, h2, cc)
+    if op2 & 0x70 == 0x20:
+        return _t32_dpreg(h1, h2, in_it, cc)
+    if op2 & 0x78 == 0x30:
+        return _t32_mul(h1, h2, cc)
+    if op2 & 0x78 == 0x38:
+        return _t32_lmul(h1, h2, cc)
+    return None
+
+
+def _t32_branch(h1: int, h2: int, pc: int, in_it: bool, cc: str):
+    typ = (h2 >> 12) & 5
+    S = (h1 >> 10) & 1
+    J1, J2 = (h2 >> 13) & 1, (h2 >> 11) & 1
+    if typ == 0:                                                  # B<c>.W atau misc kontrol
+        if ((h1 >> 7) & 7) != 7:
+            if in_it:
+                return None
+            c = (h1 >> 6) & 15
+            off = _t_sx(S << 20 | J2 << 19 | J1 << 18 | (h1 & 0x3F) << 12 | (h2 & 0x7FF) << 1, 21)
+            t = (pc + 4 + off) & 0xFFFFFFFF
+            return "b" + _A32_CC[c] + ".w", "#0x%x" % t, t
+        if h1 == 0xF3AF and not (h2 & 0xFF00 ^ 0x8000):
+            nm = {0: "nop", 1: "yield", 2: "wfe", 3: "wfi", 4: "sev"}.get(h2 & 0xFF)
+            return (nm + cc + ".w", "", None) if nm else None
+        if h1 == 0xF3BF and (h2 & 0xFF00) == 0x8F00:
+            nm = {0x40: "dsb", 0x50: "dmb", 0x60: "isb"}.get(h2 & 0xF0)
+            opt = _T_BARRIER.get(h2 & 15)
+            if nm and opt:
+                return nm + cc, opt, None
+        return None
+    I1, I2 = (~(J1 ^ S)) & 1, (~(J2 ^ S)) & 1
+    if typ == 5 or typ == 1:                                      # B.W (typ 1) / BL (typ 5)
+        off = _t_sx(S << 24 | I1 << 23 | I2 << 22 | (h1 & 0x3FF) << 12 | (h2 & 0x7FF) << 1, 25)
+        t = (pc + 4 + off) & 0xFFFFFFFF
+        if typ == 1:
+            return "b" + cc + ".w", "#0x%x" % t, t
+        return "bl" + cc, "#0x%x" % t, t
+    if typ == 4:                                                  # BLX imm
+        if h2 & 1:
+            return None
+        off = _t_sx(S << 24 | I1 << 23 | I2 << 22 | (h1 & 0x3FF) << 12 | ((h2 >> 1) & 0x3FF) << 2, 25)
+        t = ((pc + 4) & ~3) + off & 0xFFFFFFFF
+        return "blx" + cc, "#0x%x" % t, t
+    return None
+
+
+_T_DP_NAME = {0: "and", 1: "bic", 2: "orr", 3: "orn", 4: "eor", 8: "add", 10: "adc", 11: "sbc", 13: "sub", 14: "rsb"}
+_T_DP_CMP = {0: "tst", 4: "teq", 8: "cmn", 13: "cmp"}
+_T_W_IMM = frozenset((8, 13, 14))                 # akhiran .w pada bentuk imediat (add / sub / rsb / mov); cmp / tst / teq / cmn selalu
+_T_W_REG = frozenset((0, 1, 2, 4, 8, 10, 11, 13))    # bentuk register (kecuali orn / rsb); mvn / mov selalu
+
+
+def _t32_dp(op: int, S: int, rn: int, rd: int, o2: str, in_it: bool, cc: str, form: str, v=None):
+    """Susunan umum data processing 32-bit: tst / teq / cmn / cmp, mov / mvn, atau 3-operand. form 'imm' (v = nilai) atau 'reg' (o2 = teks)."""
+    R = _A32_REG
+    sx = "s" if S else ""
+    if form == "imm":
+        cmpf = op in _T_DP_CMP and rd == 15 and S
+        sg = cmpf or (op == 2 and rn == 15) or (op in (3, 8, 10, 11, 13, 14) and not (op == 3 and rn == 15))
+        o2 = _a32_simm(v - (1 << 32) if (v >> 31 and sg) else v)
+    if op in _T_DP_CMP and rd == 15 and S:
+        return _T_DP_CMP[op] + cc + ".w", "%s, %s" % (R[rn], o2), None
+    nm = _T_DP_NAME.get(op)
+    if nm is None:
+        return None
+    if op in (2, 3) and rn == 15:
+        w = ".w" if (op == 2 or form == "reg") else ""
+        return ("mov" if op == 2 else "mvn") + sx + cc + w, "%s, %s" % (R[rd], o2), None
+    if op in _T_DP_CMP and rd == 15:
+        return None
+    w = ".w" if op in (_T_W_IMM if form == "imm" else _T_W_REG) else ""
+    return nm + sx + cc + w, "%s, %s, %s" % (R[rd], R[rn], o2), None
+
+
+def _t32_modimm(h1: int, h2: int, in_it: bool, cc: str):
+    op, S, rn = (h1 >> 5) & 15, (h1 >> 4) & 1, h1 & 15
+    rd = (h2 >> 8) & 15
+    imm12 = ((h1 >> 10) & 1) << 11 | ((h2 >> 12) & 7) << 8 | (h2 & 0xFF)
+    v = _t_expand_imm(imm12)
+    if v is None:
+        return None
+    return _t32_dp(op, S, rn, rd, "", in_it, cc, "imm", v)
+
+
+def _t32_shreg(h1: int, h2: int, in_it: bool, cc: str):
+    if h2 & 0x8000:
+        return None
+    op, S, rn = (h1 >> 5) & 15, (h1 >> 4) & 1, h1 & 15
+    rd, rm, typ = (h2 >> 8) & 15, h2 & 15, (h2 >> 4) & 3
+    imm5 = ((h2 >> 12) & 7) << 2 | ((h2 >> 6) & 3)
+    R = _A32_REG
+    if op == 2 and rn == 15:                                       # mov / geser / rrx
+        sx = "s" if S else ""
+        if typ == 0 and not imm5:
+            return "mov" + sx + cc + ".w", "%s, %s" % (R[rd], R[rm]), None
+        if typ == 3 and not imm5:
+            return "rrx" + sx + cc, "%s, %s" % (R[rd], R[rm]), None
+        return _A32_SH[typ] + sx + cc + ".w", "%s, %s, %s" % (R[rd], R[rm], _a32_imm(imm5 or 32)), None
+    return _t32_dp(op, S, rn, rd, R[rm] + _t_shop(typ, imm5), in_it, cc, "reg")
+
+
+def _t32_plainimm(h1: int, h2: int, in_it: bool, cc: str):
+    R = _A32_REG
+    op, rn = (h1 >> 4) & 31, h1 & 15
+    rd = (h2 >> 8) & 15
+    i, imm3, imm8 = (h1 >> 10) & 1, (h2 >> 12) & 7, h2 & 0xFF
+    if op in (0x00, 0x0A):                                         # addw / subw
+        v = i << 11 | imm3 << 8 | imm8
+        return ("addw" if op == 0 else "subw") + cc, "%s, %s, %s" % (R[rd], R[rn], _a32_imm(v)), None
+    if op in (0x04, 0x0C):                                         # movw / movt
+        v = (h1 & 15) << 12 | i << 11 | imm3 << 8 | imm8
+        return ("movw" if op == 4 else "movt") + cc, "%s, %s" % (R[rd], _a32_imm(v)), None
+    lsb, w5 = imm3 << 2 | ((h2 >> 6) & 3), h2 & 31
+    if i:
+        return None
+    if op in (0x14, 0x1C):                                         # sbfx / ubfx
+        return ("sbfx" if op == 0x14 else "ubfx") + cc, "%s, %s, %s, %s" % (R[rd], R[rn], _a32_imm(lsb), _a32_imm(w5 + 1)), None
+    if op == 0x16:                                                 # bfi / bfc
+        if w5 < lsb or (h2 & 0x20):
+            return None
+        if rn == 15:
+            return "bfc" + cc, "%s, %s, %s" % (R[rd], _a32_imm(lsb), _a32_imm(w5 - lsb + 1)), None
+        return "bfi" + cc, "%s, %s, %s, %s" % (R[rd], R[rn], _a32_imm(lsb), _a32_imm(w5 - lsb + 1)), None
+    return None
+
+
+def _t32_ldstm(h1: int, h2: int, cc: str):
+    R = _A32_REG
+    op, W, L, rn = (h1 >> 7) & 3, (h1 >> 5) & 1, (h1 >> 4) & 1, h1 & 15
+    if op not in (1, 2) or rn == 15 or (not L and (h2 & 0xA000)) or (L and (h2 & 0xC000) == 0xC000):
+        return None
+    lst = "{%s}" % ", ".join(R[i] for i in range(16) if h2 >> i & 1)
+    if not h2 & 0xFFFF:
+        return None
+    if rn == 13 and W:
+        if op == 1 and L:
+            return "pop" + cc + ".w", lst, None
+        if op == 2 and not L:
+            return "push" + cc + ".w", lst, None
+    nm = ("ldm" if L else "stm") + ("" if op == 1 else "db")
+    return nm + cc + (".w" if op == 1 else ""), "%s%s, %s" % (R[rn], "!" if W else "", lst), None
+
+
+def _t32_dualtb(h1: int, h2: int, cc: str):
+    R = _A32_REG
+    rn = h1 & 15
+    if (h1 & 0xFFF0) == 0xE8D0 and (h2 & 0xFFE0) == 0xF000:      # TBB / TBH
+        rm = h2 & 15
+        if (h2 >> 4) & 1:
+            return "tbh" + cc, "[%s, %s, lsl #1]" % (R[rn], R[rm]), None
+        return "tbb" + cc, "[%s, %s]" % (R[rn], R[rm]), None
+    P, U, W, L = (h1 >> 8) & 1, (h1 >> 7) & 1, (h1 >> 5) & 1, (h1 >> 4) & 1
+    if (h1 & 0xFE40) != 0xE840:
+        return None
+    rt, rt2 = (h2 >> 12) & 15, (h2 >> 8) & 15
+    off = (h2 & 0xFF) * 4
+    if not (P or W):                                               # LDREX / STREX (T1)
+        if U:
+            return None
+        mem = _t_mem(rn, off)
+        if L:
+            if rt2 != 15:
+                return None
+            return "ldrex" + cc, "%s, %s" % (R[rt], mem), None
+        if rt == 15:
+            return None
+        return "strex" + cc, "%s, %s, %s" % (R[rt2], R[rt], mem), None
+    off = off if U else -off
+    if rn == 15:
+        if not P or W or not L:
+            return None
+        return "ldrd" + cc, "%s, %s, [pc, %s]" % (R[rt], R[rt2], "#-0x0" if (not U and not off) else _t_simm(off)), None
+    nz = not U and not off
+    mem = _t_mem(rn, off, "o" if not W else "p", nz) if P else _t_mem(rn, off, "q", nz)
+    return ("ldrd" if L else "strd") + cc, "%s, %s, %s" % (R[rt], R[rt2], mem), None
+
+
+def _t32_ldst(h1: int, h2: int, cc: str):
+    R = _A32_REG
+    size, imm12, L, S, rn = (h1 >> 5) & 3, (h1 >> 7) & 1, (h1 >> 4) & 1, (h1 >> 8) & 1, h1 & 15
+    rt = (h2 >> 12) & 15
+    if (h1 & 0xFE00) != 0xF800 or size == 3 or (S and not L):
+        return None
+    if size == 2 and S:
+        return None
+    if L:
+        nm = ("ldrsb" if S else "ldrb", "ldrsh" if S else "ldrh", "ldr")[size]
+    else:
+        nm = ("strb", "strh", "str")[size]
+    if L and rt == 15 and size != 2:
+        return None
+    if rn == 15:                                                   # literal
+        if not L:
+            return None
+        off = h2 & 0xFFF
+        return nm + cc + ".w", "%s, [pc, %s]" % (R[rt], "#-0x0" if (not imm12 and not off) else _t_simm(off if imm12 else -off)), None
+    if imm12:
+        return nm + cc + ".w", "%s, %s" % (R[rt], _t_mem(rn, h2 & 0xFFF)), None
+    if not (h2 & 0x0800):                                          # register offset
+        if (h2 & 0x0FC0) or (h2 & 15) in (13, 15) and False:
+            return None
+        sh = (h2 >> 4) & 3
+        return nm + cc + ".w", "%s, [%s, %s%s]" % (R[rt], R[rn], R[h2 & 15], (", lsl #%d" % sh) if sh else ""), None
+    P, U, W = (h2 >> 10) & 1, (h2 >> 9) & 1, (h2 >> 8) & 1
+    off = h2 & 0xFF
+    if (h2 & 0xF00) == 0xE00:                                      # LDRT / STRT / .. (tak berhak)
+        return nm + "t" + cc, "%s, %s" % (R[rt], _t_mem(rn, off)), None
+    if not P and not W:
+        return None
+    nz = not U and not off
+    off = off if U else -off
+    return nm + cc, "%s, %s" % (R[rt], _t_mem(rn, off, ("p" if W else "o") if P else "q", nz)), None
+
+
+def _t32_dpreg(h1: int, h2: int, in_it: bool, cc: str):
+    R = _A32_REG
+    if (h2 & 0xF000) != 0xF000:
+        return None
+    rn, rd, rm = h1 & 15, (h2 >> 8) & 15, h2 & 15
+    op1, op2 = (h1 >> 4) & 15, (h2 >> 4) & 15
+    if (h2 & 0xF0) == 0 and not op1 & 8:                          # geser register
+        S = op1 & 1
+        typ = (op1 >> 1) & 3
+        return _A32_SH[typ] + ("s" if S else "") + cc + ".w", "%s, %s, %s" % (R[rd], R[rn], R[rm]), None
+    if (op1 & 8) == 0 and (h2 & 0x80) and rn == 15 and op1 in (0, 1, 4, 5):   # extend
+        rot = ((h2 >> 4) & 3) * 8
+        nm = {0: "sxth", 1: "uxth", 4: "sxtb", 5: "uxtb"}[op1]
+        return nm + cc + ".w", "%s, %s%s" % (R[rd], R[rm], (", ror #%d" % rot) if rot else ""), None
+    if op1 == 9 and (h2 & 0xC0) == 0x80 and rn == rm:              # rev / rev16 / rbit / revsh
+        nm = {0x8: "rev", 0x9: "rev16", 0xA: "rbit", 0xB: "revsh"}.get(op2)
+        if nm:
+            return nm + cc + ("" if nm == "rbit" else ".w"), "%s, %s" % (R[rd], R[rm]), None
+    if op1 == 11 and op2 == 8 and rn == rm:
+        return "clz" + cc, "%s, %s" % (R[rd], R[rm]), None
+    return None
+
+
+def _t32_mul(h1: int, h2: int, cc: str):
+    R = _A32_REG
+    op1, op2 = (h1 >> 4) & 7, (h2 >> 4) & 3
+    if op1 or (h2 & 0xC0):
+        return None
+    rn, ra, rd, rm = h1 & 15, (h2 >> 12) & 15, (h2 >> 8) & 15, h2 & 15
+    if op2 == 0:
+        if ra == 15:
+            return "mul" + cc, "%s, %s, %s" % (R[rd], R[rn], R[rm]), None
+        return "mla" + cc, "%s, %s, %s, %s" % (R[rd], R[rn], R[rm], R[ra]), None
+    if op2 == 1:
+        return "mls" + cc, "%s, %s, %s, %s" % (R[rd], R[rn], R[rm], R[ra]), None
+    return None
+
+
+def _t32_lmul(h1: int, h2: int, cc: str):
+    R = _A32_REG
+    op1, op2 = (h1 >> 4) & 7, (h2 >> 4) & 15
+    rn, rlo, rhi, rm = h1 & 15, (h2 >> 12) & 15, (h2 >> 8) & 15, h2 & 15
+    if op2 == 15 and op1 in (1, 3):
+        if rlo != 15:
+            return None
+        return ("sdiv" if op1 == 1 else "udiv") + cc, "%s, %s, %s" % (R[rhi], R[rn], R[rm]), None
+    nm = {(0, 0): "smull", (2, 0): "umull", (4, 0): "smlal", (6, 0): "umlal"}.get((op1, op2))
+    if nm:
+        return nm + cc, "%s, %s, %s, %s" % (R[rlo], R[rhi], R[rn], R[rm]), None
+    return None
+
+
+def _thumb_disasm_lines(code: bytes, va: int, count: int, names: dict | None = None, read32=None) -> list[str]:
+    """Baris disassembly Thumb / Thumb-2 (alamat, hex, mnemonik, operand, catatan nama / literal). Blok IT diikuti."""
+    names = names or {}
+    out, i, it = [], 0, []
+    n = len(code)
+    while i + 2 <= n and len(out) < count:
+        h1 = struct.unpack_from("<H", code, i)[0]
+        h2 = struct.unpack_from("<H", code, i + 2)[0] if (h1 >> 11) in (0x1D, 0x1E, 0x1F) and i + 4 <= n else None
+        pc = va + i
+        itx = _thumb_it(h1)                                         # IT baru selalu menggantikan blok yang berjalan
+        if itx:
+            m, o, t, sz = itx[0], itx[1], None, 2
+            it = list(itx[2])
+        else:
+            itc = it.pop(0) if it else None
+            m, o, t, sz = _thumb_dis(h1, h2, pc, itc)
+        note = ""
+        if t is not None:
+            note = names.get(t, "")
+        elif m.startswith(("ldr", "adr")) and ("[pc," in o or m.startswith("adr")):
+            if sz == 2:
+                imm = (h1 & 0xFF) * 4
+                lit = ((pc + 4) & ~3) + imm
+            else:
+                imm = h2 & 0xFFF
+                lit = ((pc + 4) & ~3) + (imm if (h1 >> 7) & 1 else -imm)
+            if m.startswith("ldr"):
+                v = read32(lit) if read32 else None
+                note = names.get(lit) or ("=0x%x" % v if v is not None else "")
+                if v is not None and not names.get(lit) and names.get(v):
+                    note = "=%s" % names[v]
+            else:
+                note = names.get(lit, "") or "=0x%x" % lit
+        out.append("   %08X  %-24s %s %s%s" % (pc, code[i:i + sz].hex(" "), m, o, ("   ; " + note) if note else ""))
+        i += sz
+    return out
+
+
+
+# ----------------------- v99.40 [A1]: disassembler AArch64 murni Python (tahap 2d-2c-2b-3b-2) -----------------------
+# Dipakai `--disasm` / disasm_text untuk ELF / Mach-O / berkas mentah arm64 bila capstone TIDAK terpasang (capstone, bila ada, tetap didahulukan).
+# Statis, tanpa dependensi. Himpunan umum: cabang (B / BL / B.cond / CBZ / TBZ / BR / BLR / RET / PAC), SVC / BRK, hint (NOP / PACIASP / BTI ..), barrier,
+# MRS / MSR; data processing imediat (ADR / ADRP, ADD / SUB, logika bitmask, MOVZ / MOVN / MOVK, bitfield + alias, EXTR); register (logika, ADD / SUB
+# bergeser dan extended, ADC / SBC, CCMP, CSEL + alias, DIV / MUL / MADD / SMULL.., geser variabel, RBIT / REV / CLZ); load / store (imm, unscaled, pra / pasca-indeks,
+# register-offset, literal, pair, exclusive / acquire-release, CAS, atomik LSE) untuk register umum + FP / SIMD skalar (b h s d q); FP skalar (FADD.., FCMP, FCVT,
+# SCVTF / FCVTZS, FMOV, FMADD, FCSEL). Sisanya `.word` (NEON vektor, SVE, fmov imediat, fixed-point, PAC data, CRC, MTE, sistem lain).
+# Format keluaran meniru capstone. BELUM dibandingkan dengan capstone pada sampel acak (jalankan test_a64_vs_capstone.py di mesin yang punya capstone).
+
+_A64_CC = ("eq", "ne", "hs", "lo", "mi", "pl", "vs", "vc", "hi", "ls", "ge", "lt", "gt", "le", "al", "nv")
+_A64_SH = ("lsl", "lsr", "asr", "ror")
+_A64_EXT = ("uxtb", "uxth", "uxtw", "uxtx", "sxtb", "sxth", "sxtw", "sxtx")
+_A64_BAR = {1: "oshld", 2: "oshst", 3: "osh", 5: "nshld", 6: "nshst", 7: "nsh", 9: "ishld", 10: "ishst", 11: "ish", 13: "ld", 14: "st", 15: "sy"}
+_A64_HINT = {0: "nop", 1: "yield", 2: "wfe", 3: "wfi", 4: "sev", 5: "sevl", 7: "xpaclri", 24: "paciaz", 25: "paciasp", 26: "pacibz", 27: "pacibsp",
+             28: "autiaz", 29: "autiasp", 30: "autibz", 31: "autibsp", 32: "bti", 34: "bti c", 36: "bti j", 38: "bti jc"}
+_A64_SYSREG = {(3, 3, 13, 0, 2): "tpidr_el0", (3, 3, 13, 0, 3): "tpidrro_el0", (3, 3, 4, 2, 0): "nzcv", (3, 3, 4, 2, 1): "daif", (3, 3, 4, 4, 0): "fpcr",
+               (3, 3, 4, 4, 1): "fpsr", (3, 3, 14, 0, 2): "cntvct_el0", (3, 3, 14, 0, 0): "cntfrq_el0", (3, 0, 0, 0, 0): "midr_el1", (3, 0, 4, 2, 2): "currentel",
+               (3, 0, 13, 0, 4): "tpidr_el1", (3, 0, 0, 0, 5): "mpidr_el1", (3, 3, 0, 0, 1): "ctr_el0", (3, 3, 0, 0, 7): "dczid_el0"}
+_A64_M64 = 0xFFFFFFFFFFFFFFFF
+
+
+def _a64_r(n: int, sf: int, sp: bool = False) -> str:
+    if n == 31:
+        return ("sp" if sf else "wsp") if sp else ("xzr" if sf else "wzr")
+    return ("x%d" if sf else "w%d") % n
+
+
+def _a64_bitmask_dis(sf: int, N: int, immr: int, imms: int):
+    """DecodeBitMasks (imediat logika) -> nilai atau None bila tak sah."""
+    if sf == 0 and N == 1:
+        return None
+    comb = (N << 6) | ((~imms) & 0x3F)
+    if comb == 0:
+        return None
+    ln = comb.bit_length() - 1
+    if ln < 1:
+        return None
+    esz = 1 << ln
+    lev = esz - 1
+    S, R = imms & lev, immr & lev
+    if S == lev:
+        return None
+    el = (1 << (S + 1)) - 1
+    el = ((el >> R) | (el << (esz - R))) & ((1 << esz) - 1)
+    out = 0
+    for i in range(0, 64 if sf else 32, esz):
+        out |= el << i
+    return out
+
+
+def _a64_sx(v: int, bits: int) -> int:
+    return v - (1 << bits) if v >> (bits - 1) else v
+
+
+def _a64_tgt(t: int) -> str:
+    return "#0x%x" % (t & _A64_M64)
+
+
+def _a64_mem(rn: int, off: int, mode: str = "off", show0: bool = False) -> str:
+    b = _a64_r(rn, 1, True)
+    if mode == "post":
+        return "[%s], %s" % (b, _a32_simm(off))
+    if mode == "pre":
+        return "[%s, %s]!" % (b, _a32_simm(off))
+    return "[%s, %s]" % (b, _a32_simm(off)) if (off or show0) else "[%s]" % b
+
+
+def _a64_prf(n: int) -> str:
+    t, g, p = (n >> 3) & 3, (n >> 1) & 3, n & 1
+    if t < 3 and g < 3:
+        return "p%s%s%s" % (("ld", "li", "st")[t], "l%d" % (g + 1), ("keep", "strm")[p])
+    return "#%d" % n
+
+
+def _a64_ldst_class(size: int, V: int, opc: int, unscaled: bool):
+    """(mnemonik, huruf register / sf, skala, jenis) atau None. jenis: 'g' umum, 'f' FP / SIMD, 'p' prefetch."""
+    u = "u" if unscaled else ""
+    if V:
+        if opc in (0, 1):
+            st = opc == 0
+            reg = "bhsd"[size]
+            sc = size
+        elif size == 0:
+            st = opc == 2
+            reg, sc = "q", 4
+        else:
+            return None
+        return (("st" if st else "ld") + ("ur" if unscaled else "r"), reg, sc, "f")
+    if size == 3 and opc == 2:
+        return ("prfum" if unscaled else "prfm", "x", 3, "p")
+    sfx = ("b", "h", "", "")[size]
+    if opc == 0:
+        return ("st" + ("ur" if unscaled else "r") + sfx, "x" if size == 3 else "w", size, "g")
+    if opc == 1:
+        return ("ld" + ("ur" if unscaled else "r") + sfx, "x" if size == 3 else "w", size, "g")
+    if size == 3 or (opc == 3 and size == 2):
+        return None
+    if size == 2:
+        return ("ld" + ("ur" if unscaled else "r") + "sw", "x", 2, "g")
+    return ("ld" + ("ur" if unscaled else "r") + "s" + sfx, "x" if opc == 2 else "w", size, "g")
+
+
+def _a64_rt(n: int, kind: str) -> str:
+    if kind in ("x", "w"):
+        return _a64_r(n, 1 if kind == "x" else 0)
+    return "%s%d" % (kind, n)
+
+
+def _a64_dis(w: int, pc: int):
+    """Satu kata AArch64 -> (mnemonik, operand, target). Target = alamat percabangan langsung (atau None). Tak dikenal -> ('.word', '0x...', None)."""
+    bad = (".word", "0x%08x" % w, None)
+    rd, rn, rm = w & 31, (w >> 5) & 31, (w >> 16) & 31
+    sf = (w >> 31) & 1
+    R = _a64_r
+    top = w & 0x1C000000
+    # ---------------------------------------------------------------- cabang / sistem
+    if top == 0x14000000:
+        if (w & 0x7C000000) == 0x14000000:                                     # B / BL
+            t = (pc + _a64_sx(w & 0x3FFFFFF, 26) * 4) & _A64_M64
+            return ("bl" if sf else "b"), _a64_tgt(t), t
+        if (w & 0x7E000000) == 0x34000000:                                     # CBZ / CBNZ
+            t = (pc + _a64_sx((w >> 5) & 0x7FFFF, 19) * 4) & _A64_M64
+            return ("cbnz" if (w >> 24) & 1 else "cbz"), "%s, %s" % (R(rd, sf), _a64_tgt(t)), t
+        if (w & 0x7E000000) == 0x36000000:                                     # TBZ / TBNZ
+            bit = (sf << 5) | ((w >> 19) & 31)
+            t = (pc + _a64_sx((w >> 5) & 0x3FFF, 14) * 4) & _A64_M64
+            return ("tbnz" if (w >> 24) & 1 else "tbz"), "%s, %s, %s" % (R(rd, sf), _a32_imm(bit), _a64_tgt(t)), t
+        if (w & 0xFF000010) == 0x54000000:                                     # B.cond
+            t = (pc + _a64_sx((w >> 5) & 0x7FFFF, 19) * 4) & _A64_M64
+            return "b." + _A64_CC[w & 15], _a64_tgt(t), t
+        if (w & 0xFF000000) == 0xD4000000:                                     # SVC / HVC / SMC / BRK / HLT
+            opc, ll, i16 = (w >> 21) & 7, w & 3, (w >> 5) & 0xFFFF
+            if (w >> 2) & 7:
+                return bad
+            nm = {(0, 1): "svc", (0, 2): "hvc", (0, 3): "smc", (1, 0): "brk", (2, 0): "hlt"}.get((opc, ll))
+            return (nm, _a32_imm(i16), None) if nm else bad
+        if (w & 0xFFFFF01F) == 0xD503201F:                                     # hint
+            h = (w >> 5) & 0x7F
+            return (_A64_HINT[h], "", None) if h in _A64_HINT else ("hint", _a32_imm(h), None)
+        if (w & 0xFFFFF01F) == 0xD503301F:                                     # clrex / dsb / dmb / isb
+            crm, op2 = (w >> 8) & 15, (w >> 5) & 7
+            if op2 == 2:
+                return "clrex", ("" if crm == 15 else _a32_imm(crm)), None
+            if op2 == 6:
+                return "isb", ("" if crm == 15 else _a32_imm(crm)), None
+            if op2 in (4, 5):
+                return ("dsb" if op2 == 4 else "dmb"), (_A64_BAR.get(crm) or _a32_imm(crm)) if crm != 0 else "#0", None
+            return bad
+        if (w & 0xFFF00000) in (0xD5300000, 0xD5100000):                       # MRS / MSR (register)
+            key = (2 + ((w >> 19) & 1), (w >> 16) & 7, (w >> 12) & 15, (w >> 8) & 15, (w >> 5) & 7)
+            nm = _A64_SYSREG.get(key) or "s%d_%d_c%d_c%d_%d" % key
+            if (w >> 21) & 1:
+                return "mrs", "%s, %s" % (R(rd, 1), nm), None
+            return "msr", "%s, %s" % (nm, R(rd, 1)), None
+        if (w & 0xFE000000) == 0xD6000000:                                     # BR / BLR / RET / ERET / PAC
+            opc, op2, op3, op4 = (w >> 21) & 15, (w >> 16) & 31, (w >> 10) & 63, w & 31
+            if op2 != 31:
+                return bad
+            if op3 == 0 and op4 == 0 and opc in (0, 1, 2):
+                if opc == 2:
+                    return "ret", ("" if rn == 30 else R(rn, 1)), None
+                return ("br", "blr")[opc], R(rn, 1), None
+            if op3 == 0 and op4 == 0 and opc == 4 and rn == 31:
+                return "eret", "", None
+            if op3 in (2, 3):
+                k = "a" if op3 == 2 else "b"
+                if opc == 2 and rn == 31 and op4 == 31:
+                    return "ret" + "a" + k, "", None
+                if opc == 4 and rn == 31 and op4 == 31:
+                    return "ereta" + k, "", None
+                if opc in (0, 1) and op4 == 31:
+                    return ("br", "blr")[opc] + "a" + k + "z", R(rn, 1), None
+                if opc in (8, 9):
+                    return ("br", "blr")[opc - 8] + "a" + k, "%s, %s" % (R(rn, 1), R(op4, 1, True)), None
+            return bad
+        return bad
+    # ---------------------------------------------------------------- data processing imediat
+    if top == 0x10000000:
+        if (w & 0x1F000000) == 0x10000000:                                     # ADR / ADRP
+            imm = _a64_sx((((w >> 5) & 0x7FFFF) << 2) | ((w >> 29) & 3), 21)
+            if sf:
+                t = (((pc & ~0xFFF) + (imm << 12))) & _A64_M64
+                return "adrp", "%s, %s" % (R(rd, 1), _a64_tgt(t)), None
+            t = (pc + imm) & _A64_M64
+            return "adr", "%s, %s" % (R(rd, 1), _a64_tgt(t)), None
+        if (w & 0x1F000000) == 0x11000000:                                     # ADD / SUB imediat
+            op, S, sh, imm = (w >> 30) & 1, (w >> 29) & 1, (w >> 22) & 3, (w >> 10) & 0xFFF
+            if sh > 1:
+                return bad
+            if not op and not S and not sh and not imm and (rd == 31 or rn == 31):
+                return "mov", "%s, %s" % (R(rd, sf, True), R(rn, sf, True)), None
+            im = _a32_imm(imm) + (", lsl #12" if sh else "")
+            if S and rd == 31:
+                return ("cmp" if op else "cmn"), "%s, %s" % (R(rn, sf, True), im), None
+            return ("sub" if op else "add") + ("s" if S else ""), "%s, %s, %s" % (R(rd, sf, not S), R(rn, sf, True), im), None
+        if (w & 0x1F800000) == 0x12000000:                                     # AND / ORR / EOR / ANDS imediat
+            opc = (w >> 29) & 3
+            v = _a64_bitmask_dis(sf, (w >> 22) & 1, (w >> 16) & 0x3F, (w >> 10) & 0x3F)
+            if v is None:
+                return bad
+            if opc == 3 and rd == 31:
+                return "tst", "%s, %s" % (R(rn, sf), _a32_imm(v)), None
+            if opc == 1 and rn == 31:
+                return "mov", "%s, %s" % (R(rd, sf, True), _a32_imm(v)), None
+            return ("and", "orr", "eor", "ands")[opc], "%s, %s, %s" % (R(rd, sf, opc != 3), R(rn, sf), _a32_imm(v)), None
+        if (w & 0x1F800000) == 0x12800000:                                     # MOVN / MOVZ / MOVK
+            opc, hw, i16 = (w >> 29) & 3, (w >> 21) & 3, (w >> 5) & 0xFFFF
+            if opc == 1 or (not sf and hw > 1):
+                return bad
+            sh = 16 * hw
+            mask = _A64_M64 if sf else 0xFFFFFFFF
+            if opc == 3:
+                return "movk", "%s, %s%s" % (R(rd, sf), _a32_imm(i16), (", lsl #%d" % sh) if sh else ""), None
+            if i16 == 0 and hw:
+                return ("movn" if opc == 0 else "movz"), "%s, #0, lsl #%d" % (R(rd, sf), sh), None
+            v = ((i16 << sh) if opc == 2 else ~(i16 << sh)) & mask
+            if opc == 0:
+                v = _a64_sx(v, 64 if sf else 32)
+                return "mov", "%s, %s" % (R(rd, sf), _a32_simm(v)), None
+            return "mov", "%s, %s" % (R(rd, sf), _a32_imm(v)), None
+        if (w & 0x1F800000) == 0x13000000:                                     # SBFM / BFM / UBFM
+            opc, N, immr, imms = (w >> 29) & 3, (w >> 22) & 1, (w >> 16) & 0x3F, (w >> 10) & 0x3F
+            sz = 64 if sf else 32
+            if opc == 3 or N != sf or immr >= sz or imms >= sz:
+                return bad
+            if opc == 0:                                                       # SBFM
+                if immr == 0 and imms in (7, 15):
+                    return ("sxtb" if imms == 7 else "sxth"), "%s, %s" % (R(rd, sf), R(rn, 0)), None
+                if immr == 0 and imms == 31 and sf:
+                    return "sxtw", "%s, %s" % (R(rd, 1), R(rn, 0)), None
+                if imms == sz - 1:
+                    return "asr", "%s, %s, %s" % (R(rd, sf), R(rn, sf), _a32_imm(immr)), None
+                if imms >= immr:
+                    return "sbfx", "%s, %s, %s, %s" % (R(rd, sf), R(rn, sf), _a32_imm(immr), _a32_imm(imms - immr + 1)), None
+                return "sbfiz", "%s, %s, %s, %s" % (R(rd, sf), R(rn, sf), _a32_imm(sz - immr), _a32_imm(imms + 1)), None
+            if opc == 2:                                                       # UBFM
+                if not sf and immr == 0 and imms in (7, 15):
+                    return ("uxtb" if imms == 7 else "uxth"), "%s, %s" % (R(rd, 0), R(rn, 0)), None
+                if imms == sz - 1:
+                    return "lsr", "%s, %s, %s" % (R(rd, sf), R(rn, sf), _a32_imm(immr)), None
+                if imms + 1 == immr:
+                    return "lsl", "%s, %s, %s" % (R(rd, sf), R(rn, sf), _a32_imm(sz - 1 - imms)), None
+                if imms >= immr:
+                    return "ubfx", "%s, %s, %s, %s" % (R(rd, sf), R(rn, sf), _a32_imm(immr), _a32_imm(imms - immr + 1)), None
+                return "ubfiz", "%s, %s, %s, %s" % (R(rd, sf), R(rn, sf), _a32_imm(sz - immr), _a32_imm(imms + 1)), None
+            if imms >= immr:                                                   # BFM
+                return "bfxil", "%s, %s, %s, %s" % (R(rd, sf), R(rn, sf), _a32_imm(immr), _a32_imm(imms - immr + 1)), None
+            if rn == 31:
+                return "bfc", "%s, %s, %s" % (R(rd, sf), _a32_imm(sz - immr), _a32_imm(imms + 1)), None
+            return "bfi", "%s, %s, %s, %s" % (R(rd, sf), R(rn, sf), _a32_imm(sz - immr), _a32_imm(imms + 1)), None
+        if (w & 0x1F800000) == 0x13800000:                                     # EXTR
+            imms = (w >> 10) & 0x3F
+            if ((w >> 29) & 3) or ((w >> 21) & 1) or ((w >> 22) & 1) != sf or (not sf and imms > 31):
+                return bad
+            if rn == rm:
+                return "ror", "%s, %s, %s" % (R(rd, sf), R(rn, sf), _a32_imm(imms)), None
+            return "extr", "%s, %s, %s, %s" % (R(rd, sf), R(rn, sf), R(rm, sf), _a32_imm(imms)), None
+        return bad
+    # ---------------------------------------------------------------- load / store
+    if (w & 0x0A000000) == 0x08000000:
+        return _a64_ldst(w, pc, bad)
+    # ---------------------------------------------------------------- data processing register
+    if (w & 0x0E000000) == 0x0A000000:
+        return _a64_dpreg(w, bad)
+    # ---------------------------------------------------------------- FP skalar
+    if (w & 0x0E000000) == 0x0E000000:
+        return _a64_fp(w, bad)
+    return bad
+
+
+def _a64_ldst(w: int, pc: int, bad):
+    rt, rn = w & 31, (w >> 5) & 31
+    size, V = (w >> 30) & 3, (w >> 26) & 1
+    if (w & 0x3F000000) == 0x08000000:                                         # exclusive / acquire-release / CAS
+        o2, L, o1, o0 = (w >> 23) & 1, (w >> 22) & 1, (w >> 21) & 1, (w >> 15) & 1
+        rs, rt2 = (w >> 16) & 31, (w >> 10) & 31
+        sfx = ("b", "h", "", "")[size]
+        sf = 1 if size == 3 else 0
+        mem = "[%s]" % _a64_r(rn, 1, True)
+        if not o2 and not o1:
+            if L:
+                if rs != 31 or rt2 != 31:
+                    return bad
+                return ("ldaxr" if o0 else "ldxr") + sfx, "%s, %s" % (_a64_r(rt, sf), mem), None
+            if rt2 != 31:
+                return bad
+            return ("stlxr" if o0 else "stxr") + sfx, "%s, %s, %s" % (_a64_r(rs, 0), _a64_r(rt, sf), mem), None
+        if not o2 and o1:
+            if size < 2:
+                return bad
+            if L:
+                if rs != 31:
+                    return bad
+                return ("ldaxp" if o0 else "ldxp"), "%s, %s, %s" % (_a64_r(rt, sf), _a64_r(rt2, sf), mem), None
+            return ("stlxp" if o0 else "stxp"), "%s, %s, %s, %s" % (_a64_r(rs, 0), _a64_r(rt, sf), _a64_r(rt2, sf), mem), None
+        if o2 and not o1:
+            if rs != 31 or rt2 != 31:
+                return bad
+            nm = (("ldar" if o0 else "ldlar") if L else ("stlr" if o0 else "stllr")) + sfx
+            return nm, "%s, %s" % (_a64_r(rt, sf), mem), None
+        if rt2 != 31:                                                          # CAS
+            return bad
+        return "cas" + ("a" if L else "") + ("l" if o0 else "") + sfx, "%s, %s, %s" % (_a64_r(rs, sf), _a64_r(rt, sf), mem), None
+    if (w & 0x3B000000) == 0x18000000:                                         # LDR literal
+        opc = (w >> 30) & 3
+        t = (pc + _a64_sx((w >> 5) & 0x7FFFF, 19) * 4) & _A64_M64
+        if V:
+            if opc == 3:
+                return bad
+            return "ldr", "%s, %s" % ("%s%d" % ("sdq"[opc], rt), _a64_tgt(t)), None
+        if opc == 3:
+            return "prfm", "%s, %s" % (_a64_prf(rt), _a64_tgt(t)), None
+        return ("ldr", "ldr", "ldrsw")[opc], "%s, %s" % (_a64_r(rt, 0 if opc == 0 else 1), _a64_tgt(t)), None
+    if (w & 0x3A000000) == 0x28000000:                                         # LDP / STP / LDNP / STNP / LDPSW
+        opc, idx, L = (w >> 30) & 3, (w >> 23) & 3, (w >> 22) & 1
+        rt2 = (w >> 10) & 31
+        imm = _a64_sx((w >> 15) & 0x7F, 7)
+        if V:
+            if opc == 3:
+                return bad
+            kind, sc = "sdq"[opc], 2 + opc
+        else:
+            if opc == 3 or (opc == 1 and (not L or idx == 0)):
+                return bad
+            kind, sc = ("w", "x", "x")[opc], 3 if opc == 2 else 2
+            if opc == 1:
+                kind = "x"
+        nm = ("ldp" if L else "stp") if idx else ("ldnp" if L else "stnp")
+        if opc == 1 and not V:
+            nm = "ldpsw"
+        off = imm << sc
+        mode = {0: "off", 1: "post", 2: "off", 3: "pre"}[idx]
+        return nm, "%s, %s, %s" % (_a64_rt(rt, kind), _a64_rt(rt2, kind), _a64_mem(rn, off, mode)), None
+    if (w & 0x3B000000) not in (0x38000000, 0x39000000):
+        return bad
+    opc = (w >> 22) & 3
+    if (w & 0x3B000000) == 0x39000000:                                         # unsigned offset
+        c = _a64_ldst_class(size, V, opc, False)
+        if not c:
+            return bad
+        nm, kind, sc, jn = c
+        off = ((w >> 10) & 0xFFF) << sc
+        if jn == "p":
+            return nm, "%s, %s" % (_a64_prf(rt), _a64_mem(rn, off)), None
+        return nm, "%s, %s" % (_a64_rt(rt, kind), _a64_mem(rn, off)), None
+    b21, b1110 = (w >> 21) & 1, (w >> 10) & 3
+    if b21 and b1110 == 2:                                                     # register offset
+        c = _a64_ldst_class(size, V, opc, False)
+        if not c:
+            return bad
+        nm, kind, sc, jn = c
+        opt, S = (w >> 13) & 7, (w >> 12) & 1
+        if opt not in (2, 3, 6, 7):
+            return bad
+        idxr = _a64_r(rm := (w >> 16) & 31, opt & 1)
+        base = _a64_r(rn, 1, True)
+        if opt == 3:
+            ex = (", lsl #%d" % sc) if S else ""
+        else:
+            ex = ", %s" % _A64_EXT[opt] + ((" #%d" % sc) if S else "")
+        tgt = _a64_prf(rt) if jn == "p" else _a64_rt(rt, kind)
+        return nm, "%s, [%s, %s%s]" % (tgt, base, idxr, ex), None
+    if b21 and b1110 == 0:                                                     # atomik LSE
+        if V:
+            return bad
+        A, Rr, o3, op3 = (w >> 23) & 1, (w >> 22) & 1, (w >> 15) & 1, (w >> 12) & 7
+        sfx = ("b", "h", "", "")[size]
+        sfv = 1 if size == 3 else 0
+        al = ("a" if A else "") + ("l" if Rr else "")
+        rs_ = (w >> 16) & 31
+        mem = "[%s]" % _a64_r(rn, 1, True)
+        if o3:
+            if op3 != 0:
+                return bad
+            return "swp" + al + sfx, "%s, %s, %s" % (_a64_r(rs_, sfv), _a64_r(rt, sfv), mem), None
+        ops = ("add", "clr", "eor", "set", "smax", "smin", "umax", "umin")
+        if rt == 31 and not A:
+            return "st" + ops[op3] + ("l" if Rr else "") + sfx, "%s, %s" % (_a64_r(rs_, sfv), mem), None
+        return "ld" + ops[op3] + al + sfx, "%s, %s, %s" % (_a64_r(rs_, sfv), _a64_r(rt, sfv), mem), None
+    if b21:
+        return bad
+    imm = _a64_sx((w >> 12) & 0x1FF, 9)
+    if b1110 == 0:                                                             # unscaled
+        c = _a64_ldst_class(size, V, opc, True)
+        if not c:
+            return bad
+        nm, kind, sc, jn = c
+        tgt = _a64_prf(rt) if jn == "p" else _a64_rt(rt, kind)
+        return nm, "%s, %s" % (tgt, _a64_mem(rn, imm)), None
+    c = _a64_ldst_class(size, V, opc, False)
+    if not c or c[3] == "p":
+        return bad
+    nm, kind, sc, jn = c
+    return nm, "%s, %s" % (_a64_rt(rt, kind), _a64_mem(rn, imm, "post" if b1110 == 1 else "pre")), None
+
+
+def _a64_shifted(w: int, sf: int):
+    sh, n = (w >> 22) & 3, (w >> 10) & 0x3F
+    if not sf and n > 31:
+        return None
+    return "" if (sh == 0 and n == 0) else ", %s %s" % (_A64_SH[sh], _a32_imm(n))
+
+
+def _a64_dpreg(w: int, bad):
+    rd, rn, rm = w & 31, (w >> 5) & 31, (w >> 16) & 31
+    sf = (w >> 31) & 1
+    R = _a64_r
+    if (w & 0x1F000000) == 0x0A000000:                                         # logika bergeser
+        opc, N = (w >> 29) & 3, (w >> 21) & 1
+        sh = _a64_shifted(w, sf)
+        if sh is None:
+            return bad
+        if opc == 1 and not N and rn == 31 and not sh:
+            return "mov", "%s, %s" % (R(rd, sf), R(rm, sf)), None
+        if opc == 1 and N and rn == 31:
+            return "mvn", "%s, %s%s" % (R(rd, sf), R(rm, sf), sh), None
+        if opc == 3 and not N and rd == 31:
+            return "tst", "%s, %s%s" % (R(rn, sf), R(rm, sf), sh), None
+        nm = (("and", "bic"), ("orr", "orn"), ("eor", "eon"), ("ands", "bics"))[opc][N]
+        return nm, "%s, %s, %s%s" % (R(rd, sf), R(rn, sf), R(rm, sf), sh), None
+    if (w & 0x1F200000) == 0x0B000000:                                         # ADD / SUB bergeser
+        op, S = (w >> 30) & 1, (w >> 29) & 1
+        if (w >> 22) & 3 == 3:
+            return bad
+        sh = _a64_shifted(w, sf)
+        if sh is None:
+            return bad
+        if S and rd == 31:
+            return ("cmp" if op else "cmn"), "%s, %s%s" % (R(rn, sf), R(rm, sf), sh), None
+        if op and rn == 31:
+            return "neg" + ("s" if S else ""), "%s, %s%s" % (R(rd, sf), R(rm, sf), sh), None
+        return ("sub" if op else "add") + ("s" if S else ""), "%s, %s, %s%s" % (R(rd, sf), R(rn, sf), R(rm, sf), sh), None
+    if (w & 0x1F200000) == 0x0B200000:                                         # ADD / SUB extended
+        op, S, opt, i3 = (w >> 30) & 1, (w >> 29) & 1, (w >> 13) & 7, (w >> 10) & 7
+        if ((w >> 22) & 3) or i3 > 4:
+            return bad
+        rmr = R(rm, 1 if opt in (3, 7) else 0)
+        if (rn == 31 or (rd == 31 and not S)) and opt == (3 if sf else 2):
+            ex = (", lsl %s" % _a32_imm(i3)) if i3 else ""
+        else:
+            ex = ", %s" % _A64_EXT[opt] + ((" %s" % _a32_imm(i3)) if i3 else "")
+        if S and rd == 31:
+            return ("cmp" if op else "cmn"), "%s, %s%s" % (R(rn, sf, True), rmr, ex), None
+        return ("sub" if op else "add") + ("s" if S else ""), "%s, %s, %s%s" % (R(rd, sf, not S), R(rn, sf, True), rmr, ex), None
+    if (w & 0x1FE0FC00) == 0x1A000000:                                         # ADC / SBC
+        op, S = (w >> 30) & 1, (w >> 29) & 1
+        if op and rn == 31:
+            return "ngc" + ("s" if S else ""), "%s, %s" % (R(rd, sf), R(rm, sf)), None
+        return ("sbc" if op else "adc") + ("s" if S else ""), "%s, %s, %s" % (R(rd, sf), R(rn, sf), R(rm, sf)), None
+    if (w & 0x1FE00410) == 0x1A400000 and (w >> 29) & 1:                       # CCMP / CCMN
+        nm = "ccmp" if (w >> 30) & 1 else "ccmn"
+        src = _a32_imm(rm) if (w >> 11) & 1 else R(rm, sf)
+        return nm, "%s, %s, %s, %s" % (R(rn, sf), src, _a32_imm(w & 15), _A64_CC[(w >> 12) & 15]), None
+    if (w & 0x1FE00800) == 0x1A800000 and not (w >> 29) & 1:                   # CSEL / CSINC / CSINV / CSNEG
+        op, o2, cond = (w >> 30) & 1, (w >> 10) & 1, (w >> 12) & 15
+        nm = (("csel", "csinc"), ("csinv", "csneg"))[op][o2]
+        if cond < 14 and nm != "csel":
+            inv = _A64_CC[cond ^ 1]
+            if nm == "csinc" and rn == 31 and rm == 31:
+                return "cset", "%s, %s" % (R(rd, sf), inv), None
+            if nm == "csinv" and rn == 31 and rm == 31:
+                return "csetm", "%s, %s" % (R(rd, sf), inv), None
+            if rn == rm and rn != 31:
+                return {"csinc": "cinc", "csinv": "cinv", "csneg": "cneg"}[nm], "%s, %s, %s" % (R(rd, sf), R(rn, sf), inv), None
+        return nm, "%s, %s, %s, %s" % (R(rd, sf), R(rn, sf), R(rm, sf), _A64_CC[cond]), None
+    if (w & 0x1F000000) == 0x1B000000:                                         # MADD / MSUB / SMADDL / UMULH ..
+        o0, op31, ra = (w >> 15) & 1, (w >> 21) & 7, (w >> 10) & 31
+        if (w >> 29) & 3:
+            return bad
+        if op31 == 0:
+            if ra == 31:
+                return ("mneg" if o0 else "mul"), "%s, %s, %s" % (R(rd, sf), R(rn, sf), R(rm, sf)), None
+            return ("msub" if o0 else "madd"), "%s, %s, %s, %s" % (R(rd, sf), R(rn, sf), R(rm, sf), R(ra, sf)), None
+        if not sf:
+            return bad
+        if op31 in (1, 5):
+            u = "u" if op31 == 5 else "s"
+            if ra == 31:
+                return u + ("mnegl" if o0 else "mull"), "%s, %s, %s" % (R(rd, 1), R(rn, 0), R(rm, 0)), None
+            return u + ("msubl" if o0 else "maddl"), "%s, %s, %s, %s" % (R(rd, 1), R(rn, 0), R(rm, 0), R(ra, 1)), None
+        if op31 in (2, 6) and not o0 and ra == 31:
+            return ("smulh" if op31 == 2 else "umulh"), "%s, %s, %s" % (R(rd, 1), R(rn, 1), R(rm, 1)), None
+        return bad
+    if (w & 0x5FE00000) == 0x1AC00000 and not (w >> 29) & 1:                  # DIV / geser variabel
+        opc = (w >> 10) & 0x3F
+        nm = {2: "udiv", 3: "sdiv", 8: "lsl", 9: "lsr", 10: "asr", 11: "ror"}.get(opc)
+        return (nm, "%s, %s, %s" % (R(rd, sf), R(rn, sf), R(rm, sf)), None) if nm else bad
+    if (w & 0x5FE00000) == 0x5AC00000 and not (w >> 29) & 1 and rm == 0:      # RBIT / REV / CLZ / CLS
+        opc = (w >> 10) & 0x3F
+        if opc == 0:
+            nm = "rbit"
+        elif opc == 1:
+            nm = "rev16"
+        elif opc == 2:
+            nm = "rev32" if sf else "rev"
+        elif opc == 3 and sf:
+            nm = "rev"
+        elif opc == 4:
+            nm = "clz"
+        elif opc == 5:
+            nm = "cls"
+        else:
+            return bad
+        return nm, "%s, %s" % (R(rd, sf), R(rn, sf)), None
+    return bad
+
+
+_A64_FPL = ("s", "d", None, "h")
+
+
+def _a64_fp(w: int, bad):
+    rd, rn, rm = w & 31, (w >> 5) & 31, (w >> 16) & 31
+    ft = (w >> 22) & 3
+    if (w & 0xFF000000) == 0x1F000000:                                         # FMADD / FMSUB / FNMADD / FNMSUB
+        L = _A64_FPL[ft]
+        if not L:
+            return bad
+        o1, o0, ra = (w >> 21) & 1, (w >> 15) & 1, (w >> 10) & 31
+        nm = (("fmadd", "fmsub"), ("fnmadd", "fnmsub"))[o1][o0]
+        return nm, "%s%d, %s%d, %s%d, %s%d" % (L, rd, L, rn, L, rm, L, ra), None
+    if (w & 0x7F200000) != 0x1E200000:
+        return bad
+    L = _A64_FPL[ft]
+    if (w & 0x7F20FC00) == 0x1E200000:                                         # FP <-> integer
+        sf = (w >> 31) & 1
+        rmode, opc = (w >> 19) & 3, (w >> 16) & 7
+        if not L:
+            return bad
+        fr, gr = "%s%d" % (L, rn), _a64_r(rd, sf)
+        if rmode == 0 and opc in (2, 3):
+            return ("scvtf" if opc == 2 else "ucvtf"), "%s%d, %s" % (L, rd, _a64_r(rn, sf)), None
+        if rmode == 0 and opc in (0, 1, 4, 5):
+            return ("fcvtns", "fcvtnu", None, None, "fcvtas", "fcvtau")[opc], "%s, %s" % (gr, fr), None
+        if rmode == 0 and opc in (6, 7):
+            if (L == "s" and sf) or (L == "d" and not sf) or L == "h":
+                return bad
+            if opc == 6:
+                return "fmov", "%s, %s" % (gr, fr), None
+            return "fmov", "%s%d, %s" % (L, rd, _a64_r(rn, sf)), None
+        if opc in (0, 1) and rmode in (1, 2, 3):
+            nm = {1: ("fcvtps", "fcvtpu"), 2: ("fcvtms", "fcvtmu"), 3: ("fcvtzs", "fcvtzu")}[rmode][opc]
+            return nm, "%s, %s" % (gr, fr), None
+        return bad
+    if not L:
+        return bad
+    if (w & 0xFF20FC07) == 0x1E202000:                                         # FCMP / FCMPE
+        o = (w >> 3) & 3
+        nm = "fcmpe" if o & 2 else "fcmp"
+        if o & 1:
+            return (nm, "%s%d, #0.0" % (L, rn), None) if rm == 0 else bad
+        return nm, "%s%d, %s%d" % (L, rn, L, rm), None
+    if (w & 0xFF200C00) == 0x1E200C00:                                         # FCSEL
+        return "fcsel", "%s%d, %s%d, %s%d, %s" % (L, rd, L, rn, L, rm, _A64_CC[(w >> 12) & 15]), None
+    if (w & 0xFF200C00) == 0x1E200800:                                         # 2 sumber
+        nm = ("fmul", "fdiv", "fadd", "fsub", "fmax", "fmin", "fmaxnm", "fminnm", "fnmul")
+        o = (w >> 12) & 15
+        if o >= len(nm):
+            return bad
+        return nm[o], "%s%d, %s%d, %s%d" % (L, rd, L, rn, L, rm), None
+    if (w & 0xFF207C00) == 0x1E204000:                                         # 1 sumber
+        o = (w >> 15) & 0x3F
+        if o in (4, 5, 7):
+            dst = {4: "s", 5: "d", 7: "h"}[o]
+            return (("fcvt", "%s%d, %s%d" % (dst, rd, L, rn), None) if dst != L else bad)
+        nm = {0: "fmov", 1: "fabs", 2: "fneg", 3: "fsqrt", 8: "frintn", 9: "frintp", 10: "frintm", 11: "frintz", 12: "frinta", 14: "frintx", 15: "frinti"}.get(o)
+        return (nm, "%s%d, %s%d" % (L, rd, L, rn), None) if nm else bad
+    return bad
+
+
+def _a64_disasm_lines(code: bytes, va: int, count: int, names: dict | None = None, read32=None) -> list[str]:
+    """Baris disassembly AArch64 (alamat, hex, mnemonik, operand, catatan nama / literal)."""
+    names = names or {}
+    out = []
+    for i in range(0, min(len(code) // 4, count) * 4, 4):
+        w = struct.unpack_from("<I", code, i)[0]
+        pc = va + i
+        m, o, t = _a64_dis(w, pc)
+        note = ""
+        if t is not None:
+            note = names.get(t, "")
+        elif (w & 0x3B000000) == 0x18000000 and m != ".word":                  # literal pool
+            lit = (pc + _a64_sx((w >> 5) & 0x7FFFF, 19) * 4) & _A64_M64
+            v = read32(lit) if read32 else None
+            note = names.get(lit) or (("=0x%x" % v) if v is not None else "")
+        out.append("   %08X  %-24s %s %s%s" % (pc, code[i:i + 4].hex(" "), m, o, ("   ; " + note) if note else ""))
+    return out
+
+
+
 def _disasm_generic(d: bytes, at, count: int, arch, was_pe: bool = False) -> str:
     """Disassembly di luar RE Lab PE: ELF, Mach-O, atau berkas mentah (alamat 'at' = offset berkas)."""
     fmt, entry, segs, a = "mentah", 0, [], None
@@ -7396,6 +10801,8 @@ def _disasm_generic(d: bytes, at, count: int, arch, was_pe: bool = False) -> str
             va, note_raw = 0, " (berkas mentah: mulai dari offset 0; pakai off:0x.. untuk lokasi lain)"
     else:
         va = int(s, 0)
+    if a in ("arm", "thumb") and va & 1:      # v99.39: alamat ganjil (mis. e_entry Thumb) = Thumb di alamat genap
+        a, va = "thumb", va & ~1
     if segs:
         off = next((o + (va - v) for v, o, n in segs if v <= va < v + n), None)
     else:
@@ -7407,6 +10814,61 @@ def _disasm_generic(d: bytes, at, count: int, arch, was_pe: bool = False) -> str
     try:
         import capstone
     except ImportError:
+        if a in ("arm", "thumb"):           # v99.38: A32 murni Python tanpa capstone; v99.39: + Thumb / Thumb-2
+            names = None
+            c2 = None
+            if segs:
+                try:
+                    _i2, c2, _e2 = _relab_arm(d)
+                    if c2 and c2.get("arch") == "arm":
+                        names = dict(c2["L"]["iat"])
+                        for tv, tn in c2["thunks"].items():
+                            names[tv] = tn.split("!")[-1] + "@plt"
+                        for fv, fo in c2["F"].items():
+                            names[fv] = fo["name"]
+                    else:
+                        c2 = None
+                except Exception:
+                    names, c2 = None, None
+            if a == "arm" and c2:
+                try:
+                    md_ = _arm_mode_at(c2["L"], va)
+                    if md_ and md_[0] == "t":
+                        a = "thumb"        # wilayah Thumb menurut simbol pemetaan ($t) / simbol fungsi
+                except Exception:
+                    pass
+
+            def _rd32(x):
+                o_ = next((o + (x - v) for v, o, n in segs if v <= x < v + n), None) if segs else x
+                return struct.unpack_from("<I", d, o_)[0] if o_ is not None and 0 <= o_ <= len(d) - 4 else None
+            if a == "thumb":
+                lines = _thumb_disasm_lines(code, va & ~1, count, names, _rd32)
+                if lines:
+                    return "DISASM @0x%X (%s, ARM 32-bit Thumb / Thumb-2; disassembler bawaan, pasang capstone untuk VFP / NEON / koprosesor)%s:\n%s" % (va, fmt, note_raw, "\n".join(lines))
+            else:
+                lines = _a32_disasm_lines(code, va & ~3, count, names, _rd32)
+                if lines:
+                    return "DISASM @0x%X (%s, ARM 32-bit A32; disassembler bawaan, pasang capstone untuk VFP / NEON)%s:\n%s" % (va, fmt, note_raw, "\n".join(lines))
+        if a == "arm64":                    # v99.40: AArch64 murni Python tanpa capstone
+            names64 = None
+            if segs:
+                try:
+                    _i3, c3, _e3 = _relab_arm(d)
+                    if c3 and c3.get("arch") == "arm64":
+                        names64 = dict(c3["L"]["iat"])
+                        for tv, tn in c3["thunks"].items():
+                            names64[tv] = tn.split("!")[-1] + "@plt"
+                        for fv, fo in c3["F"].items():
+                            names64[fv] = fo["name"]
+                except Exception:
+                    names64 = None
+
+            def _rd32b(x):
+                o_ = next((o + (x - v) for v, o, n in segs if v <= x < v + n), None) if segs else x
+                return struct.unpack_from("<I", d, o_)[0] if o_ is not None and 0 <= o_ <= len(d) - 4 else None
+            lines = _a64_disasm_lines(code, va & ~3, count, names64, _rd32b)
+            if lines:
+                return "DISASM @0x%X (%s, AArch64; disassembler bawaan, pasang capstone untuk NEON / SVE / instruksi langka)%s:\n%s" % (va, fmt, note_raw, "\n".join(lines))
         hexs = "\n".join("   %08X  %s" % (va + i, code[i:i + 16].hex(" ")) for i in range(0, min(len(code), 96), 16))
         return "Disassembler memerlukan pustaka opsional 'capstone' (pip install capstone). Tampilan hex pada 0x%X:\n%s" % (va, hexs)
     ca, modes, label = _CS_ARCHS[a]
@@ -8385,6 +11847,8 @@ def _dex_code_path(path) -> tuple[dict, list]:
             return acc, notes
         if not zipfile.is_zipfile(f_):
             return acc, ["bukan DEX / APK"]
+        if _zip_cd_bytes(f_) > MAX_ZIP_CD:   # v104
+            return acc, ["direktori pusat ZIP terlalu besar: tidak diurai"]
         with zipfile.ZipFile(f_) as z:
             infos = {i.filename.lower(): i for i in z.infolist()}
             entries: set = set()
@@ -9056,7 +12520,7 @@ def _apk_deep(z, names: list[str], low: list[str], out: dict) -> None:
     """Dipanggil dari _parse_zip untuk APK: manifest biner dan DEX."""
     man = None
     try:
-        mf = _zread(z, names[low.index("androidmanifest.xml")], 2 * 1024 * 1024)
+        mf = _zread(z, _zlast(z, low, "androidmanifest.xml"), 2 * 1024 * 1024)
         man = _axml_summary(mf)
         if man:
             out["manifest"] = man
@@ -10356,6 +13820,45 @@ _RE_GROUPS["ptrace (anti-debug / injeksi ELF)"] = ({"ptrace"}, 1, 3, "T1622 / T1
 _RE_INTR = re.compile(_RE_INTR.pattern + r"|/bin/(?:ba|da|z)?sh\b|/etc/(?:passwd|shadow)|/proc/self|/dev/tcp|crontab|authorized_keys|ld_preload|\.ssh/|/tmp/\.", re.I)
 
 
+def _elf_relr_decode(d: bytes, off: int, size: int, is64: bool, r2o, base: int, reloc: dict, cap: int = 400000) -> int:
+    """v99.44: dekode tabel DT_RELR (relokasi RELATIVE terkompresi) pada d[off:off+size]. Entri genap = alamat slot (lalu slot berikutnya
+    di +kata); entri ganjil = bitmap (bit 1..W-1 -> slot di alamat_sekarang + (i-1)*kata, lalu alamat_sekarang += (W-1)*kata).
+    Nilai slot dibaca dari berkas (addend implisit, bias muat 0) dan disimpan di reloc[VA slot]. Batas: cap entri peta, ukuran tabel.
+    Mengembalikan jumlah slot baru. Entri bitmap sebelum alamat pertama (rusak) diabaikan."""
+    ws = 8 if is64 else 4
+    fmt = "<Q" if is64 else "<I"
+    mask = (1 << (8 * ws)) - 1
+    if off is None or off < 0 or off >= len(d) or size <= 0:
+        return 0
+    size = min(size, len(d) - off, ws * 400000)
+    n0 = len(reloc)
+    where = None
+    bits = 8 * ws - 1
+
+    def put(va):
+        if len(reloc) >= cap or va < base:
+            return
+        so = r2o(va - base)
+        if so is None or so + ws > len(d):
+            return
+        reloc[va] = struct.unpack_from(fmt, d, so)[0] & mask
+
+    for k in range(size // ws):
+        if len(reloc) >= cap:
+            break
+        e = struct.unpack_from(fmt, d, off + k * ws)[0]
+        if e & 1 == 0:
+            where = e
+            put(where)
+            where += ws
+        elif where is not None:
+            for i in range(bits):
+                if (e >> (i + 1)) & 1:
+                    put(where + i * ws)
+            where += bits * ws
+    return len(reloc) - n0
+
+
 def _elf_layout(d: bytes, arm: bool = False) -> dict | None:
     """Peta alamat ELF untuk RE Lab: segmen LOAD, bagian eksekusi, impor (slot GOT -> nama), simbol fungsi. None bila bukan x86 / x86-64 LE
     (arm=True: ARM 32-bit atau AArch64 LE; v99.22, menambah kunci arch / fmt / thumb)."""
@@ -10370,6 +13873,7 @@ def _elf_layout(d: bytes, arm: bool = False) -> dict | None:
         return None
     rel_ok = ((21, 22) if mach == 40 else (1025, 1026)) if arm else (6, 7)
     thumb: set[int] = set()
+    modes: list[tuple[int, str]] = []       # v99.29: simbol pemetaan ARM ($a / $t / $d) -> (alamat, 'a' | 't' | 'd')
     try:
         if is64:
             entry, phoff, shoff = struct.unpack_from("<QQQ", d, 24)
@@ -10377,7 +13881,11 @@ def _elf_layout(d: bytes, arm: bool = False) -> dict | None:
         else:
             entry, phoff, shoff = struct.unpack_from("<III", d, 24)
             phentsz, phnum, shentsz, shnum, shstr = struct.unpack_from("<HHHHH", d, 42)
+            if arm and mach == 40 and entry & 1:               # v99.29: e_entry ganjil = entry Thumb
+                thumb.add(entry & ~1)
+                entry &= ~1
         segs = []
+        dyn_seg = None
         for i in range(min(phnum, 128)):
             o = phoff + i * phentsz
             if o + (56 if is64 else 32) > len(d):
@@ -10388,6 +13896,8 @@ def _elf_layout(d: bytes, arm: bool = False) -> dict | None:
                 pt, poff, va, _pa, fsz, msz, pf, _al = struct.unpack_from("<IIIIIIII", d, o)
             if pt == 1 and msz:
                 segs.append((va, poff, fsz, msz, pf))
+            elif pt == 2 and arm:
+                dyn_seg = (poff, fsz)                          # v99.44: PT_DYNAMIC (untuk DT_RELR tanpa section header)
         if not segs:
             return None
         base = min(x[0] for x in segs) & ~0xFFF
@@ -10444,6 +13954,8 @@ def _elf_layout(d: bytes, arm: bool = False) -> dict | None:
             if t["type"] in (2, 11):
                 symcache[si] = symtab(si)
                 for nm, val, _sz, typ, _bd, shndx in symcache[si]:
+                    if arm and mach == 40 and typ == 0 and shndx and nm[:2] in ("$a", "$t", "$d") and (len(nm) == 2 or nm[2] == ".") and len(modes) < 200000:
+                        modes.append((val & ~1, nm[1]))
                     if typ == 2 and shndx != 0 and val and nm and len(exports) < 30000:
                         if arm and mach == 40:
                             if val & 1:
@@ -10452,12 +13964,18 @@ def _elf_layout(d: bytes, arm: bool = False) -> dict | None:
                         else:
                             exports.setdefault(val, nm)
         iat: dict[int, str] = {}
+        reloc: dict[int, int] = {}          # v99.43: ARM / AArch64: VA slot -> nilai setelah relokasi (R_*_RELATIVE, R_*_ABS dengan simbol terdefinisi)
+        rel_rel, rel_abs = ((23, 2) if mach == 40 else (1027, 257)) if arm else (0, 0)
+        wmask = 0xFFFFFFFFFFFFFFFF if is64 else 0xFFFFFFFF
+        n_symrel = 0
+        rel_irel = (160 if mach == 40 else 1032) if arm else 0
+        irel: dict[int, int] = {}           # v99.56: VA slot -> VA resolver (R_*_IRELATIVE)
         for t in sh:
-            if t["type"] not in (4, 9) or t["link"] not in symcache:
+            if t["type"] not in (4, 9) or (t["link"] not in symcache and not arm):
                 continue
             rs = (24 if is64 else 12) if t["type"] == 4 else (16 if is64 else 8)
-            syms = symcache[t["link"]]
-            for k in range(min(t["size"] // rs, 40000)):
+            syms = symcache.get(t["link"], [])
+            for k in range(min(t["size"] // rs, 200000 if arm else 40000)):
                 o = t["off"] + k * rs
                 if o + rs > len(d):
                     break
@@ -10467,11 +13985,59 @@ def _elf_layout(d: bytes, arm: bool = False) -> dict | None:
                 else:
                     roff, rinfo = struct.unpack_from("<II", d, o)
                     rsym, rtyp = rinfo >> 8, rinfo & 0xFF
+                if arm and rtyp in (rel_rel, rel_abs) and len(reloc) < 400000:
+                    if t["type"] == 4:
+                        add_ = struct.unpack_from("<q" if is64 else "<i", d, o + (16 if is64 else 8))[0]
+                    else:                                                   # REL: addend implisit di slot (nilai berkas)
+                        so_ = r2o(roff - base) if roff >= base else None
+                        add_ = struct.unpack_from("<Q" if is64 else "<I", d, so_)[0] if so_ is not None and so_ + (8 if is64 else 4) <= len(d) else None
+                    if add_ is not None:
+                        if rtyp == rel_rel and rsym == 0:
+                            reloc[roff] = add_ & wmask
+                        elif rtyp == rel_abs and 0 < rsym < len(syms) and syms[rsym][5] != 0 and syms[rsym][1]:
+                            reloc[roff] = (syms[rsym][1] + add_) & wmask
+                if arm and rtyp == rel_irel and rsym == 0 and len(irel) < 4096:                   # v99.56: IRELATIVE: slot diisi hasil resolver (alamat resolver = addend / nilai di slot)
+                    if t["type"] == 4:
+                        ra_ = struct.unpack_from("<q" if is64 else "<i", d, o + (16 if is64 else 8))[0]
+                    else:
+                        so_ = r2o(roff - base) if roff >= base else None
+                        ra_ = struct.unpack_from("<Q" if is64 else "<I", d, so_)[0] if so_ is not None and so_ + (8 if is64 else 4) <= len(d) else 0
+                    if ra_ > 0:
+                        irel[roff] = ra_ & wmask
+                if arm and rtyp in rel_ok and 0 < rsym < len(syms) and len(reloc) < 400000:     # v99.46: GLOB_DAT / JUMP_SLOT ke simbol terdefinisi
+                    _nm0, sval, _sz0, sty, _bd0, sshn = syms[rsym]
+                    if sshn != 0 and sval and sty in (0, 1, 2) and roff not in reloc:
+                        sadd = struct.unpack_from("<q" if is64 else "<i", d, o + (16 if is64 else 8))[0] if t["type"] == 4 else 0
+                        reloc[roff] = (sval + sadd) & wmask
+                        n_symrel += 1
                 if rtyp in rel_ok and 0 < rsym < len(syms):
                     nm, _v, _sz, _ty, _bd, shndx = syms[rsym]
                     nm = nm.split("@")[0]
                     if shndx == 0 and nm and not nm.startswith(("_ITM_", "__gmon_start__", "__libc_start_main", "__cxa_finalize", "__stack_chk", "__cxa_atexit")):
                         iat[roff] = nm
+        n_relr = 0
+        if arm:                                                     # v99.44: DT_RELR (relokasi RELATIVE terkompresi)
+            relr_found = False
+            for t in sh:
+                if t["type"] in (19, 0x6FFFFF00) and t["off"] < len(d):
+                    relr_found = True
+                    n_relr += _elf_relr_decode(d, t["off"], t["size"], is64, r2o, base, reloc)
+            if not relr_found and dyn_seg and dyn_seg[0] < len(d):
+                dsz = 16 if is64 else 8
+                rtab = rsz_ = 0
+                for k in range(min(dyn_seg[1] // dsz, 1024)):
+                    o = dyn_seg[0] + k * dsz
+                    if o + dsz > len(d):
+                        break
+                    tag, val = struct.unpack_from("<qQ" if is64 else "<iI", d, o)
+                    if tag == 0:
+                        break
+                    if tag in (36, 0x6FFFE000):
+                        rtab = val
+                    elif tag in (35, 0x6FFFE001):
+                        rsz_ = val
+                if rtab and rsz_ and rtab >= base:
+                    n_relr += _elf_relr_decode(d, r2o(rtab - base), rsz_, is64, r2o, base, reloc)
         secs, xsecs = [], []
         for x in sh:
             if x["flags"] & 2 and x["addr"] and x["size"]:
@@ -10491,7 +14057,8 @@ def _elf_layout(d: bytes, arm: bool = False) -> dict | None:
             return None
         return {"base": base, "is64": is64, "size_img": size_img, "secs": secs, "xsecs": xsecs, "iat": iat, "exports": exports, "r2o": r2o,
                 "entry_va": entry if entry else 0, "entry_off": r2o(entry - base) if entry and entry >= base else None, "stripped": not any(t["type"] == 2 for t in sh),
-                "arch": ("arm64" if mach == 183 else "arm") if arm else ("x64" if is64 else "x86"), "fmt": "ELF", "thumb": thumb, "stubs": {}}
+                "arch": ("arm64" if mach == 183 else "arm") if arm else ("x64" if is64 else "x86"), "fmt": "ELF", "thumb": thumb, "stubs": {}, "modes": modes,
+                **({"reloc": reloc, "n_relr": n_relr, "n_symrel": n_symrel, "irel": irel} if arm else {})}
     except (struct.error, IndexError, OverflowError):
         return None
 
@@ -10528,6 +14095,92 @@ def _macho_pick_slice(d: bytes) -> int | None:
     return 0 if m in (b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe") else None
 
 
+def _macho_chained_binds(d: bytes, sb: int, dataoff: int, datasize: int, base: int, r2o, rebase: dict | None = None) -> dict[int, str]:
+    """v99.27 [2d-2b]: slot impor dari LC_DYLD_CHAINED_FIXUPS (Mach-O iOS 15+ / macOS 12+, tanpa bind opcode / indirect symbol).
+    Menelusuri rantai pointer per halaman segmen: {VA slot: nama simbol}. Format pointer: 1 / 9 / 12 (arm64e), 2 / 6 (64-bit). Lainnya dilewati. Batas ketat."""
+    out: dict[int, str] = {}
+    try:
+        fx = sb + dataoff
+        if datasize < 28 or fx + 28 > len(d):
+            return out
+        ver, st_off, imp_off, sym_off, n_imp, imp_fmt, _sf = struct.unpack_from("<IIIIIII", d, fx)
+        if ver != 0 or n_imp > 100000 or imp_fmt not in (1, 2, 3):
+            return out
+        isz = {1: 4, 2: 8, 3: 16}[imp_fmt]
+
+        def imp_name(k):
+            p = fx + imp_off + k * isz
+            if k >= n_imp or p + isz > len(d):
+                return ""
+            if imp_fmt == 3:
+                v = struct.unpack_from("<Q", d, p)[0]
+                no = v >> 32
+            else:
+                no = struct.unpack_from("<I", d, p)[0] >> 9
+            q = fx + sym_off + no
+            if q >= len(d) or no > datasize:
+                return ""
+            nm = _macho_cstr(d, q, 200)
+            return nm[1:] if nm.startswith("_") else nm
+        sis = fx + st_off
+        seg_count = struct.unpack_from("<I", d, sis)[0]
+        steps = 0
+        for si in range(min(seg_count, 64)):
+            so = struct.unpack_from("<I", d, sis + 4 + si * 4)[0]
+            if not so:
+                continue
+            q = sis + so
+            _sz, page_size, pfmt, seg_off, _mx, pcount = struct.unpack_from("<IHHQIH", d, q)
+            if pfmt in (1, 9, 12):
+                stride, bindbit, ordmask, nextbits = 8, 62, (0xFFFFFF if pfmt == 12 else 0xFFFF), 0x7FF
+            elif pfmt in (2, 6):
+                stride, bindbit, ordmask, nextbits = 4, 63, 0xFFFFFF, 0xFFF
+            else:
+                continue
+            for pi in range(min(pcount, 20000)):
+                ps = struct.unpack_from("<H", d, q + 22 + pi * 2)[0]
+                if ps == 0xFFFF:                                   # NONE: halaman tanpa fixup
+                    continue
+                if ps & 0x8000:                                    # v99.47: MULTI: indeks ke daftar awal rantai (diakhiri entri ber-bit 0x8000)
+                    starts_ = []
+                    kx = ps & 0x7FFF
+                    for _ in range(64):
+                        if q + 22 + kx * 2 + 2 > len(d):
+                            break
+                        cs = struct.unpack_from("<H", d, q + 22 + kx * 2)[0]
+                        starts_.append(cs & 0x7FFF)
+                        kx += 1
+                        if cs & 0x8000:
+                            break
+                else:
+                    starts_ = [ps]
+                for st_ in starts_:
+                    va = base + seg_off + pi * page_size + st_
+                    while steps < 400000:
+                        steps += 1
+                        o = r2o(va - base)
+                        if o is None or o + 8 > len(d):
+                            break
+                        v = struct.unpack_from("<Q", d, o)[0]
+                        if (v >> bindbit) & 1:
+                            nm = imp_name(v & ordmask)
+                            if nm:
+                                out.setdefault(va, nm)
+                        elif rebase is not None and len(rebase) < 400000:     # v99.45: pointer rebase -> alamat tujuan (high8 dibuang)
+                            if pfmt in (2, 6):
+                                tv = (v & 0xFFFFFFFFF) + (base if pfmt == 6 else 0)
+                            else:
+                                tv = (v & 0xFFFFFFFF) + base if (v >> 63) & 1 else (v & 0x7FFFFFFFFFF) + (base if pfmt in (9, 12) else 0)   # auth: selalu offset; non-auth: vmaddr (fmt 1) / offset (9, 12)
+                            rebase[va] = tv & 0xFFFFFFFFFFFFFFFF
+                        nx = (v >> 51) & nextbits
+                        if not nx:
+                            break
+                        va += nx * stride
+    except (struct.error, IndexError, OverflowError):
+        pass
+    return out
+
+
 def _macho_layout(d: bytes) -> dict | None:
     """Peta alamat Mach-O ARM / ARM64 little-endian untuk RE Lab. None bila bukan ARM / ARM64, rusak, atau tanpa bagian kode."""
     sb = _macho_pick_slice(d)
@@ -10543,7 +14196,7 @@ def _macho_layout(d: bytes) -> dict | None:
             return None
         psz = 8 if is64 else 4
         segs, secs_raw = [], []
-        symtab = dysym = None
+        symtab = dysym = cfix = None
         entry_off = pc = None
         encrypted = False
         text_va = None
@@ -10577,6 +14230,8 @@ def _macho_layout(d: bytes) -> dict | None:
                 symtab = struct.unpack_from("<IIII", d, off + 8)
             elif cmd == 0xB and csz >= 64:
                 dysym = struct.unpack_from("<II", d, off + 8 + 48)   # indirectsymoff, nindirectsyms
+            elif cmd == 0x80000034 and csz >= 16 and arch == "arm64":
+                cfix = struct.unpack_from("<II", d, off + 8)
             elif cmd == 0x80000028 and csz >= 16:
                 entry_off = struct.unpack_from("<Q", d, off + 8)[0]
             elif cmd == 0x5 and csz >= 16:
@@ -10654,6 +14309,10 @@ def _macho_layout(d: bytes) -> dict | None:
                 xsecs.append(sec)
         if not xsecs:
             return None
+        reloc_m: dict[int, int] = {}
+        if cfix:                                                  # v99.27: chained fixups (iOS 15+); aditif, tidak menimpa nama dari indirect symbol
+            for a_, n_ in _macho_chained_binds(d, sb, cfix[0], cfix[1], base, r2o, reloc_m).items():
+                iat.setdefault(a_, n_)
         ranges = [(base + s_["va"], base + s_["va"] + s_["vsize"]) for s_ in xsecs]
         exports: dict[int, str] = {}
         thumb: set[int] = set()
@@ -10674,7 +14333,7 @@ def _macho_layout(d: bytes) -> dict | None:
                 thumb.add(ent)
         return {"base": base, "is64": is64, "size_img": size_img, "secs": secs, "xsecs": xsecs, "iat": iat, "stubs": stubs, "exports": exports,
                 "r2o": r2o, "entry_va": ent, "entry_off": r2o(ent - base) if ent and ent >= base else None, "stripped": not exports,
-                "arch": arch, "fmt": "Mach-O", "thumb": thumb, "encrypted": encrypted}
+                "arch": arch, "fmt": "Mach-O", "thumb": thumb, "encrypted": encrypted, **({"reloc": reloc_m} if reloc_m else {})}
     except (struct.error, IndexError, OverflowError):
         return None
 
@@ -10682,8 +14341,1048 @@ def _macho_layout(d: bytes) -> dict | None:
 def _arm_layout(d: bytes) -> dict | None:
     """Peta alamat untuk ELF ARM / AArch64 atau Mach-O ARM / ARM64 (LE). None bila format / arsitektur lain atau berkas rusak."""
     if d[:4] == b"\x7fELF":
-        return _elf_layout(d, arm=True)
+        L = _elf_layout(d, arm=True)
+        if L and L.get("irel"):
+            try:
+                _arm_ifunc_resolve(d, L)
+            except (struct.error, IndexError, OverflowError, ValueError, KeyError, TypeError):
+                pass
+        return L
     return _macho_layout(d)
+
+
+IFUNC_TIME = 3.0                    # v99.56: batas waktu total emulasi resolver ifunc per berkas (detik)
+IFUNC_WINDOW = 0x400                # v99.56: ukuran jendela fungsi resolver (byte)
+
+
+def _arm_ifunc_resolve(d: bytes, L: dict) -> None:
+    """v99.56: R_*_IRELATIVE (ifunc, glibc / bionic): nilai slot = hasil memanggil resolver. Resolver kecil diemulasi dengan emulator AArch64 / A32 yang ada;
+    bila SEMUA jalur kembalinya memberi satu alamat kode yang sama, slot masuk L['reloc'] (BLR / BLX register lewat slot ikut diselesaikan v99.42).
+    Beberapa kandidat (resolver bergantung hwcap) atau hasil tak diketahui -> slot dilewati dan dihitung di L['n_irel_skip']. Kunci aditif: n_irel, n_irel_skip."""
+    irel = L.get("irel") or {}
+    arm64 = L.get("arch") == "arm64"
+    deadline = time.monotonic() + IFUNC_TIME
+    reloc = L.setdefault("reloc", {})
+    done: dict[int, int | None] = {}
+    n_ok = n_skip = 0
+    xr = [(x["va"] + L["base"], x["va"] + L["base"] + x["vsize"]) for x in L["xsecs"]]
+    inx = lambda a: any(lo <= a < hi for lo, hi in xr)
+    thumb = L.get("thumb") or set()
+    for slot, res in list(irel.items())[:512]:
+        if slot in reloc:
+            continue
+        if res not in done:
+            tgt = None
+            if time.monotonic() < deadline and inx(res) and res not in thumb and not (res & 1) and (arm64 or not res & 3):
+                end = min(res + IFUNC_WINDOW, max(hi for lo, hi in xr if lo <= res < hi))
+                r = (_a64_emu_func if arm64 else _a32_emu_func)(d, L, res, end, deadline)
+                if r:
+                    vals, ok = set(), bool(r["finals"])
+                    for st in r["finals"]:
+                        o_ = _va_off(L, st.pc)
+                        w_ = struct.unpack_from("<I", d, o_)[0] if o_ is not None and o_ + 4 <= len(d) else 0
+                        isret = (_a64_brk(w_)[0] == "ret") if arm64 else ((w_ & 0x0FFFFFFF) == 0x012FFF1E)
+                        if not isret:
+                            ok = False                          # jalur berakhir bukan di RET (batas / tak didukung): hasil tidak lengkap
+                            break
+                        reg = 0
+                        if st.rk[reg] != (_M64 if arm64 else _M32):
+                            ok = False
+                            break
+                        vals.add(st.rv[reg] & (_M64 if arm64 else _M32))
+                    if ok and len(vals) == 1:
+                        v_ = next(iter(vals))
+                        if inx(v_ & ~1) and not (arm64 and v_ & 3):
+                            tgt = v_
+            done[res] = tgt
+        if done[res] is None:
+            n_skip += 1
+        else:
+            reloc[slot] = done[res]
+            n_ok += 1
+    L["n_irel"], L["n_irel_skip"] = n_ok, n_skip
+
+
+# ---------------------------------------------------------------------------
+# v99.23 (roadmap v2, Tier A butir 4, tahap 2a: RE Lab AArch64; aditif): decoder AArch64 KECIL (hanya instruksi yang dibutuhkan, bukan disassembler
+# penuh) di atas _arm_layout(): BL / B (peta panggilan), ADRP + ADD / ADR / LDR literal (xref string), ADRP + LDR [GOT] (+ BR) (thunk / stub PLT
+# ELF), stub __stubs Mach-O, SVC (syscall langsung; MOVZ x8 / x16 diteruskan ke nomor syscall), penemuan fungsi (entry, ekspor, target BL,
+# prolog STP x29, x30). Menghasilkan info / ctx dengan kunci yang sama seperti _re_lab, jadi xref_text, ekspor anotasi, funcdiff, dan re_lab_path
+# ikut bekerja lewat _relab_multi(). API hashing ARM ada sejak v99.41 (info["api_hashes"]); TIDAK ada CFG / emulasi / stack string untuk ARM (info["cfg"] / info["emu"] tidak ada);
+# cfg_text / emu_text / disasm tetap hanya x86 / x64. ARM 32-bit (A32 / Thumb) belum didecode. Statis murni, hanya pustaka standar.
+# Batasan: ADRP + ADD dilacak dalam jendela 12 instruksi tanpa analisis aliran (register yang ditimpa di antaranya bisa memberi xref palsu yang
+# lalu disaring karena targetnya harus string terbaca); BLR / BR ke register tak diselesaikan; kode PAC (autia / braa) tidak diselesaikan.
+# ---------------------------------------------------------------------------
+_A64_SYS = {"linux": {117: "ptrace", 221: "execve", 220: "clone", 222: "mmap", 226: "mprotect", 63: "read", 64: "write", 56: "openat", 93: "exit", 281: "execveat", 167: "prctl", 270: "process_vm_writev"},
+            "macho": {26: "ptrace", 59: "execve", 202: "sysctl", 5: "open", 197: "mmap", 74: "mprotect", 1: "exit", 340: "proc_info"}}
+A64_WINDOW = 12
+
+
+def _a64_s(v: int, bits: int) -> int:
+    return v - (1 << bits) if v & (1 << (bits - 1)) else v
+
+
+def _a64_entry_stub(d: bytes, L: dict) -> dict:
+    off = L.get("entry_off")
+    if off is None:
+        return {"hex": "", "note": "entry point tidak ada di berkas (dipetakan ke luar data mentah)"}
+    b = d[off:off + 16]
+    note = ""
+    if len(b) >= 8 and (struct.unpack_from("<I", b, 0)[0] & 0xFFFFFF3F) == 0xD503241F:
+        note = "diawali BTI (kompilator modern, jalur normal)"
+    elif len(b) >= 4 and (struct.unpack_from("<I", b, 0)[0] & 0xFC000000) == 0x14000000:
+        note = "langsung B ke rutin lain (CRT / protektor / entry tersembunyi)"
+    return {"hex": " ".join("%02X" % x for x in b), "note": note}
+
+
+def _arm_regions(L: dict, secva: int, n: int) -> list[tuple[int, int, str]]:
+    """v99.29: pecah bagian kode [secva, secva + n) menjadi wilayah (awal, akhir, 'a' A32 | 't' Thumb | 'd' data), dalam offset byte.
+    Prioritas: simbol pemetaan ELF ($a / $t / $d); tanpa itu: simbol fungsi (bit 0 = Thumb) + entry; tanpa simbol sama sekali: mode entry."""
+    th = L.get("thumb") or set()
+    marks = sorted(set(L.get("modes") or ()))
+    if not marks:
+        mk = {(va, "t" if va in th else "a") for va in (L.get("exports") or {})}
+        ent = L.get("entry_va")
+        if ent:
+            mk.add((ent, "t" if ent in th else "a"))
+        marks = sorted(mk)
+    cur = "a"
+    if not marks and L.get("entry_va") in th:
+        cur = "t"
+    idx = bisect.bisect_right([m[0] for m in marks], secva) - 1
+    if idx >= 0:
+        cur = marks[idx][1]
+    out, lo = [], 0
+    for va, kind in marks[idx + 1:]:
+        if va >= secva + n:
+            break
+        if kind != cur:
+            if va - secva > lo:
+                out.append((lo, va - secva, cur))
+            lo, cur = va - secva, kind
+    out.append((lo, n, cur))
+    fixed = []
+    for a, b, k in out:
+        if k == "a":
+            a += (-(secva + a)) % 4
+            b -= (b - a) % 4 if b > a else 0
+        elif k == "t":
+            a += (secva + a) & 1
+        if b - a >= (4 if k == "a" else 2):
+            fixed.append((a, b, k))
+    return fixed
+
+
+def _arm_slot(reloc, va_off, d: bytes, va: int, size: int) -> int | None:
+    """v99.43: nilai kata `size` byte (4 / 8) di VA `va`: dari tabel relokasi ELF (RELATIVE / ABS) bila ada, kalau tidak dari berkas; None bila tak terbaca."""
+    if reloc:
+        v = reloc.get(va)
+        if v is not None:
+            return v & (0xFFFFFFFF if size == 4 else 0xFFFFFFFFFFFFFFFF)
+    o = va_off(va)
+    if o is None or o + size > len(d):
+        return None
+    return struct.unpack_from("<Q" if size == 8 else "<I", d, o)[0]
+
+
+def _arm_lit(ctx: dict, pc: int, lit: int) -> int | None:
+    """Literal pool: nilai di alamat `lit` = slot GOT / pointer string / lainnya. Mengembalikan nilai kata itu (None bila tak terbaca)."""
+    val = _arm_slot(ctx.get("reloc"), ctx["va_off"], ctx["d"], lit, 4)
+    if val is None:
+        return None
+    if lit in ctx["iat"]:
+        ctx["sites"].append((pc, ctx["iat"][lit], "ptr"))
+    elif val in ctx["iat"]:
+        ctx["sites"].append((pc, ctx["iat"][val], "ptr"))
+    elif not ctx["in_code"](val):
+        ctx["strrefs"].append((pc, val))
+    return val
+
+
+# v99.42 (roadmap v8, Tier A butir 4, TAHAP 2d-2e-1): BLR / BLX / BX / BR register ARM. Register yang berisi konstanta alamat (ADRP+ADD, ADR, MOVZ+MOVK,
+# MOVW+MOVT, LDR literal, LDR dari slot data terisi, MOV register) dilacak dalam jendela kecil; saat dipakai oleh cabang-register, targetnya masuk ke
+# `edges` (sama seperti BL) sehingga ikut penemuan fungsi, peta panggilan, dan stub / thunk API. Heuristik: tanpa analisis aliran penuh.
+def _arm_indirect(ctx: dict, pc: int, val: int, arm32: bool, kind: str) -> None:
+    """Catat target cabang-register yang sudah diketahui. kind 'blr' (panggilan) | 'br' (tail call: hanya bila di luar +-0x400 byte atau thunk, seperti B)."""
+    tgt = (val & 0xFFFFFFFE) if arm32 else val
+    if tgt in ctx["thunks"]:
+        ok = True
+    elif ctx["in_code"](tgt):
+        ok = kind != "br" or tgt < pc - 0x400 or tgt > pc + 0x400
+    else:
+        ok = False
+    if ok and len(ctx["indirect"]) < 100000:
+        ctx["edges"].append((pc, tgt))
+        ctx["indirect"].append((pc, tgt))
+
+
+def _thumb16_writes(h: int) -> tuple:
+    """v99.48: register r0-r7 / r8-r12 yang DITULIS instruksi Thumb 16-bit h (untuk membatalkan konstanta yang dilacak). ADDS / SUBS imm, LDR literal, ADR, MOV hi dan BX / BLX ditangani pemanggil."""
+    t = h >> 11
+    if t in (0, 1, 2, 3, 4):                                  # geser imm, ADD / SUB (reg / imm3), MOVS imm8
+        return (h & 7,) if t != 4 else ((h >> 8) & 7,)
+    if t in (6, 7):                                           # ADDS / SUBS imm8 (nilai digeser pemanggil)
+        return ((h >> 8) & 7,)
+    if (h >> 10) == 0x10:                                     # ALU 0x40xx: TST (8), CMP (10), CMN (11) tidak menulis
+        return () if ((h >> 6) & 15) in (8, 10, 11) else (h & 7,)
+    if (h >> 8) == 0x44:                                      # ADD Rdn, Rm (register tinggi)
+        return (((h >> 4) & 8) | (h & 7),)
+    top = h >> 12
+    if top == 5:                                              # load / store offset register
+        return (h & 7,) if ((h >> 9) & 7) in (3, 4, 5, 6, 7) else ()
+    if top in (6, 7, 8):                                      # LDR / LDRB / LDRH imm (bit 11 = load)
+        return (h & 7,) if h & 0x800 else ()
+    if (h & 0xF800) in (0x9800, 0xA800):                      # LDR Rt, [sp, #imm] / ADD Rd, SP, #imm
+        return ((h >> 8) & 7,)
+    if (h & 0xFF00) in (0xB200, 0xBA00):   # SXTH / SXTB / UXTH / UXTB, REV / REV16 / REVSH
+        return (h & 7,)
+    if (h & 0xFE00) == 0xBC00:                                # POP {r0-r7 [, pc]}
+        return tuple(r for r in range(8) if (h >> r) & 1)
+    if (h & 0xF800) == 0xC800:                                # LDMIA Rn!, {list}
+        return tuple(r for r in range(8) if (h >> r) & 1) + (((h >> 8) & 7),)
+    if (h & 0xF800) == 0xC000:                                # STMIA Rn!, {list}: hanya writeback Rn
+        return ((h >> 8) & 7,)
+    return ()
+
+
+def _thumb32_writes(h: int, h2: int):
+    """v99.48: register yang DITULIS instruksi Thumb-2 32-bit (h, h2) selain yang ditangani _thumb_scan; None = tidak diketahui (hapus semua)."""
+    if (h & 0xFE00) == 0xE800:                                # LDM / STM / LDRD / STRD / TBB / exclusive / POP.W
+        return None
+    if (h & 0xF800) == 0xF000:                                # imm termodifikasi / biasa, cabang / misc (MRS)
+        return ((h2 >> 8) & 15,)
+    if (h & 0xFE00) == 0xEA00:                                # data processing register bergeser
+        return ((h2 >> 8) & 15,)
+    if (h & 0xFE00) == 0xF800:                                # load / store tunggal
+        wb = not (h & 0x80) and bool(h2 & 0x800) and bool(h2 & 0x100)
+        out = []
+        if h & 0x10:
+            out.append((h2 >> 12) & 15)
+        if wb:
+            out.append(h & 15)
+        return tuple(out)
+    if (h & 0xFE00) == 0xFA00:                                # shift register / extend / perkalian / pembagian
+        return ((h2 >> 8) & 15, (h2 >> 12) & 15)
+    if (h & 0xFC00) in (0xEC00, 0xFC00):                      # koprosesor / VFP (VMOV Rt, MRC, LDC writeback)
+        return ((h2 >> 12) & 15, h & 15)
+    return None
+
+
+def _thumb_scan(code: bytes, va0: int, ctx: dict) -> None:
+    """v99.29 [2d-2c-2a]: Thumb / Thumb-2 KECIL (bukan disassembler penuh): BL / BLX / B.W / B, LDR literal (16 + 32-bit), ADR, SVC + MOV r7, PUSH {.., lr}. PC Thumb = alamat + 4."""
+    n = len(code) // 2
+    hws = struct.unpack("<%dH" % n, code[:n * 2])
+    edges, sites, thunks = ctx["edges"], ctx["sites"], ctx["thunks"]
+    cv = ctx.setdefault("cv", {})                  # v99.42: reg -> (nilai konstan, indeks halfword)
+    ctx.setdefault("indirect", [])
+    imm_r7 = None
+    j = 0
+
+    def tail(pc, tgt):
+        if tgt in thunks or not ctx["in_code"](tgt) or tgt < pc - 0x400 or tgt > pc + 0x400:
+            edges.append((pc, tgt))
+    while j < n:
+        h, pc = hws[j], va0 + j * 2
+        if (h >> 11) in (0x1D, 0x1E, 0x1F) and j + 1 < n:                 # instruksi 32-bit
+            h2 = hws[j + 1]
+            if (h & 0xF800) == 0xF000 and (h2 & 0xC000) in (0x8000, 0xC000) and (h2 & 0x1000 or (h2 & 0xC000) == 0xC000):
+                S = (h >> 10) & 1
+                i1, i2 = (~((h2 >> 13) ^ S)) & 1, (~((h2 >> 11) ^ S)) & 1
+                off = _a64_s((S << 24) | (i1 << 23) | (i2 << 22) | ((h & 0x3FF) << 12) | ((h2 & 0x7FF) << 1), 25)
+                if (h2 & 0xD000) == 0x9000:                                  # B.W (T4)
+                    tail(pc, pc + 4 + off)
+                elif (h2 & 0xC000) == 0xC000:                                # BL (bit12 = 1) / BLX imm (bit12 = 0, target A32)
+                    edges.append((pc, (pc + 4 + off) if h2 & 0x1000 else (((pc + 4) & ~3) + off)))
+                    for r_ in (0, 1, 2, 3, 12, 14):
+                        cv.pop(r_, None)
+            elif (h & 0xFF7F) == 0xF85F and (h2 >> 12) != 15:                # LDR.W Rt, [pc, #+-imm12]
+                v_ = _arm_lit(ctx, pc, ((pc + 4) & ~3) + ((h2 & 0xFFF) if (h >> 7) & 1 else -(h2 & 0xFFF)))
+                if v_ is not None:
+                    cv[h2 >> 12] = (v_, j)
+            elif (h & 0xFBF0) in (0xF240, 0xF2C0) and not (h2 & 0x8000):     # MOVW / MOVT (Thumb-2)
+                rd_ = (h2 >> 8) & 15
+                imm_ = ((h & 0xF) << 12) | (((h >> 10) & 1) << 11) | (((h2 >> 12) & 7) << 8) | (h2 & 0xFF)
+                if (h & 0xFBF0) == 0xF240:
+                    cv[rd_] = (imm_, j)
+                else:
+                    e_ = cv.get(rd_)
+                    if e_ and j - e_[1] <= 12:
+                        cv[rd_] = ((imm_ << 16) | (e_[0] & 0xFFFF), j)
+                    else:
+                        cv.pop(rd_, None)
+            elif h == 0xE92D and (h2 & 0x4000):                              # PUSH.W {..., lr}
+                ctx["prolog"].append(pc)
+            else:                                                            # v99.48: register yang ditulis instruksi lain membatalkan konstantanya
+                w_ = _thumb32_writes(h, h2)
+                if w_ is None:
+                    cv.clear()
+                else:
+                    for r_ in w_:
+                        cv.pop(r_, None)
+            j += 2
+            continue
+        t_ = h >> 11
+        if t_ in (6, 7) or (h & 0xFC00) == 0x1C00:                           # v99.48: ADDS / SUBS imm: konstanta ikut bergeser (adr + adds #1 + bx)
+            if t_ in (6, 7):
+                rd_ = rn_ = (h >> 8) & 7
+                imm_, sub_ = h & 0xFF, t_ == 7
+            else:
+                rd_, rn_, imm_, sub_ = h & 7, (h >> 3) & 7, (h >> 6) & 7, bool(h & 0x200)
+            e_ = cv.get(rn_)
+            cv.pop(rd_, None)
+            if e_:
+                cv[rd_] = ((e_[0] - imm_ if sub_ else e_[0] + imm_) & 0xFFFFFFFF, j)
+            j += 1
+            continue
+        if (h & 0xFF00) != 0x4600:                                           # MOV Rd, Rm ditangani cabang di bawah
+            for r_ in _thumb16_writes(h):
+                cv.pop(r_, None)
+        if (h & 0xF800) == 0x4800:                                           # LDR Rt, [pc, #imm8 * 4]
+            v_ = _arm_lit(ctx, pc, ((pc + 4) & ~3) + (h & 0xFF) * 4)
+            if v_ is not None:
+                cv[(h >> 8) & 7] = (v_, j)
+        elif (h & 0xF800) == 0xA000:                                         # ADR / ADD Rd, pc, #imm8 * 4
+            ctx["strrefs"].append((pc, ((pc + 4) & ~3) + (h & 0xFF) * 4))
+            cv[(h >> 8) & 7] = (((pc + 4) & ~3) + (h & 0xFF) * 4, j)
+        elif (h & 0xFF87) in (0x4780, 0x4700):                               # BLX Rm / BX Rm (register)
+            e_ = cv.get((h >> 3) & 15)
+            blx_ = (h & 0xFF87) == 0x4780
+            if e_ and j - e_[1] <= 12:
+                _arm_indirect(ctx, pc, e_[0], True, "blr" if blx_ else "br")
+            if blx_:
+                for r_ in (0, 1, 2, 3, 12, 14):
+                    cv.pop(r_, None)
+            else:
+                cv.clear()
+        elif (h & 0xFF00) == 0x4600:                                         # MOV Rd, Rm (register tinggi)
+            e_ = cv.get((h >> 3) & 15)
+            rd_ = ((h >> 4) & 8) | (h & 7)
+            if e_:
+                cv[rd_] = (e_[0], j)
+            else:
+                cv.pop(rd_, None)
+        elif (h & 0xF800) == 0xE000:                                         # B (T2)
+            tail(pc, pc + 4 + (_a64_s(h & 0x7FF, 11) << 1))
+        elif h in (0xDF00, 0xDF80):                                          # SVC
+            nm = _A32_SYS.get(imm_r7[0]) if imm_r7 and j - imm_r7[1] <= 8 else None
+            ctx["anti"].setdefault("SVC langsung (tanpa libc)", []).append(pc)
+            if nm:
+                ctx["svc_calls"].setdefault(nm, []).append(pc)
+                sites.append((pc, nm, "svc"))
+        elif (h & 0xFF00) == 0x2700:                                         # MOVS r7, #imm8
+            imm_r7 = (h & 0xFF, j)
+        elif (h & 0xFE00) == 0xB400 and h & 0x100:                           # PUSH {..., lr}
+            prev = hws[j - 1] if j else 0
+            if j == 0 or prev in (0, 0x4770, 0xBF00, 0x46C0) or (prev & 0xFF00) == 0xBD00 or (prev & 0xF800) == 0xE000:
+                ctx["prolog"].append(pc)
+        j += 1
+
+
+_A32_SYS = {1: "exit", 2: "fork", 3: "read", 4: "write", 5: "open", 11: "execve", 26: "ptrace", 37: "kill", 90: "mmap", 120: "clone", 125: "mprotect",
+            192: "mmap2", 281: "socket", 283: "connect", 322: "openat"}
+
+
+def _a32_rot(w: int) -> int:
+    """Operand-2 immediate A32 (imm8 diputar kanan 2 * rot)."""
+    r = ((w >> 8) & 15) * 2
+    v = w & 0xFF
+    return ((v >> r) | (v << (32 - r))) & 0xFFFFFFFF if r else v
+
+
+_A32_CALLER = (0, 1, 2, 3, 12, 14)
+
+
+def _a32_writes(w: int) -> frozenset:
+    """v99.49: register r0-r15 yang DITULIS satu kata A32 (cond != 0xF). Superset aman: kelebihan hanya membatalkan konstanta yang dilacak, tidak pernah
+    menambah. Cakupan: data processing (TST / TEQ / CMP / CMN tidak menulis), MOVW / MOVT, MSR, perkalian / SWP / exclusive, load / store halfword / dual /
+    signed (LDRD menulis Rt dan Rt+1; STR* hanya writeback), LDR / STR word / byte (pra / pasca-indeks writeback), media, LDM / STM (daftar + writeback),
+    BL, LDC / STC / VLDM (writeback), MRRC / MRC / VMOV core <- VFP, SVC (r0). Instruksi tak dikenal: {Rd, Rn} (superset)."""
+    c = (w >> 25) & 7
+    rd, rn = (w >> 12) & 15, (w >> 16) & 15
+    wb = not (w >> 24) & 1 or bool((w >> 21) & 1)                    # pasca-indeks atau W: Rn ditulis
+    if c == 0 and (w & 0x90) == 0x90:                                # perkalian / swap / exclusive (SH = 0) atau halfword / dual load-store
+        sh = (w >> 5) & 3
+        if sh == 0:
+            out = {rd, rn}
+        else:
+            out = set()
+            if (w >> 20) & 1:
+                out.add(rd)
+            elif sh == 2:                                            # LDRD
+                out.update((rd, (rd + 1) & 15))
+            if wb:
+                out.add(rn)
+        return frozenset(out)
+    if c < 2:
+        if (w & 0x0FB00000) == 0x03000000:                           # MOVW / MOVT
+            return frozenset((rd,))
+        if (w & 0x0FB00000) == 0x03200000:                           # MSR imm
+            return frozenset()
+        if (w & 0x01900000) == 0x01100000:                           # TST / TEQ / CMP / CMN (S = 1): hanya flag
+            return frozenset()
+        if (w & 0x01900000) == 0x01000000:                           # ruang misc (S = 0): MRS, MSR, CLZ, QADD, SMLAxy, BX / BLX, BKPT ...
+            if (w & 0x0FFFFFC0) == 0x012FFF00 or (w & 0x0FB0FFF0) == 0x0120F000:   # BX / BXJ / BLX Rm dan MSR reg: bidang Rd / Rn berisi SBO 0xF, tidak menulis
+                return frozenset()
+            return frozenset((rd, rn))
+        return frozenset((rd,))                                      # data processing biasa
+    if c in (2, 3):
+        if c == 3 and (w >> 4) & 1:                                  # instruksi media (UBFX, SMLAD, REV, USAD8 ...)
+            return frozenset((rd, rn))
+        out = set()
+        if (w >> 20) & 1:
+            out.add(rd)
+        if wb:
+            out.add(rn)
+        return frozenset(out)
+    if c == 4:                                                       # LDM / STM
+        out = set()
+        if (w >> 20) & 1:
+            out.update(r for r in range(16) if (w >> r) & 1)
+        if (w >> 21) & 1:
+            out.add(rn)
+        return frozenset(out)
+    if c == 5:                                                       # B / BL
+        return frozenset(_A32_CALLER) if (w >> 24) & 1 else frozenset()
+    if c == 6:                                                       # koprosesor load / store, MCRR / MRRC
+        if (w & 0x0FE00000) == 0x0C400000:
+            return frozenset((rd, rn))
+        return frozenset((rn,)) if wb else frozenset()
+    if (w >> 24) & 1:                                                # SVC: nilai kembali di r0
+        return frozenset((0,))
+    return frozenset((rd,)) if (w & 0x10) and (w >> 20) & 1 else frozenset()   # MRC / VMOV core <- VFP menulis Rt
+
+
+_A32_IMMOPS = {0: lambda a, b: a & b, 1: lambda a, b: a ^ b, 2: lambda a, b: a - b, 4: lambda a, b: a + b, 12: lambda a, b: a | b, 14: lambda a, b: a & ~b}
+
+
+def _a32_scan_word(w: int, i: int, pc: int, words, ctx: dict) -> None:
+    """v99.28 [2d-2c-1]: satu kata A32 (4 byte, little-endian, bukan Thumb) -> edges / sites / strrefs / thunks / anti / prolog di ctx. PC ARM = alamat + 8."""
+    cond = w >> 28
+    iat, thunks, edges, sites, strrefs = ctx["iat"], ctx["thunks"], ctx["edges"], ctx["sites"], ctx["strrefs"]
+    cv = ctx.get("cv")                                                     # v99.42: reg -> (nilai konstan, indeks kata)
+    cv0 = cv                                                               # v99.49: salinan nilai SEBELUM instruksi ini (MOVT / MOV Rd, Rm / ADD imm membaca nilai lama)
+    if cv:
+        if cond != 15:                                                     # v99.49: semua register yang ditulis membatalkan konstantanya (sebelumnya hanya Rd data processing / LDR)
+            cv0 = dict(cv)
+            ws_ = _a32_writes(w)
+            for r_ in ws_:
+                cv.pop(r_, None)
+            if 15 in ws_ and cond == 14:                                   # MOV pc / LDM {.., pc} / SUBS pc, lr: aliran berpindah, konstanta tak berlaku lagi
+                cv.clear()
+        elif (w & 0x0E000000) == 0x0A000000:                               # BLX imm (cond 0xF): panggilan
+            for r_ in _A32_CALLER:
+                cv.pop(r_, None)
+    if (w & 0x0F000000) == 0x0B000000 and cond == 14:                      # BL (hanya AL: kurangi hasil palsu dari data / literal pool di bagian kode)
+        edges.append((pc, pc + 8 + (_a64_s(w & 0xFFFFFF, 24) << 2)))
+        if cv:
+            for r_ in (0, 1, 2, 3, 12, 14):
+                cv.pop(r_, None)
+    elif (w & 0x0F000000) == 0x0A000000 and cond == 14:                    # B (tail call / thunk)
+        tgt = pc + 8 + (_a64_s(w & 0xFFFFFF, 24) << 2)
+        if tgt in thunks or not ctx["in_code"](tgt) or tgt < pc - 0x400 or tgt > pc + 0x400:
+            edges.append((pc, tgt))
+    elif (w & 0x0F7F0000) == 0x051F0000 and cond == 14:                    # LDR Rt, [pc, #+-imm12] (literal pool)
+        if (w >> 12) & 15 != 15:
+            v_ = _arm_lit(ctx, pc, pc + 8 + (((w & 0xFFF) if (w >> 23) & 1 else -(w & 0xFFF))))
+            if v_ is not None and cv is not None:
+                cv[(w >> 12) & 15] = (v_, i)
+    elif (w & 0xFFFFF000) == 0xE28FC000 and i + 2 < len(words):           # stub PLT ELF: add ip,pc,#a ; add ip,ip,#b ; ldr pc,[ip,#c]!
+        w2, w3 = words[i + 1], words[i + 2]
+        if (w2 & 0xFFFFF000) == 0xE28CC000 and (w3 & 0xFFFFF000) == 0xE5BCF000:
+            slot = pc + 8 + _a32_rot(w) + _a32_rot(w2) + (w3 & 0xFFF)
+            if slot in iat:
+                thunks[pc] = iat[slot]
+    elif w in (0xEF000000, 0xEF000080):                                     # SVC #0 (EABI) / SVC #0x80 (Mach-O); data string tidak ikut
+        e = ctx["imm_r7"]
+        nm = _A32_SYS.get(e[0]) if e and i - e[1] <= 8 else None
+        ctx["anti"].setdefault("SVC langsung (tanpa libc)", []).append(pc)
+        if nm:
+            ctx["svc_calls"].setdefault(nm, []).append(pc)
+            sites.append((pc, nm, "svc"))
+    elif (w & 0x0FFFF000) == 0x03A07000 and not (w & 0xF00):               # MOV r7, #imm8 (nomor syscall EABI)
+        ctx["imm_r7"] = (w & 0xFF, i)
+    if cv is not None and cond == 14:                                      # v99.42: konstanta register + BLX / BX register
+        if (w & 0x0FF00000) == 0x03000000:                                  # MOVW
+            cv[(w >> 12) & 15] = (((w >> 4) & 0xF000) | (w & 0xFFF), i)
+        elif (w & 0x0FF00000) == 0x03400000:                                # MOVT
+            rd_ = (w >> 12) & 15
+            e_ = cv0.get(rd_)
+            if e_ and i - e_[1] <= 8:
+                cv[rd_] = (((((w >> 4) & 0xF000) | (w & 0xFFF)) << 16) | (e_[0] & 0xFFFF), i)
+        elif (w & 0x0FFF0000) == 0x028F0000:                                # ADD Rd, pc, #imm (ADR)
+            cv[(w >> 12) & 15] = ((pc + 8 + _a32_rot(w)) & 0xFFFFFFFF, i)
+        elif (w & 0x0FFF0000) == 0x024F0000 and (w >> 12) & 15 != 15:       # v99.50: SUB Rd, pc, #imm (ADR mundur)
+            cv[(w >> 12) & 15] = ((pc + 8 - _a32_rot(w)) & 0xFFFFFFFF, i)
+        elif (w & 0x0FEF0000) == 0x03A00000 and (w >> 12) & 15 != 15:       # v99.50: MOV / MVN Rd, #imm (alamat rendah non-PIE; rotasi imm8 sudah termasuk)
+            cv[(w >> 12) & 15] = ((~_a32_rot(w) if w & 0x00400000 else _a32_rot(w)) & 0xFFFFFFFF, i)
+        elif (w & 0x0FFF0FF0) == 0x01A00000:                                # MOV Rd, Rm
+            e_ = cv0.get(w & 15)
+            if e_ and (w >> 12) & 15 != 15:
+                cv[(w >> 12) & 15] = (e_[0], i)
+        elif (w & 0x0E000000) == 0x02000000 and ((w >> 21) & 15) in _A32_IMMOPS and (w >> 12) & 15 != 15 and cv0.get((w >> 16) & 15):
+            e_ = cv0[(w >> 16) & 15]                                        # v99.49: ADD / SUB / ORR / BIC / EOR / AND #imm pada register berkonstanta menggeser nilainya (adr + orr #1 + bx)
+            if i - e_[1] <= A64_WINDOW:
+                cv[(w >> 12) & 15] = (_A32_IMMOPS[(w >> 21) & 15](e_[0], _a32_rot(w)) & 0xFFFFFFFF, i)
+        elif (w & 0x0FFFFFD0) == 0x012FFF10 and (w & 15) != 14:             # BX Rm / BLX Rm (register; BX lr = kembali)
+            e_ = cv0.get(w & 15)
+            blx_ = bool(w & 0x20)
+            if e_ and i - e_[1] <= A64_WINDOW:
+                _arm_indirect(ctx, pc, e_[0], True, "blr" if blx_ else "br")
+            if blx_:
+                for r_ in (0, 1, 2, 3, 12, 14):
+                    cv.pop(r_, None)
+            else:
+                cv.clear()
+    if (w & 0xFFFF4000) == 0xE92D4000:                                      # PUSH {..., lr}
+        prev = words[i - 1] if i else 0
+        if i == 0 or prev in (0, 0xE320F000, 0xE1A00000, 0xE12FFF1E, 0xE49DF004) or (prev & 0x0F000000) == 0x0A000000 or (prev & 0xFFFF8000) == 0xE8BD8000:
+            ctx["prolog"].append(pc)
+
+
+# v99.41 (roadmap v7, Tier A butir 4, TAHAP 2d-2d-1): API hashing ARM / ARM64. Hash 32-bit dari nama API dicari di (a) kata literal sejajar 4-byte
+# di bagian kode (literal pool A32 / Thumb / AArch64), dan (b) imediat yang dibangun lewat pasangan MOVW + MOVT (A32, Thumb-2) atau MOVZ + MOVK
+# (AArch64, kata 32-bit). Algoritma: ror13 (block_api / fungsi-saja, Windows ARM), djb2 (= hash GNU / dl_new_hash), djb2-xor, sdbm, FNV-1 / FNV-1a,
+# ELF SysV, CRC32. Nama: API Windows (dari tabel ror13 x86), libc / Linux / Android, Apple / iOS. Statis murni.
+_ARM_HASH_POSIX = (
+    "dlopen dlsym dlclose dladdr mmap munmap mprotect mremap madvise mlock execve execv execvp fork vfork clone ptrace prctl socket connect bind listen "
+    "accept accept4 send recv sendto recvfrom sendmsg recvmsg shutdown close read write open openat unlink unlinkat rename chmod chown kill getpid getppid "
+    "getuid geteuid setuid setgid system popen pclose fopen fread fwrite fclose fgets fputs malloc calloc realloc free memcpy memmove memset memcmp memchr "
+    "strcpy strncpy strcat strlen strcmp strncmp strstr strchr strdup sprintf snprintf sscanf atoi getaddrinfo freeaddrinfo gethostbyname gethostname "
+    "inet_addr inet_pton inet_ntoa htons ntohs setsockopt getsockopt getsockname select poll epoll_create epoll_wait pthread_create pthread_join "
+    "nanosleep sleep usleep gettimeofday clock_gettime time uname getenv setenv putenv memfd_create syscall __system_property_get dup dup2 dup3 pipe "
+    "waitpid wait4 ioctl access stat fstat lstat opendir readdir closedir remove mkdir rmdir chdir getcwd readlink symlink link truncate ftruncate "
+    "mincore sysconf getrlimit setrlimit signal sigaction raise abort exit _exit atexit __android_log_print __cxa_atexit __stack_chk_fail "
+    "JNI_OnLoad dl_iterate_phdr getauxval sched_yield sysinfo fcntl flock fsync lseek mkstemp tmpfile setuid seteuid chroot mount umount2 insmod "
+    "objc_msgSend objc_getClass objc_lookUpClass sel_registerName class_getInstanceMethod method_exchangeImplementations NSClassFromString "
+    "sysctl sysctlbyname posix_spawn task_for_pid mach_vm_allocate mach_vm_protect mach_vm_write mach_vm_read vm_protect vm_allocate mach_task_self "
+    "_dyld_image_count _dyld_get_image_name _dyld_get_image_header dispatch_async dispatch_once SecItemCopyMatching SecItemAdd CFNetworkCopySystemProxySettings "
+    "csops proc_pidinfo getpwuid fts_open ptrace_attach isatty tcgetattr"
+).split()
+
+
+def _arm_hash_algos():
+    def ror(v, n):
+        return ((v >> n) | (v << (32 - n))) & 0xFFFFFFFF
+
+    def h_ror13(b):
+        h = 0
+        for c in b + b"\0":
+            h = (ror(h, 13) + c) & 0xFFFFFFFF
+        return h
+
+    def h_djb2(b):
+        h = 5381
+        for c in b:
+            h = (h * 33 + c) & 0xFFFFFFFF
+        return h
+
+    def h_djb2x(b):
+        h = 5381
+        for c in b:
+            h = ((h * 33) ^ c) & 0xFFFFFFFF
+        return h
+
+    def h_sdbm(b):
+        h = 0
+        for c in b:
+            h = (c + (h << 6) + (h << 16) - h) & 0xFFFFFFFF
+        return h
+
+    def h_fnv1a(b):
+        h = 0x811C9DC5
+        for c in b:
+            h = ((h ^ c) * 0x01000193) & 0xFFFFFFFF
+        return h
+
+    def h_fnv1(b):
+        h = 0x811C9DC5
+        for c in b:
+            h = ((h * 0x01000193) ^ c) & 0xFFFFFFFF
+        return h
+
+    def h_elf(b):
+        h = 0
+        for c in b:
+            h = ((h << 4) + c) & 0xFFFFFFFF
+            g = h & 0xF0000000
+            if g:
+                h ^= g >> 24
+            h &= ~g & 0xFFFFFFFF
+        return h
+
+    def h_crc32(b):
+        return zlib.crc32(b) & 0xFFFFFFFF
+    return [("ror13", h_ror13), ("djb2 / GNU hash", h_djb2), ("djb2-xor", h_djb2x), ("sdbm", h_sdbm), ("FNV-1a", h_fnv1a), ("FNV-1", h_fnv1),
+            ("ELF SysV", h_elf), ("CRC32", h_crc32)]
+
+
+_ARM_HASH_TAB: dict[int, list[tuple[str, str]]] | None = None
+
+
+def _arm_hash_table() -> dict[int, list[tuple[str, str]]]:
+    """hash 32-bit -> [(algoritma, nama API)]; dibangun sekali (nama Windows diambil dari tabel ror13 x86)."""
+    global _ARM_HASH_TAB
+    if _ARM_HASH_TAB is not None:
+        return _ARM_HASH_TAB
+    names = set(_ARM_HASH_POSIX)
+    for v in _relab_hash_table().values():
+        if v.endswith(" (ror13)"):
+            names.add(v[:-8])
+    tab: dict[int, list[tuple[str, str]]] = {}
+    for algo, fn in _arm_hash_algos():
+        for n in sorted(names):
+            tab.setdefault(fn(n.encode()), []).append((algo, n))
+    # ror13 block_api (modul + fungsi) tetap memakai tabel x86 yang sudah ada
+    for h, v in _relab_hash_table().items():
+        if v.endswith(" (block_api)"):
+            tab.setdefault(h, []).append(("ror13 block_api", v[:-12]))
+    _ARM_HASH_TAB = tab
+    return tab
+
+
+def _arm_hash_scan(execs, L: dict, a32: bool, deadline: float) -> list[tuple[int, str, str, str]]:
+    """Cari konstanta API hash ARM / ARM64 di 'execs' (va, off, bytes, nama). Mengembalikan [(va, algo, nama, cara)], tanpa saringan validitas."""
+    tab = _arm_hash_table()
+    hits: list[tuple[int, str, str, str]] = []
+    seen: set = set()
+
+    def add(va, val, how):
+        for algo, nm in tab.get(val, ()):
+            k = (va, algo, nm)
+            if k not in seen:
+                seen.add(k)
+                hits.append((va, algo, nm, how))
+    for secva, _o, code, _nm in execs:
+        n4 = len(code) // 4
+        words = struct.unpack("<%dI" % n4, code[:n4 * 4])
+        for i, w in enumerate(words):                      # (a) kata literal sejajar 4-byte
+            if w in tab:
+                add(secva + i * 4, w, "literal")
+            if i & 0x3FFFF == 0x3FFFF and time.monotonic() > deadline:
+                return hits
+        if a32:
+            for lo, hi, kind in _arm_regions(L, secva, len(code)):
+                seg = code[lo:hi]
+                if kind == "a":                            # (b) A32: MOVW + MOVT
+                    ws = struct.unpack("<%dI" % (len(seg) // 4), seg[:len(seg) // 4 * 4])
+                    pend: dict[int, tuple[str, int, int]] = {}
+                    for i, w in enumerate(ws):
+                        if (w >> 28) == 0xF:
+                            continue
+                        top = w & 0x0FF00000
+                        if top in (0x03000000, 0x03400000):
+                            rd, imm = (w >> 12) & 15, ((w >> 4) & 0xF000) | (w & 0xFFF)
+                            kd = "lo" if top == 0x03000000 else "hi"
+                            e = pend.get(rd)
+                            if e and e[0] != kd and i - e[2] <= 8:
+                                v = (imm << 16 | e[1]) if kd == "hi" else (e[1] << 16 | imm)
+                                if v in tab:
+                                    add(secva + lo + i * 4, v, "movw+movt")
+                                pend.pop(rd, None)
+                            else:
+                                pend[rd] = (kd, imm, i)
+                elif kind == "t":                          # (b) Thumb-2: MOVW + MOVT
+                    pend = {}
+                    nh = len(seg) // 2
+                    hw = struct.unpack("<%dH" % nh, seg[:nh * 2])
+                    for i in range(nh - 1):
+                        h1, h2 = hw[i], hw[i + 1]
+                        if (h1 & 0xFBF0) in (0xF240, 0xF2C0) and not (h2 & 0x8000):
+                            rd = (h2 >> 8) & 15
+                            imm = ((h1 & 0xF) << 12) | (((h1 >> 10) & 1) << 11) | (((h2 >> 12) & 7) << 8) | (h2 & 0xFF)
+                            kd = "lo" if (h1 & 0xFBF0) == 0xF240 else "hi"
+                            e = pend.get(rd)
+                            if e and e[0] != kd and i - e[2] <= 12:
+                                v = (imm << 16 | e[1]) if kd == "hi" else (e[1] << 16 | imm)
+                                if v in tab:
+                                    add(secva + lo + i * 2, v, "movw+movt (Thumb-2)")
+                                pend.pop(rd, None)
+                            else:
+                                pend[rd] = (kd, imm, i)
+                if time.monotonic() > deadline:
+                    return hits
+        else:                                              # (b) AArch64: MOVZ / MOVK (hw 0 dan 1)
+            pend = {}
+            for i, w in enumerate(words):
+                if (w & 0x7F800000) not in (0x52800000, 0x72800000):
+                    continue
+                hw_ = (w >> 21) & 3
+                if hw_ > 1:
+                    continue
+                rd, imm, movk = w & 31, (w >> 5) & 0xFFFF, (w & 0x7F800000) == 0x72800000
+                e = pend.get(rd)
+                if not movk:                               # MOVZ memulai nilai baru
+                    pend[rd] = (hw_, imm, i)
+                elif e and e[0] != hw_ and i - e[2] <= 6:
+                    v = (imm << 16 | e[1]) if hw_ == 1 else (e[1] << 16 | imm)
+                    if v in tab:
+                        add(secva + i * 4, v, "movz+movk")
+                    pend.pop(rd, None)
+                if i & 0x3FFFF == 0x3FFFF and time.monotonic() > deadline:
+                    return hits
+    return hits
+
+
+def _arm_hash_filter(hits) -> list[tuple[int, str, str, str]]:
+    """Saring hasil mentah: satu algoritma dengan >= 3 nama API berbeda, atau >= 2 nama berbeda dalam jarak 0x200 byte (hash 32-bit acak bisa cocok kebetulan)."""
+    by: dict[str, list] = {}
+    for h in hits:
+        by.setdefault(h[1], []).append(h)
+    keep: list[tuple[int, str, str, str]] = []
+    for algo, hs in by.items():
+        names = {h[2] for h in hs}
+        hs.sort()
+        ok = len(names) >= 3
+        near: set[int] = set()
+        for i, a in enumerate(hs):
+            for b in hs[i + 1:]:
+                if b[0] - a[0] > 0x200:
+                    break
+                if a[2] != b[2]:
+                    near.add(a[0])
+                    near.add(b[0])
+        if ok:
+            keep.extend(hs)
+        else:
+            keep.extend(h for h in hs if h[0] in near)
+    keep.sort()
+    return keep
+
+
+
+def _re_lab_arm64(d: bytes, L: dict, t0: float | None = None) -> tuple[dict | None, dict | None]:
+    t0 = time.monotonic() if t0 is None else t0
+    base, iat, stubs = L["base"], L["iat"], L.get("stubs") or {}
+    fmt = L.get("fmt", "ELF")
+    notes: list[str] = []
+    execs, budget = [], RELAB_MAX_CODE
+    for s in L["xsecs"]:
+        n = min(s["rsize"], s["vsize"] or s["rsize"], budget, len(d) - s["rptr"])
+        n -= n % 4
+        if n <= 0:
+            continue
+        budget -= n
+        execs.append((base + s["va"], s["rptr"], bytes(d[s["rptr"]:s["rptr"] + n]), s["name"]))
+    if not execs:
+        return None, None
+    if budget <= 0:
+        notes.append("kode melebihi batas pindai %s; sebagian tidak dianalisis" % _human(RELAB_MAX_CODE))
+    ranges = [(va, va + len(c)) for va, _o, c, _n in execs]
+
+    def in_code(va):
+        return any(a <= va < b for a, b in ranges)
+    thunks: dict[int, str] = dict(stubs)
+    sites: list[tuple[int, str, str]] = []
+    edges: list[tuple[int, int]] = []
+    strrefs: list[tuple[int, int]] = []
+    anti: dict[str, list[int]] = {}
+    svc_calls: dict[str, list[int]] = {}
+    prolog: list[int] = []
+    sysmap = _A64_SYS["macho" if fmt == "Mach-O" else "linux"]
+    a32 = L.get("arch") == "arm"          # v99.28: ARM 32-bit (A32) memakai _a32_scan_word; Thumb belum
+    a32ctx = {"iat": iat, "thunks": thunks, "edges": edges, "sites": sites, "strrefs": strrefs, "anti": anti, "svc_calls": svc_calls, "prolog": prolog,
+              "in_code": in_code, "va_off": lambda va: _va_off(L, va), "d": d, "imm_r7": None, "cv": {}, "indirect": [], "reloc": L.get("reloc") or {}}
+    stop = False
+    arm_regs: list = []
+    for secva, _o, code, _nm in execs:
+        if stop:
+            break
+        words = struct.unpack("<%dI" % (len(code) // 4), code)
+        if a32:
+            for lo, hi, kind in _arm_regions(L, secva, len(code)):
+                arm_regs.append((secva + lo, secva + hi, kind))        # v99.30: dipakai _arm_mode_at() untuk CFG
+                a32ctx["imm_r7"] = None
+                a32ctx["cv"].clear()
+                seg = code[lo:hi]
+                if kind == "t":
+                    _thumb_scan(seg, secva + lo, a32ctx)
+                elif kind == "a":
+                    ws = struct.unpack("<%dI" % (len(seg) // 4), seg[:len(seg) // 4 * 4])
+                    for i, w in enumerate(ws):
+                        _a32_scan_word(w, i, secva + lo + i * 4, ws, a32ctx)
+                        if i & 0xFFFF == 0xFFFF and time.monotonic() - t0 > RELAB_TIME:
+                            break
+                if len(edges) > 400000 or time.monotonic() - t0 > RELAB_TIME:
+                    if time.monotonic() - t0 > RELAB_TIME:
+                        notes.append("waktu analisis habis (%.0f dtk); hasil sebagian" % RELAB_TIME)
+                    stop = True
+                    break
+            continue
+        pg: dict[int, tuple[int, int, int]] = {}          # reg -> (nilai, indeks ADRP / ADR, VA ADRP)
+        imm_r: dict[int, tuple[int, int]] = {}            # reg -> (nilai MOVZ, indeks)
+        cv: dict[int, tuple[int, int]] = {}               # v99.42: reg -> (nilai konstan / alamat, indeks) untuk BLR / BR register
+        for i, w in enumerate(words):
+            pc = secva + i * 4
+            if cv:                                         # tulis ke Rd / Rt membatalkan nilai register itu (MOVK dikecualikan: butuh nilai lama)
+                op_ = (w >> 25) & 0xF
+                if (op_ in (8, 9, 5, 13) and (w & 0x7F800000) != 0x72800000) or (op_ in (4, 6, 12, 14) and (w >> 22) & 1):
+                    cv.pop(w & 31, None)
+            if (w & 0x9F000000) == 0x90000000:                                     # ADRP
+                imm = _a64_s(((((w >> 5) & 0x7FFFF) << 2) | ((w >> 29) & 3)), 21) << 12
+                pg[w & 31] = ((pc & ~0xFFF) + imm, i, pc)
+            elif (w & 0x9F000000) == 0x10000000:                                   # ADR
+                tgt = pc + _a64_s(((((w >> 5) & 0x7FFFF) << 2) | ((w >> 29) & 3)), 21)
+                pg[w & 31] = (tgt, i, pc)
+                cv[w & 31] = (tgt, i)
+                strrefs.append((pc, tgt))
+            elif (w & 0xFF800000) == 0x91000000:                                   # ADD Xd, Xn, #imm
+                rn, rd = (w >> 5) & 31, w & 31
+                e = pg.get(rn)
+                if e and i - e[1] <= A64_WINDOW:
+                    imm = ((w >> 10) & 0xFFF) << (12 if (w >> 22) & 1 else 0)
+                    tgt = e[0] + imm
+                    pg[rd] = (tgt, i, e[2])
+                    cv[rd] = (tgt, i)
+                    strrefs.append((pc, tgt))
+            elif (w & 0xFFC00000) == 0xF9400000:                                   # LDR Xt, [Xn, #imm]
+                rn, rt = (w >> 5) & 31, w & 31
+                e = pg.get(rn)
+                if e and i - e[1] <= A64_WINDOW:
+                    tgt = e[0] + ((w >> 10) & 0xFFF) * 8
+                    if tgt in iat:
+                        nxt = words[i + 1:i + 4]
+                        if any(_a64_brk(x)[0] in ("br", "blr") and _a64_brk(x)[1] == rt for x in nxt) and any(_a64_brk(x)[0] == "br" for x in nxt):
+                            thunks[e[2]] = iat[tgt]
+                            if e[1] >= 1 and (words[e[1] - 1] & 0xFFFFFF3F) == 0xD503241F:
+                                thunks[e[2] - 4] = iat[tgt]                      # bti c sebelum adrp
+                        else:
+                            sites.append((pc, iat[tgt], "ptr"))
+                    else:                                                          # v99.42 / v99.43: slot data terisi pointer kode (nilai berkas atau relokasi RELATIVE / ABS)
+                        v_ = _arm_slot(L.get("reloc"), a32ctx["va_off"], d, tgt, 8)
+                        if v_:
+                            cv[rt] = (v_, i)
+                    pg.pop(rt, None)
+            elif (w & 0xFF000000) == 0x58000000:                                   # LDR Xt, literal
+                tgt = pc + (_a64_s((w >> 5) & 0x7FFFF, 19) << 2)
+                if tgt in iat:
+                    sites.append((pc, iat[tgt], "ptr"))
+                else:                                                              # v99.42 / v99.43: literal 64-bit berisi alamat fungsi
+                    v_ = _arm_slot(L.get("reloc"), a32ctx["va_off"], d, tgt, 8)
+                    if v_:
+                        cv[w & 31] = (v_, i)
+            elif (w & 0xFC000000) == 0x94000000:                                   # BL
+                edges.append((pc, pc + (_a64_s(w & 0x3FFFFFF, 26) << 2)))
+                for r_ in range(19):
+                    cv.pop(r_, None)
+            elif (w & 0xFC000000) == 0x14000000:                                   # B (tail call / thunk)
+                tgt = pc + (_a64_s(w & 0x3FFFFFF, 26) << 2)
+                if tgt in thunks or (not in_code(tgt) or (tgt < pc - 0x400 or tgt > pc + 0x400)):
+                    edges.append((pc, tgt))
+                pg.clear()
+            elif (w & 0x7F800000) == 0x52800000:                                   # MOVZ Wd / Xd
+                if (w >> 21) & 3 == 0:
+                    imm_r[w & 31] = ((w >> 5) & 0xFFFF, i)
+                cv[w & 31] = (((w >> 5) & 0xFFFF) << (16 * ((w >> 21) & 3)), i)
+            elif (w & 0x7F800000) == 0x72800000:                                   # MOVK: melengkapi nilai MOVZ sebelumnya
+                e = cv.get(w & 31)
+                if e and i - e[1] <= 6:
+                    sh_ = 16 * ((w >> 21) & 3)
+                    cv[w & 31] = ((e[0] & ~(0xFFFF << sh_)) | (((w >> 5) & 0xFFFF) << sh_), i)
+            elif (w & 0xFFE0FFE0) == 0xAA0003E0:                                   # MOV Xd, Xm (ORR Xd, XZR, Xm)
+                e = cv.get((w >> 16) & 31)
+                if e:
+                    cv[w & 31] = (e[0], i)
+            elif (w & 0xFFE0001F) == 0xD4000001:                                   # SVC
+                num_r = 16 if fmt == "Mach-O" else 8
+                e = imm_r.get(num_r)
+                nm = sysmap.get(e[0]) if e and i - e[1] <= 8 else None
+                key = "SVC langsung (tanpa libc)"
+                anti.setdefault(key, []).append(pc)
+                if nm:
+                    svc_calls.setdefault(nm, []).append(pc)
+                    sites.append((pc, nm, "svc"))
+            elif _a64_brk(w)[0] in ("ret", "br", "blr"):   # RET / BR / BLR (+ varian PAC)
+                kd_, rn_ = _a64_brk(w)
+                if kd_ != "ret":
+                    e = cv.get(rn_)
+                    if e and i - e[1] <= A64_WINDOW:
+                        _arm_indirect(a32ctx, pc, e[0], False, kd_)             # v99.42: BLR / BR register dengan konstanta diketahui
+                if kd_ == "blr":
+                    for r_ in range(19):
+                        cv.pop(r_, None)
+                else:
+                    pg.clear()
+                    cv.clear()
+            if (w & 0xFFC07FFF) == 0xA9807BFD or ((w & 0xFFC07FFF) == 0xA9007BFD and i >= 1 and (words[i - 1] & 0xFF8003FF) == 0xD10003FF):
+                j = i - 1 if (w & 0xFFC07FFF) == 0xA9007BFD else i
+                prev = words[j - 1] if j else 0
+                if j == 0 or prev in (0, 0xD503201F, 0xD65F03C0, 0xD503233F, 0xD503237F, 0xD50323BF) or (prev & 0xFC000000) == 0x14000000 or _a64_brk(prev)[0] in ("ret", "br"):
+                    prolog.append(secva + (j - 1 if prev in (0xD503233F, 0xD503237F) else j) * 4)     # v99.27: PACIASP / PACIBSP = awal fungsi sebenarnya
+            if len(edges) > 400000:
+                break
+            if i & 0xFFFF == 0xFFFF and time.monotonic() - t0 > RELAB_TIME:
+                notes.append("waktu analisis habis (%.0f dtk); hasil sebagian" % RELAB_TIME)
+                stop = True
+                break
+    if a32:
+        arm_regs.sort()
+        L["arm_regions"], L["arm_region_lo"] = arm_regs, [r[0] for r in arm_regs]
+    callee_edges = []
+    for va, tgt in edges:
+        if tgt in thunks:
+            sites.append((va, thunks[tgt], "thunk"))
+        elif in_code(tgt):
+            callee_edges.append((va, tgt))
+    starts: dict[int, str] = {}
+    if L["entry_va"] and in_code(L["entry_va"]):
+        starts[L["entry_va"]] = "entry"
+    for va in L["exports"]:
+        if in_code(va):
+            starts.setdefault(va, "ekspor")
+    tcount = collections.Counter(t for _v, t in callee_edges)
+    for t in tcount:
+        starts.setdefault(t, "call")
+    for va in prolog[:60000]:
+        starts.setdefault(va, "prolog")
+    for tva in thunks:
+        if in_code(tva):
+            starts.setdefault(tva, "thunk")
+    fl = sorted(starts)
+    ends = {}
+    for i, s in enumerate(fl):
+        sec_end = next((b for a, b in ranges if a <= s < b), s)
+        ends[s] = min(fl[i + 1] if i + 1 < len(fl) else sec_end, sec_end, s + 0x10000)
+
+    def func_of(va):
+        i = bisect.bisect_right(fl, va) - 1
+        if i < 0:
+            return None
+        s = fl[i]
+        return s if va < ends[s] else None
+    F: dict[int, dict] = {}
+
+    def fobj(s):
+        if s not in F:
+            nm = L["exports"].get(s) or ("start" if starts.get(s) == "entry" else ("thunk_" + thunks[s].split("!")[-1] if s in thunks else "sub_%08X" % s))
+            F[s] = {"va": s, "name": nm, "size": ends.get(s, s) - s, "how": starts.get(s, "?"), "callers": 0, "callees": set(), "apis": {}, "strings": [], "anti": set()}
+        return F[s]
+    for va, tgt in callee_edges:
+        cs = func_of(va)
+        fobj(tgt)["callers"] += 1
+        if cs is not None and cs != tgt:
+            fobj(cs)["callees"].add(tgt)
+    api_sites: dict[str, list[tuple[int, int]]] = {}
+    for va, api, kind in sites:
+        fs = func_of(va)
+        if fs is not None and fs in thunks and kind != "ptr":
+            continue
+        if fs is not None:
+            F_ = fobj(fs)
+            F_["apis"][api] = F_["apis"].get(api, 0) + 1
+        api_sites.setdefault(api, []).append((va, fs or 0))
+    sref: dict[int, dict] = {}
+    seen_budget = 0
+    for va, sva in strrefs:
+        off = _va_off(L, sva)
+        if off is None or off + 8 > len(d) or in_code(sva):
+            continue
+        seen_budget += 1
+        if seen_budget > 40000:
+            break
+        r = _rd_str(d, off)
+        if not r:
+            continue
+        e = sref.setdefault(sva, {"va": sva, "kind": r[0], "text": r[1][:140], "funcs": set()})
+        fs = func_of(va)
+        if fs is not None:
+            e["funcs"].add(fs)
+            if r[1][:140] not in fobj(fs)["strings"] and len(fobj(fs)["strings"]) < 40:
+                fobj(fs)["strings"].append(e["text"])
+    for key, vas in anti.items():
+        for va in vas[:200]:
+            fs = func_of(va)
+            if fs is not None:
+                fobj(fs)["anti"].add(key.split(" (")[0])
+    arm_hashes: list[dict] = []                     # v99.41: API hashing ARM / ARM64 (literal + MOVW/MOVT + MOVZ/MOVK)
+    try:
+        for va, algo, nm, how in _arm_hash_filter(_arm_hash_scan(execs, L, a32, t0 + RELAB_TIME + 4.0))[:40]:
+            fs = func_of(va)
+            if fs is not None:
+                fobj(fs)["anti"].add("API hashing")
+            api = nm if algo == "ror13 block_api" else "%s (%s)" % (nm, algo)
+            arm_hashes.append({"api": api, "offset": "0x%X" % va, "algo": algo, "how": how})
+    except Exception as e:                          # pemindaian hash tidak boleh menjatuhkan RE Lab
+        notes.append("pemindaian API hash ARM dilewati: %s" % type(e).__name__)
+    ranked = []
+    for s, f in F.items():
+        tags, sc = _api_tags(list(f["apis"]))
+        intr = list(dict.fromkeys(x for x in f["strings"] if _RE_INTR.search(x)))
+        sc += min(len(intr), 2) + (2 if len(f["anti"]) >= 2 else len(f["anti"]))
+        if "SVC langsung" in " ".join(f["anti"]) and any(a in svc_calls for a in f["apis"]):
+            sc += 3
+        if sc >= 2:
+            ranked.append((sc, s, tags, intr))
+    ranked.sort(key=lambda x: (-x[0], x[1]))
+    top = []
+    for sc, s, tags, intr in ranked[:RELAB_TOP]:
+        f = F[s]
+        top.append({"va": "0x%X" % s, "name": f["name"], "size": f["size"], "callers": f["callers"], "callees": len(f["callees"]), "score": sc,
+                    "tags": tags, "apis": sorted(f["apis"])[:14], "strings": [_clean(x)[:90] for x in list(dict.fromkeys(intr or f["strings"]))[:4]], "anti": sorted(f["anti"])})
+    refs = sorted(sref.values(), key=lambda e: (0 if _RE_INTR.search(e["text"]) else 1, -len(e["funcs"]), e["va"]))
+    refs_out = []
+    for e in refs[:30]:
+        if not _RE_INTR.search(e["text"]) and len(refs_out) >= 8:
+            break
+        refs_out.append({"va": "0x%X" % e["va"], "kind": e["kind"], "tag": _str_tag(e["text"]), "text": _clean(e["text"]),
+                         "funcs": ["0x%X" % x for x in sorted(e["funcs"])[:4]]})
+    api_top = sorted(((a, len(v)) for a, v in api_sites.items()), key=lambda x: (-x[1], x[0]))
+    anti_out = [{"technique": k, "count": len(v), "first": "0x%X" % v[0]} for k, v in anti.items()]
+    if L.get("encrypted"):
+        notes.append("Mach-O terenkripsi (cryptid != 0): kode yang terbaca mungkin bukan kode asli; dekripsi dulu")
+    if L["stripped"]:
+        notes.append("tanpa tabel simbol: nama fungsi hanya dari ekspor / stub; sisanya sub_<alamat>")
+    arch_label = "%s ARM64 (AArch64)%s" % (fmt, ", tanpa simbol" if L["stripped"] else "")
+    if a32:
+        arch_label = "%s ARM 32-bit (A32 / Thumb)%s" % (fmt, ", tanpa simbol" if L["stripped"] else "")
+        notes.append("ARM 32-bit: A32 + Thumb / Thumb-2 (decoder kecil; mode dari simbol $a / $t / $d atau simbol fungsi); CFG tersedia (v99.30); emulasi mikro A32 (v99.36) dan Thumb / Thumb-2 (v99.37); disasm A32 (v99.38) dan Thumb / Thumb-2 (v99.39) bawaan tanpa capstone")
+    if L.get("reloc"):
+        if L.get("fmt") == "Mach-O":
+            notes.append("%d pointer rebase Mach-O chained fixups dibaca (slot data terisi alamat tujuan)" % len(L["reloc"]))
+        else:
+            notes.append("%d relokasi RELATIVE / ABS ELF dibaca (slot data PIE terisi nilainya)" % len(L["reloc"]))
+    if L.get("n_irel") or L.get("n_irel_skip"):
+        notes.append("IRELATIVE (ifunc): %d slot diselesaikan lewat emulasi resolver, %d dilewati (beberapa kandidat / hasil tak diketahui)" % (L.get("n_irel", 0), L.get("n_irel_skip", 0)))
+    if L.get("n_symrel"):
+        notes.append("%d slot GLOB_DAT / JUMP_SLOT ke simbol lokal termasuk di atas" % L["n_symrel"])
+    if L.get("n_relr"):
+        notes.append("%d slot DT_RELR (relokasi RELATIVE terkompresi) termasuk di atas" % L["n_relr"])
+    if a32ctx["indirect"]:
+        notes.append("%d cabang-register (BLR / BLX / BX / BR) diselesaikan dari konstanta (ADRP+ADD, ADR, MOVZ+MOVK, MOVW+MOVT, literal, slot data)" % len(a32ctx["indirect"]))
+    info = {
+        "arch": arch_label, "image_base": "0x%X" % base, "n_functions": len(fl), "n_api_sites": len(sites), "n_iat": len(iat), "n_thunks": len(thunks),
+        "n_strrefs": len(sref), "entry": "0x%X" % L["entry_va"] if L["entry_va"] else "", "entry_stub": _a64_entry_stub(d, L),
+        "functions": top, "api_top": api_top[:15], "string_refs": refs_out, "stack_strings": [], "anti": anti_out, "api_hashes": arm_hashes[:12], "ror13_ops": 0, "notes": notes,
+    }
+    info["n_indirect"] = len(a32ctx["indirect"])        # v99.42: jumlah cabang-register yang targetnya diselesaikan (kunci aditif)
+    ctx = {"L": L, "F": F, "sites": api_sites, "sref": sref, "fl": fl, "thunks": thunks, "arch": "arm" if a32 else "arm64"}
+    _cfg_enrich(info, ctx, d)         # v99.23 [2b] AArch64 / v99.30 ARM 32-bit: CFG lewat _cfg_func (kunci info["cfg"], aditif)
+    _emu_enrich(info, ctx, d)         # v99.25 [2c] AArch64 / v99.36 [2d-2c-2b-2a] ARM 32-bit A32: emulasi mikro lewat _emu_func (kunci info["emu"], aditif)
+    return info, ctx
+
+
+def _relab_arm(d: bytes, t0: float | None = None):
+    L = _arm_layout(d)
+    if L is None:
+        return None, None, "bukan ELF / Mach-O ARM atau tanpa kode yang bisa dianalisis"
+    info, ctx = _re_lab_arm64(d, L, t0)
+    return info, ctx, "" if ctx else "tanpa bagian kode ARM64 yang bisa dianalisis"
+
+
+def _relab_multi(d: bytes, size: int):
+    """(info, ctx, galat): _relab_any (PE / ELF x86 / x64), lalu AArch64 (ELF / Mach-O) bila itu bukan x86. Jalur x86 / x64 tidak berubah."""
+    info, ctx, err = _relab_any(d, size)
+    if info is not None or ctx is not None:
+        return info, ctx, err
+    if d[:4] in (b"\x7fELF", b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xca\xfe\xba\xbf"):
+        try:
+            i2, c2, e2 = _relab_arm(d)
+        except Exception:
+            return info, ctx, err
+        if i2 is not None:
+            return i2, c2, ""
+        if "ARM 32-bit" in e2:
+            return info, ctx, e2
+    return info, ctx, err
 
 
 def _relab_elf(d: bytes, t0: float | None = None):
@@ -11394,14 +16093,14 @@ def _relab_ctx(path):
     f, size = _open_regular(path)
     with f:
         d = f.read(MAX_SCAN)
-    info, ctx, err = _relab_any(d, size)
+    info, ctx, err = _relab_multi(d, size)
     return info, ctx, err
 
 
 def _ann_collect(path) -> dict:
     info, ctx, err = _relab_ctx(path)
     if not ctx:
-        return {"error": (err or "tidak bisa dianalisis") + "; RE Lab mendukung PE dan ELF x86 / x64"}
+        return {"error": (err or "tidak bisa dianalisis") + "; RE Lab mendukung PE dan ELF x86 / x64, serta ELF / Mach-O AArch64"}
     F = ctx["F"]
     funcs = [(va, fo["name"]) for va, fo in sorted(F.items())][:ANN_MAX_FUNCS]
     cm: dict[int, list[str]] = {}
@@ -11531,7 +16230,7 @@ def export_text(path, fmt: str = "ghidra", out=None) -> str:
 def _fd_sigs(path) -> dict:
     info, ctx, err = _relab_ctx(path)
     if not ctx:
-        raise ValueError((err or "tidak bisa dianalisis") + "; RE Lab mendukung PE dan ELF x86 / x64")
+        raise ValueError((err or "tidak bisa dianalisis") + "; RE Lab mendukung PE dan ELF x86 / x64, serta ELF / Mach-O AArch64")
     out = {}
     for va, fo in list(ctx["F"].items())[:FDIFF_MAX_FUNCS * 4]:
         if va in ctx["thunks"]:
@@ -11643,7 +16342,7 @@ def func_diff_text(path_a, path_b, max_items: int = 15) -> str:
     return "\n".join(L)
 
 
-_API_ACTIONS = ("export", "funcdiff", "sigcheck", "reputation", "unpack7z", "capabilities", "cache", "triage", "json", "ioc", "yara", "md", "similar", "hex", "compare", "list", "extract", "dir", "ctph", "re", "xref", "disasm", "unpack", "yarascan", "assets", "assets_extract", "assets_carve", "formats", "dex", "dotnet", "cfg", "emu", "config", "deobf", "unity", "unity_extract")
+_API_ACTIONS = ("export", "funcdiff", "sigcheck", "reputation", "unpack7z", "capabilities", "cache", "triage", "json", "ioc", "yara", "md", "similar", "hex", "compare", "list", "extract", "dir", "ctph", "re", "xref", "disasm", "unpack", "yarascan", "assets", "assets_extract", "assets_carve", "formats", "dex", "dotnet", "cfg", "emu", "config", "deobf", "unity", "unity_extract", "unzstd")
 
 
 _DEFAULT_ROOTS: list = []     # diisi pemanggil tepercaya (server.py) lewat set_default_roots(); dipakai bila env REA_ROOTS kosong
@@ -11660,6 +16359,13 @@ def _roots() -> list:
     """Akar yang berlaku: env REA_ROOTS (dipisah os.pathsep) kalau diisi, kalau tidak akar bawaan dari set_default_roots()."""
     env = [x for x in os.environ.get("REA_ROOTS", "").split(os.pathsep) if x.strip()]
     return env or list(_DEFAULT_ROOTS)
+
+
+def _api_aes_files(v):
+    """v99.55: `aes_file` API: satu berkas atau daftar berkas kunci, tiap path lewat pembatas path; kosong -> None."""
+    if not v:
+        return None
+    return [_api_path(x) for x in v] if isinstance(v, (list, tuple)) else _api_path(v)
 
 
 def _api_path(p) -> Path:
@@ -11692,7 +16398,7 @@ def rea_api(request) -> dict:
                     "cache": _cache_dir() is not None, "sigcheck_crypto": importlib.util.find_spec("cryptography") is not None,
                     "optional_deps": {m_: importlib.util.find_spec(m_) is not None for m_ in ("PIL", "texture2ddecoder", "lz4", "lief", "capstone", "UnityPy")},
                     "online_enabled": os.environ.get("REA_ONLINE", "").strip() == "1", "vt_key_set": bool(os.environ.get("REA_VT_KEY", "").strip()),
-                    "sevenzip": any(__import__("shutil").which(x) for x in ("7zz", "7z", "7za", "7zr"))}
+                    "sevenzip": any(__import__("shutil").which(x) for x in ("7zz", "7z", "7za", "7zr")), "zstd_pure": True}
         if act == "cache":
             return {"ok": True, "action": act, "info": cache_info()}
         if act == "triage":
@@ -11718,9 +16424,9 @@ def rea_api(request) -> dict:
         if act == "compare":
             return {"ok": True, "action": act, "text": trim(compare_text(_api_path(req["a"]), _api_path(req["b"])))}
         if act == "list":
-            return {"ok": True, "action": act, "text": trim(container_text(_api_path(req["path"]), max_chars=mc))}
+            return {"ok": True, "action": act, "text": trim(container_text(_api_path(req["path"]), max_chars=mc, dict_path=_api_path(req["dict"]) if req.get("dict") else None))}
         if act == "extract":
-            m = container_extract(_api_path(req["path"]), _api_outdir(req["outdir"]), pattern=req.get("pattern"), scan=bool(req.get("scan", False)))
+            m = container_extract(_api_path(req["path"]), _api_outdir(req["outdir"]), pattern=req.get("pattern"), scan=bool(req.get("scan", False)), dict_path=_api_path(req["dict"]) if req.get("dict") else None)
             return {"ok": m.get("status") == "success", "action": act, "manifest": m}
         if act == "re":
             p = _api_path(req["path"])
@@ -11750,14 +16456,21 @@ def rea_api(request) -> dict:
         if act == "dex":
             return {"ok": True, "action": act, "text": trim(dex_text(_api_path(req["path"]), defang=bool(req.get("defang", True)), compact=bool(req.get("compact", False))))}
         if act == "assets":
-            return {"ok": True, "action": act, "text": trim(assets_text(_api_path(req["path"]), max_chars=mc))}
+            return {"ok": True, "action": act, "text": trim(assets_text(_api_path(req["path"]), max_chars=mc, dict_path=_api_path(req["dict"]) if req.get("dict") else None, aes_key=req.get("aes"), aes_file=_api_aes_files(req.get("aes_file"))))}
         if act == "unity":
             return {"ok": True, "action": act, "data": unity_info(_api_path(req["path"])), "text": trim(unity_text(_api_path(req["path"])))}
         if act == "unity_extract":
             m = unity_extract(_api_path(req["path"]), _api_outdir(req["outdir"]), types=req.get("types"), name=req.get("name"), flip=bool(req.get("flip", True)))
             return {"ok": m.get("status") in ("success", "partial"), "action": act, "manifest": m}
+        if act == "unzstd":
+            p_ = _api_path(req["path"])
+            op_ = None
+            if req.get("outdir"):
+                op_ = _api_outdir(req["outdir"]) / (p_.stem if p_.suffix.lower() == ".zst" else p_.name + ".out")
+            r_ = unzstd(p_, op_, max_out=req.get("max_out"), force=bool(req.get("force", False)), dict_path=_api_path(req["dict"]) if req.get("dict") else None)
+            return {"ok": bool(r_.get("ok")), "action": act, "data": r_, "text": trim(unzstd_text(p_, None))}
         if act == "assets_extract":
-            m = assets_extract(_api_path(req["path"]), _api_outdir(req["outdir"]), pattern=req.get("pattern"), convert=bool(req.get("convert", True)))
+            m = assets_extract(_api_path(req["path"]), _api_outdir(req["outdir"]), pattern=req.get("pattern"), convert=bool(req.get("convert", True)), dict_path=_api_path(req["dict"]) if req.get("dict") else None, aes_key=req.get("aes"), aes_file=_api_aes_files(req.get("aes_file")))
             return {"ok": m.get("status") in ("success", "partial"), "action": act, "manifest": m}
         if act == "assets_carve":
             od = _api_outdir(req["outdir"]) if req.get("outdir") else None
@@ -11809,23 +16522,28 @@ def _extract_mod():
     return _EX_API
 
 
-def container_text(path, max_chars: int = 0) -> str:
-    """Daftar isi container (ZIP/TAR/GZIP/ISO/PSP ISO), hanya-baca. Gagal -> pesan, tidak melempar."""
+def container_text(path, max_chars: int = 0, dict_path=None) -> str:
+    """Daftar isi container (ZIP/TAR/GZIP/ISO/PSP ISO), hanya-baca. Gagal -> pesan, tidak melempar. dict_path (v99.52): dictionary Zstd untuk .zst / .tar.zst."""
     mod = _extract_mod()
     if mod is None:
         return "Mesin ekstraksi (rea_extract.py) tidak ditemukan di folder yang sama; fitur isi container tidak tersedia."
     try:
-        return mod.describe_container_text(path, max_chars=max_chars)
+        zd = _zstd_load_dict(dict_path) if dict_path else None
+        return mod.describe_container_text(path, max_chars=max_chars, zstd_dict=zd)
     except Exception as e:
         return "CONTAINER gagal dibaca (%s: %s)." % (type(e).__name__, str(e)[:120])
 
 
-def container_extract(path, outdir, pattern=None, scan: bool = False) -> dict:
-    """Ekstraksi selektif ke workspace outdir (extracted/, manifests/, logs/). Mengembalikan manifest (dict)."""
+def container_extract(path, outdir, pattern=None, scan: bool = False, dict_path=None) -> dict:
+    """Ekstraksi selektif ke workspace outdir (extracted/, manifests/, logs/). Mengembalikan manifest (dict). dict_path (v99.52): dictionary Zstd untuk .zst / .tar.zst."""
     mod = _extract_mod()
     if mod is None:
         return {"status": "error", "code": "module_missing", "message": "rea_extract.py tidak ditemukan"}
-    r = mod.open_container(path)
+    try:
+        zd = _zstd_load_dict(dict_path) if dict_path else None
+    except (ValueError, OSError) as e:
+        return {"status": "error", "code": "bad_dictionary", "message": "dictionary tidak bisa dibaca: %s" % _as_clean(e, 160)}
+    r = mod.open_container(path, zstd_dict=zd)
     if r.get("status") != "success":
         return r
     try:
@@ -13779,7 +18497,7 @@ def _arc_extract_factory(lister):
                 nm = e["name"]
                 if pat and not fnmatch.fnmatch(nm.lower(), pat) and not fnmatch.fnmatch(os.path.basename(nm).lower(), pat):
                     continue
-                if e.get("enc"):
+                if e.get("enc") and not (a.kind == "Unreal PAK" and _AES_KEY_CTX.get() is not None):   # v99.54: pak terenkripsi dibaca bila kunci AES diberikan
                     out.skipped.append({"path": nm, "reason": "terenkripsi (butuh kunci)"})
                     continue
                 if e.get("size", 0) > MAX_OUT_FILE:
@@ -13990,51 +18708,58 @@ def _upak_decode(blob, p):
     return {"off": off, "csize": size, "size": usize, "usize": usize, "comp": comp, "blocks": blocks, "enc": enc, "bsize": bs, "hdr": hdr}, p
 
 
-def _upak_v10(d, ioff, ver):
+def _upak_v10(d, ioff, ver, ix=None, aes=None):
     """Indeks utama v10 / v11: mount point, entri terenkode + tak-terenkode, nama dari indeks direktori penuh (bila ada).
-    Mengembalikan (mount, entri, catatan)."""
-    pos = ioff
-    mount, pos = _fstr(d, pos)
-    cnt = _u32(d, pos)
+    Mengembalikan (mount, entri, catatan). v99.54: `ix` = indeks primer yang sudah didekripsi (posisi 0; None = baca dari `d` di `ioff`),
+    `aes` = kunci untuk mendekripsi indeks direktori penuh (hanya bila indeks terenkripsi)."""
+    if ix is not None:
+        d_, pos = ix, 0
+    else:
+        d_, pos = d, ioff
+    mount, pos = _fstr(d_, pos)
+    cnt = _u32(d_, pos)
     pos += 4
     if cnt > MAX_ENTRIES:
         raise ValueError("terlalu banyak entri PAK")
     pos += 8   # path hash seed
-    has_ph = _u32(d, pos)
+    has_ph = _u32(d_, pos)
     pos += 4
     if has_ph:
         pos += 8 + 8 + 20
-    has_fd = _u32(d, pos)
+    has_fd = _u32(d_, pos)
     pos += 4
     fd_off = fd_sz = 0
     if has_fd:
-        fd_off, fd_sz = struct.unpack_from("<qq", d, pos)
+        fd_off, fd_sz = struct.unpack_from("<qq", d_, pos)
         pos += 8 + 8 + 20
-    en = _u32(d, pos)
+    en = _u32(d_, pos)
     pos += 4
-    if pos + en > len(d):
+    if pos + en > len(d_):
         raise ValueError("blob entri terenkode melewati batas berkas")
-    blob = bytes(d[pos:pos + en])
+    blob = bytes(d_[pos:pos + en])
     pos += en
-    nn = _u32(d, pos)
+    nn = _u32(d_, pos)
     pos += 4
     nonenc = []
     for _ in range(min(nn, MAX_ENTRIES)):
-        e, pos = _upak_entry(d, pos, ver)
+        e, pos = _upak_entry(d_, pos, ver)
         nonenc.append(e)
     pre = mount.replace("../../../", "")
     ents, notes = [], []
     if has_fd and 0 <= fd_off and fd_off + fd_sz <= len(d):
-        p = fd_off
-        nd = _u32(d, p)
+        if aes is not None:                                   # v99.54: indeks direktori penuh ikut terenkripsi bila indeks terenkripsi
+            fb, p = _aes_ecb(aes, bytes(d[fd_off:fd_off + (fd_sz & ~15)]), True), 0
+        else:
+            fb, p = d, fd_off
+        nd = _u32(fb, p)
         p += 4
         for _ in range(min(nd, MAX_ENTRIES)):
-            dn, p = _fstr(d, p)
-            nf = _u32(d, p)
+            dn, p = _fstr(fb, p)
+            nf = _u32(fb, p)
             p += 4
             for _ in range(min(nf, MAX_ENTRIES)):
-                fn, p = _fstr(d, p)
-                eo = struct.unpack_from("<i", d, p)[0]
+                fn, p = _fstr(fb, p)
+                eo = struct.unpack_from("<i", fb, p)[0]
                 p += 4
                 try:
                     e = dict(_upak_decode(blob, eo)[0]) if eo >= 0 else dict(nonenc[-(eo + 1)])
@@ -14063,7 +18788,9 @@ def _upak_v10(d, ioff, ver):
     return mount, ents, notes
 
 
-def _upak(d, p):
+def _upak_raw(d, p):
+    zdict = _ZSTD_DICT_CTX.get()                                        # v99.53: ditangkap saat pak dibuka (read() bisa dipanggil lewat closure)
+    keys = _aes_keyset(_AES_KEY_CTX.get())                              # v99.54 / v99.55: daftar [(guid | None, kunci AES-256)] atau None
     n = len(d)
     tail_start = max(0, n - 512)
     tail = bytes(d[tail_start:])
@@ -14081,8 +18808,29 @@ def _upak(d, p):
     if not found:
         raise ValueError("footer Unreal PAK tidak ditemukan")
     a, ver, ioff, isz = found
-    if ver >= 4 and d[a - 1]:
-        raise ValueError("indeks PAK terenkripsi (butuh kunci AES)")
+    idx_enc = ver >= 4 and bool(d[a - 1])
+    pak_guid = None                                                     # v99.55: GUID kunci enkripsi di footer (v7+), urutan A B C D; nol -> None
+    if ver >= 7 and a >= 17:
+        pak_guid = _aes_guid_norm("%08X%08X%08X%08X" % struct.unpack_from("<4I", d, a - 17))
+    if idx_enc and not keys:
+        raise ValueError("indeks PAK terenkripsi (butuh kunci AES%s; berikan lewat --aes [GUID:]KUNCI)" % ("; GUID pak %s" % pak_guid if pak_guid else ""))
+    aes, ix, sel = None, None, ""
+    if idx_enc:                                                         # v99.54: dekripsi indeks primer (ECB, dibulatkan ke kelipatan 16)
+        ilen = (isz + 15) & ~15
+        if ioff + ilen > n:
+            ilen = isz & ~15
+        if ilen <= 0 or ioff + ilen > n:
+            raise ValueError("indeks PAK terenkripsi terpotong")
+        iblob = bytes(d[ioff:ioff + ilen])
+        cands = _aes_candidates(keys, pak_guid)
+        for lab_, k_ in cands:                                          # v99.55: kunci dipilih lewat GUID; mount point yang wajar membuktikan kunci benar
+            ix_ = _aes_ecb(k_, iblob, True)
+            m_ = struct.unpack_from("<i", ix_, 0)[0]
+            if (-4096 <= m_ <= 4096) and not (m_ > 0 and (4 + m_ > len(ix_) or any(c < 32 for c in ix_[4:3 + m_]) or ix_[3 + m_] != 0)) and not (m_ < 0 and 4 - 2 * m_ > len(ix_)):
+                aes, ix, sel = k_, ix_, lab_
+                break
+        if ix is None:
+            raise ValueError("kunci AES salah: indeks PAK tidak bisa dibaca setelah dekripsi (dicoba %d kunci%s)" % (len(cands), "; GUID pak %s" % pak_guid if pak_guid else ""))
     names = [""]
     rem = n - (a + 44) - (1 if ver == 9 else 0)
     if ver >= 8 and rem > 0:
@@ -14090,51 +18838,134 @@ def _upak(d, p):
         names += [_cstr(d[base + 32 * i:base + 32 * i + 32]) for i in range(rem // 32)]
     v10notes = []
     if ver >= 10:
-        mount, ents, v10notes = _upak_v10(d, ioff, ver)
+        mount, ents, v10notes = _upak_v10(d, ioff, ver, ix=ix, aes=aes if idx_enc else None)
     else:
-        pos = ioff
-        mount, pos = _fstr(d, pos)
-        cnt = _u32(d, pos)
+        d_, pos = (ix, 0) if ix is not None else (d, ioff)
+        mount, pos = _fstr(d_, pos)
+        cnt = _u32(d_, pos)
         pos += 4
         if cnt > MAX_ENTRIES:
             raise ValueError("terlalu banyak entri PAK")
         ents = []
         for _ in range(cnt):
-            nm, pos = _fstr(d, pos)
-            e, pos = _upak_entry(d, pos, ver)
+            nm, pos = _fstr(d_, pos)
+            e, pos = _upak_entry(d_, pos, ver)
             e["name"] = (mount.replace("../../../", "") + nm) if mount else nm
             ents.append(e)
 
-    def read(e):
-        if e["enc"]:
-            raise ValueError("terenkripsi (butuh kunci AES)")
+    def read1(e, akey):
+        enc = e["enc"]
         base = e["off"]
+
+        def raw(lo, hi):                                                # v99.54: byte tersimpan lo..hi; terenkripsi -> baca sejajar 16, dekripsi, potong ke hi - lo
+            if not enc:
+                return bytes(d[lo:hi])
+            if hi <= lo:
+                return b""
+            al = (hi - lo + 15) & ~15
+            if lo < 0 or lo + al > n:
+                raise ValueError("data terenkripsi terpotong")
+            return _aes_ecb(akey, bytes(d[lo:lo + al]), True)[:hi - lo]
         if e["comp"] == 0:
-            return bytes(d[base + e["hdr"]:base + e["hdr"] + e["csize"]])
+            return raw(base + e["hdr"], base + e["hdr"] + e["csize"])
         meth = names[e["comp"]] if ver >= 8 and e["comp"] < len(names) else ("Zlib" if e["comp"] == 1 else "kode %d" % e["comp"])
         ml_ = meth.lower()
         lz4 = ml_.startswith("lz4")
-        if not (lz4 or ml_.startswith("zlib")):
-            raise ValueError("kompresi %s belum didukung (zlib dan LZ4 saja)" % meth)
-        out = bytearray()
-        for s, en in e["blocks"]:
-            lo, hi = (base + s, base + en) if ver >= 5 else (s, en)
-            if lz4:
-                chunk = _lz4_block(bytes(d[lo:hi]), min(e["bsize"] or e["usize"], e["usize"] - len(out)))
-                if len(out) + len(chunk) > MAX_OUT_FILE:
+        zst = ml_.startswith("zstd")                      # v99.32: tiap blok = satu frame Zstd utuh (dekoder murni Python v99.31)
+        if not (lz4 or zst or ml_.startswith("zlib")):
+            raise ValueError("kompresi %s belum didukung (zlib, LZ4, dan Zstd saja%s)" % (meth, "; Oodle butuh pustaka proprietary" if ml_.startswith("oodle") else ""))
+
+        def run():
+            out = bytearray()
+            for s, en in e["blocks"]:
+                lo, hi = (base + s, base + en) if ver >= 5 else (s, en)
+                if zst:
+                    chunk = _zstd_decompress(raw(lo, hi), max_out=min(MAX_OUT_FILE - len(out), max(e["bsize"] or e["usize"], 1) * 2 + 65536), dictionary=zdict)
+                    if len(out) + len(chunk) > MAX_OUT_FILE:
+                        raise ValueError("terlalu besar")
+                    out += chunk
+                    continue
+                if lz4:
+                    chunk = _lz4_block(raw(lo, hi), min(e["bsize"] or e["usize"], e["usize"] - len(out)))
+                    if len(out) + len(chunk) > MAX_OUT_FILE:
+                        raise ValueError("terlalu besar")
+                    out += chunk
+                    continue
+                dobj = zlib.decompressobj()   # v103.2: dibatasi; zlib.decompress() tanpa batas bisa mengembang jadi GB dalam satu blok
+                chunk = dobj.decompress(raw(lo, hi), MAX_OUT_FILE + 1 - len(out))
+                if dobj.unconsumed_tail or len(out) + len(chunk) > MAX_OUT_FILE:
                     raise ValueError("terlalu besar")
+                if not dobj.eof:
+                    raise ValueError("blok zlib tidak lengkap")
                 out += chunk
+            return bytes(out[:e["usize"]])
+        if not enc:
+            return run()
+        try:                                                            # v99.54: kunci salah -> sampah -> galat dekompresi; beri petunjuk yang jelas
+            return run()
+        except (ValueError, zlib.error, IndexError, struct.error, OverflowError) as ex_:
+            if any(k in str(ex_) for k in ("terpotong", "terlalu besar", "melewati batas waktu")):
+                raise
+            raise ValueError("gagal mendekompres entri terenkripsi (kunci AES salah?)") from None
+    proven = [aes]                                                      # v99.56: kunci terbukti (indeks terenkripsi membuktikan kunci; selain itu dari isi entri)
+
+    def read(e):
+        if not e["enc"]:
+            return read1(e, None)
+        if not keys:
+            raise ValueError("terenkripsi (butuh kunci AES%s; berikan lewat --aes [GUID:]KUNCI)" % ("; GUID pak %s" % pak_guid if pak_guid else ""))
+        if proven[0] is not None:
+            return read1(e, proven[0])
+        cands = [k_ for _, k_ in _aes_candidates(keys, pak_guid)]
+        if len(cands) == 1:
+            return read1(e, cands[0])
+        first_err, fallback = None, None                                # v99.56: indeks polos + banyak kunci: coba tiap kandidat, pilih yang isinya terbukti
+        for k_ in cands:
+            try:
+                out = read1(e, k_)
+            except ValueError as ex_:
+                if any(w in str(ex_) for w in ("terpotong", "terlalu besar", "melewati batas waktu")):
+                    raise
+                first_err = first_err or ex_
                 continue
-            dobj = zlib.decompressobj()   # v103.2: dibatasi; zlib.decompress() tanpa batas bisa mengembang jadi GB dalam satu blok
-            chunk = dobj.decompress(bytes(d[lo:hi]), MAX_OUT_FILE + 1 - len(out))
-            if dobj.unconsumed_tail or len(out) + len(chunk) > MAX_OUT_FILE:
-                raise ValueError("terlalu besar")
-            if not dobj.eof:
-                raise ValueError("blok zlib tidak lengkap")
-            out += chunk
-        return bytes(out[:e["usize"]])
+            if e["comp"] != 0 or _aes_plain_ok(out):                    # dekompresi sukses (ukuran benar) / plaintext masuk akal = bukti
+                proven[0] = k_
+                return out
+            if fallback is None:
+                fallback = (k_, out)
+        if fallback is not None:                                        # tak bisa dibuktikan (isi biner acak / terlalu pendek): perilaku v99.55
+            _aes_pick_data(keys, pak_guid)                              # beberapa kunci tanpa GUID cocok -> ValueError lama
+            return fallback[1]
+        raise first_err or ValueError("gagal mendekompres entri terenkripsi (kunci AES salah?)")
+    aes_notes = (["GUID kunci enkripsi pak: %s" % pak_guid] if pak_guid else []) + (["dekripsi AES-256 (ECB) aktif%s%s; indeks polos + banyak kunci: kunci dipilih dari isi entri (dekompresi berhasil / plaintext masuk akal; v99.56)" % (
+        " untuk indeks dan entri" if idx_enc else " untuk entri terenkripsi", " (kunci dipilih: %s)" % sel if sel else "")] if keys else [])
     return _Arc(ents, read, ["PERHATIAN: parser Unreal PAK ini baru diuji dengan berkas sintetis; bila hasil aneh, kirim contoh .pak kecil untuk diverifikasi.",
-                               "mount point: %s | versi PAK: %d" % (_as_clean(mount, 60), ver)] + v10notes, kind="Unreal PAK")
+                               "mount point: %s | versi PAK: %d" % (_as_clean(mount, 60), ver)] + aes_notes + v10notes, kind="Unreal PAK")
+
+
+_UPAK_BAD = (struct.error, IndexError, OverflowError, MemoryError, zlib.error, UnicodeError, KeyError, TypeError)
+
+
+def _upak(d, p):
+    """Pembungkus _upak_raw (v99.33): indeks / footer / entri PAK rusak selalu menjadi ValueError (bukan struct.error / IndexError dll.),
+    baik saat membuka maupun saat membaca entri."""
+    try:
+        arc = _upak_raw(d, p)
+    except ValueError:
+        raise
+    except _UPAK_BAD as ex:
+        raise ValueError("indeks Unreal PAK rusak atau terpotong (%s)" % type(ex).__name__) from None
+    raw_read = arc.read
+
+    def safe_read(e):
+        try:
+            return raw_read(e)
+        except ValueError:
+            raise
+        except _UPAK_BAD as ex:
+            raise ValueError("entri Unreal PAK rusak atau terpotong (%s)" % type(ex).__name__) from None
+    arc.read = safe_read
+    return arc
 
 
 def _upak_detect(d, e):
@@ -14142,11 +18973,13 @@ def _upak_detect(d, e):
     return n > 60 and struct.pack("<I", _UPAK_MAGIC) in bytes(d[max(0, n - 512):])
 
 
-_add_archive("Unreal-PAK", _upak_detect, _upak, "Unreal Engine .pak (v1-v11, tanpa enkripsi; zlib dan LZ4)", 28)
+_add_archive("Unreal-PAK", _upak_detect, _upak, "Unreal Engine .pak (v1-v11; zlib, LZ4, Zstd; enkripsi AES-256 dengan --aes)", 28)
 
 
 # --- ZIP ---
 def _zip(d, p):
+    if _zip_cd_bytes(p) > MAX_ZIP_CD:   # v104
+        raise ValueError("direktori pusat ZIP terlalu besar")
     zf = zipfile.ZipFile(p)
     infos = zf.infolist()
     if len(infos) > MAX_ENTRIES:
@@ -14599,6 +19432,1161 @@ def _len_zstd(d, o):
     return None
 
 
+# --- Zstandard (RFC 8878): dekoder murni Python (v99.31; dictionary v99.51). Tanpa streaming; keluaran dan waktu dibatasi ---
+ZSTD_TIME = 30.0                         # detik per pemanggilan _zstd_decompress
+ZSTD_BLOCK_MAX = 128 * 1024              # batas ukuran blok (spesifikasi)
+ZSTD_VERIFY_MAX = 64 * 1024 * 1024       # checksum xxh64 hanya diverifikasi bila keluaran <= ini (xxh64 murni Python lambat)
+
+_ZSTD_LL_DEF = (4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1,
+                2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 1, 1, 1, 1, 1,
+                -1, -1, -1, -1)
+_ZSTD_ML_DEF = (1, 4, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1,
+                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1,
+                -1, -1, -1, -1, -1)
+_ZSTD_OF_DEF = (1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1, -1)
+_ZSTD_LL_BASE = tuple(range(16)) + (16, 18, 20, 22, 24, 28, 32, 40, 48, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536)
+_ZSTD_LL_BITS = (0,) * 16 + (1, 1, 1, 1, 2, 2, 3, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+_ZSTD_ML_BASE = tuple(range(3, 35)) + (35, 37, 39, 41, 43, 47, 51, 59, 67, 83, 99, 131, 259, 515, 1027, 2051, 4099, 8195, 16387, 32771, 65539)
+_ZSTD_ML_BITS = (0,) * 32 + (1, 1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+_ZSTD_DEF_CACHE: dict = {}
+
+_XXH_P1, _XXH_P2, _XXH_P3, _XXH_P4, _XXH_P5 = (11400714785074694791, 14029467366897019727, 1609587929392839161,
+                                               9650029242287828579, 2870177450012600261)
+_XXH_M = (1 << 64) - 1
+
+
+def _xxh64(data, seed: int = 0) -> int:
+    """xxHash64 murni Python (dipakai verifikasi checksum frame Zstd; hanya 32 bit rendah yang dibandingkan)."""
+    M, P1, P2, P3, P4, P5 = _XXH_M, _XXH_P1, _XXH_P2, _XXH_P3, _XXH_P4, _XXH_P5
+    n = len(data)
+    i = 0
+    if n >= 32:
+        v1, v2, v3, v4 = (seed + P1 + P2) & M, (seed + P2) & M, seed & M, (seed - P1) & M
+        for a, b, c, e in struct.iter_unpack("<4Q", bytes(data[:n - (n % 32)])):
+            v1 = (((((v1 + a * P2) & M) << 31 | ((v1 + a * P2) & M) >> 33) & M) * P1) & M
+            v2 = (((((v2 + b * P2) & M) << 31 | ((v2 + b * P2) & M) >> 33) & M) * P1) & M
+            v3 = (((((v3 + c * P2) & M) << 31 | ((v3 + c * P2) & M) >> 33) & M) * P1) & M
+            v4 = (((((v4 + e * P2) & M) << 31 | ((v4 + e * P2) & M) >> 33) & M) * P1) & M
+        i = n - (n % 32)
+        h = ((((v1 << 1) | (v1 >> 63)) + ((v2 << 7) | (v2 >> 57)) + ((v3 << 12) | (v3 >> 52)) + ((v4 << 18) | (v4 >> 46))) & M)
+        for v in (v1, v2, v3, v4):
+            v = (v * P2) & M
+            v = (((v << 31) | (v >> 33)) & M) * P1 & M
+            h = ((h ^ v) * P1 + P4) & M
+    else:
+        h = (seed + P5) & M
+    h = (h + n) & M
+    while i + 8 <= n:
+        k = struct.unpack_from("<Q", data, i)[0]
+        k = (k * P2) & M
+        k = (((k << 31) | (k >> 33)) & M) * P1 & M
+        h ^= k
+        h = ((((h << 27) | (h >> 37)) & M) * P1 + P4) & M
+        i += 8
+    if i + 4 <= n:
+        h ^= (struct.unpack_from("<I", data, i)[0] * P1) & M
+        h = ((((h << 23) | (h >> 41)) & M) * P2 + P3) & M
+        i += 4
+    while i < n:
+        h ^= (data[i] * P5) & M
+        h = (((h << 11) | (h >> 53)) & M) * P1 & M
+        i += 1
+    h ^= h >> 33
+    h = (h * P2) & M
+    h ^= h >> 29
+    h = (h * P3) & M
+    h ^= h >> 32
+    return h
+
+
+def _zstd_fse_header(buf, pos: int, maxsym: int, maxlog: int):
+    """Deskripsi tabel FSE (bitstream maju, LSB dulu) di buf[pos:] -> (norm, acclog, byte_terpakai). ValueError bila rusak."""
+    seg = bytes(buf[pos:pos + 600])
+    if not seg:
+        raise ValueError("Zstd: header FSE kosong")
+    v = int.from_bytes(seg, "little")
+    total = len(seg) * 8
+    acclog = (v & 15) + 5
+    bp = 4
+    if acclog > maxlog:
+        raise ValueError("Zstd: accuracy log FSE terlalu besar")
+    remaining = (1 << acclog) + 1
+    threshold = 1 << acclog
+    nb = acclog + 1
+    norm: list = []
+    prev0 = False
+    while remaining > 1 and len(norm) <= maxsym:
+        if bp > total:
+            raise ValueError("Zstd: header FSE terpotong")
+        if prev0:
+            n0 = len(norm)
+            while True:
+                r = (v >> bp) & 3
+                bp += 2
+                n0 += r
+                if r != 3:
+                    break
+                if bp > total:
+                    raise ValueError("Zstd: header FSE terpotong")
+            if n0 > maxsym + 1:
+                raise ValueError("Zstd: simbol FSE melebihi batas")
+            norm.extend([0] * (n0 - len(norm)))
+        mx = (2 * threshold - 1) - remaining
+        low = (v >> bp) & (threshold - 1)
+        if low < mx:
+            count = low
+            bp += nb - 1
+        else:
+            count = (v >> bp) & (2 * threshold - 1)
+            if count >= threshold:
+                count -= mx
+            bp += nb
+        count -= 1
+        remaining -= -count if count < 0 else count
+        norm.append(count)
+        prev0 = count == 0
+        while remaining < threshold:
+            nb -= 1
+            threshold >>= 1
+    if remaining != 1 or len(norm) > maxsym + 1 or bp > total:
+        raise ValueError("Zstd: header FSE rusak")
+    return norm, acclog, (bp + 7) >> 3
+
+
+def _zstd_fse_table(norm, acclog: int):
+    """Normalized counts -> tabel dekode (simbol[], nbBits[], baseline[]) berukuran 1 << acclog."""
+    size = 1 << acclog
+    high = size - 1
+    nxt = [0] * len(norm)
+    sym = [0] * size
+    for s, c in enumerate(norm):
+        if c == -1:
+            sym[high] = s
+            high -= 1
+            nxt[s] = 1
+        else:
+            nxt[s] = c
+    step = (size >> 1) + (size >> 3) + 3
+    mask = size - 1
+    pos = 0
+    for s, c in enumerate(norm):
+        for _ in range(c if c > 0 else 0):
+            sym[pos] = s
+            pos = (pos + step) & mask
+            while pos > high:
+                pos = (pos + step) & mask
+    if pos != 0:
+        raise ValueError("Zstd: tabel FSE tidak konsisten")
+    nbv = [0] * size
+    base = [0] * size
+    for u in range(size):
+        s = sym[u]
+        ns = nxt[s]
+        nxt[s] = ns + 1
+        nbits = acclog - (ns.bit_length() - 1)
+        nbv[u] = nbits
+        base[u] = (ns << nbits) - size
+    return sym, nbv, base
+
+
+def _zstd_def_table(kind: str):
+    t = _ZSTD_DEF_CACHE.get(kind)
+    if t is None:
+        norm, al = {"ll": (_ZSTD_LL_DEF, 6), "ml": (_ZSTD_ML_DEF, 6), "of": (_ZSTD_OF_DEF, 5)}[kind]
+        t = _zstd_fse_table(list(norm), al) + (al,)
+        _ZSTD_DEF_CACHE[kind] = t
+    return t
+
+
+class _ZRev:
+    """Pembaca bitstream mundur Zstd (dari bit penanda di byte terakhir ke awal; bit pertama = MSB hasil)."""
+    __slots__ = ("b", "i", "acc", "n", "left")
+
+    def __init__(self, data):
+        if not data or data[-1] == 0:
+            raise ValueError("Zstd: bitstream tanpa bit penanda")
+        rb = bytes(data[::-1])
+        bl = rb[0].bit_length()
+        self.b = rb
+        self.i = 1
+        self.n = bl - 1
+        self.acc = rb[0] & ((1 << (bl - 1)) - 1)
+        self.left = (bl - 1) + 8 * (len(rb) - 1)
+
+    def read(self, k: int) -> int:
+        if k == 0:
+            return 0
+        while self.n < k:
+            if self.i < len(self.b):
+                self.acc = (self.acc << 8) | self.b[self.i]
+                self.i += 1
+            else:
+                self.acc <<= 8
+            self.n += 8
+        self.n -= k
+        v = self.acc >> self.n
+        self.acc &= (1 << self.n) - 1
+        self.left -= k
+        return v
+
+
+def _zstd_huf_table(weights):
+    """Bobot Huffman (tanpa simbol terakhir) -> (tabel_dekode, maxbits); entri = simbol << 4 | nbits."""
+    if len(weights) > 255:
+        raise ValueError("Zstd: terlalu banyak bobot Huffman")
+    tot = 0
+    for w in weights:
+        if w > 11:
+            raise ValueError("Zstd: bobot Huffman tidak sah")
+        if w:
+            tot += 1 << (w - 1)
+    if tot == 0:
+        raise ValueError("Zstd: tabel Huffman kosong")
+    mb = tot.bit_length()                    # = highbit(tot) + 1
+    if mb > 11:
+        raise ValueError("Zstd: panjang kode Huffman melebihi 11 bit")
+    rest = (1 << mb) - tot
+    if rest <= 0 or rest & (rest - 1):
+        raise ValueError("Zstd: bobot Huffman tidak melengkapi pohon")
+    weights = list(weights) + [rest.bit_length()]
+    table = [0] * (1 << mb)
+    pos = 0
+    for w in range(1, mb + 1):
+        span = 1 << (w - 1)
+        ent = mb + 1 - w
+        for s, ws in enumerate(weights):
+            if ws == w:
+                e = (s << 4) | ent
+                table[pos:pos + span] = [e] * span
+                pos += span
+    if pos != (1 << mb):
+        raise ValueError("Zstd: tabel Huffman tidak penuh")
+    return table, mb
+
+
+def _zstd_huf_read(buf, pos: int, end: int):
+    """Deskripsi pohon Huffman di buf[pos:end] -> (tabel, maxbits, byte_terpakai)."""
+    if pos >= end:
+        raise ValueError("Zstd: deskripsi Huffman terpotong")
+    hb = buf[pos]
+    pos += 1
+    if hb >= 128:
+        n = hb - 127
+        nbytes = (n + 1) // 2
+        if pos + nbytes > end:
+            raise ValueError("Zstd: bobot Huffman langsung terpotong")
+        w = []
+        for i in range(n):
+            byte = buf[pos + i // 2]
+            w.append((byte >> 4) if i % 2 == 0 else (byte & 15))
+        t, mb = _zstd_huf_table(w)
+        return t, mb, 1 + nbytes
+    if hb == 0 or pos + hb > end:
+        raise ValueError("Zstd: bobot Huffman terkompresi terpotong")
+    norm, al, used = _zstd_fse_header(buf[pos:pos + hb], 0, 255, 6)
+    if used >= hb:
+        raise ValueError("Zstd: bitstream bobot Huffman kosong")
+    sym, nbv, base = _zstd_fse_table(norm, al)
+    rd = _ZRev(buf[pos + used:pos + hb])
+    s1 = rd.read(al)
+    s2 = rd.read(al)
+    w = []
+    while True:
+        w.append(sym[s1])
+        s1 = base[s1] + rd.read(nbv[s1])
+        if rd.left < 0:
+            w.append(sym[s2])
+            break
+        w.append(sym[s2])
+        s2 = base[s2] + rd.read(nbv[s2])
+        if rd.left < 0:
+            w.append(sym[s1])
+            break
+        if len(w) > 256:
+            raise ValueError("Zstd: bobot Huffman melebihi 255")
+    t, mb = _zstd_huf_table(w)
+    return t, mb, 1 + hb
+
+
+def _zstd_huf_stream(data, table, mb: int, count: int) -> bytes:
+    """Dekode satu stream Huffman (bitstream mundur) menjadi tepat `count` byte."""
+    rd = _ZRev(data)
+    b, i, acc, n, left = rd.b, rd.i, rd.acc, rd.n, rd.left
+    lb = len(b)
+    out = bytearray(count)
+    for j in range(count):
+        while n < mb:
+            if i < lb:
+                acc = (acc << 8) | b[i]
+                i += 1
+            else:
+                acc <<= 8
+            n += 8
+        e = table[acc >> (n - mb)]
+        k = e & 15
+        out[j] = e >> 4
+        n -= k
+        acc &= (1 << n) - 1
+        left -= k
+    if left != 0:
+        raise ValueError("Zstd: stream Huffman tidak habis tepat")
+    return bytes(out)
+
+
+def _zstd_literals(d, pos: int, end: int, st: dict):
+    """Seksi literal -> (bytes literal, pos berikutnya)."""
+    if pos >= end:
+        raise ValueError("Zstd: seksi literal terpotong")
+    b0 = d[pos]
+    typ, sf = b0 & 3, (b0 >> 2) & 3
+    if typ < 2:
+        if sf in (0, 2):
+            size, hl = b0 >> 3, 1
+        elif sf == 1:
+            if pos + 2 > end:
+                raise ValueError("Zstd: header literal terpotong")
+            size, hl = (b0 >> 4) | (d[pos + 1] << 4), 2
+        else:
+            if pos + 3 > end:
+                raise ValueError("Zstd: header literal terpotong")
+            size, hl = (b0 >> 4) | (d[pos + 1] << 4) | (d[pos + 2] << 12), 3
+        pos += hl
+        if size > ZSTD_BLOCK_MAX:
+            raise ValueError("Zstd: literal melebihi ukuran blok")
+        if typ == 0:
+            if pos + size > end:
+                raise ValueError("Zstd: literal mentah terpotong")
+            return bytes(d[pos:pos + size]), pos + size
+        if pos + 1 > end:
+            raise ValueError("Zstd: literal RLE terpotong")
+        return bytes([d[pos]]) * size, pos + 1
+    if sf == 0 or sf == 1:
+        if pos + 3 > end:
+            raise ValueError("Zstd: header literal terpotong")
+        v = d[pos] | (d[pos + 1] << 8) | (d[pos + 2] << 16)
+        regen, comp, hl = (v >> 4) & 0x3FF, (v >> 14) & 0x3FF, 3
+    elif sf == 2:
+        if pos + 4 > end:
+            raise ValueError("Zstd: header literal terpotong")
+        v = d[pos] | (d[pos + 1] << 8) | (d[pos + 2] << 16) | (d[pos + 3] << 24)
+        regen, comp, hl = (v >> 4) & 0x3FFF, v >> 18, 4
+    else:
+        if pos + 5 > end:
+            raise ValueError("Zstd: header literal terpotong")
+        v = d[pos] | (d[pos + 1] << 8) | (d[pos + 2] << 16) | (d[pos + 3] << 24) | (d[pos + 4] << 32)
+        regen, comp, hl = (v >> 4) & 0x3FFFF, v >> 22, 5
+    pos += hl
+    if regen > ZSTD_BLOCK_MAX or pos + comp > end:
+        raise ValueError("Zstd: literal terkompresi di luar blok")
+    stop = pos + comp
+    if typ == 2:
+        table, mb, used = _zstd_huf_read(d, pos, stop)
+        st["huf"] = (table, mb)
+        pos += used
+    else:
+        if not st.get("huf"):
+            raise ValueError("Zstd: literal treeless tanpa tabel Huffman sebelumnya")
+        table, mb = st["huf"]
+    if sf == 0:
+        return _zstd_huf_stream(d[pos:stop], table, mb, regen), stop
+    if pos + 6 > stop:
+        raise ValueError("Zstd: jump table 4 stream terpotong")
+    s1, s2, s3 = struct.unpack_from("<3H", d, pos)
+    pos += 6
+    if pos + s1 + s2 + s3 >= stop:
+        raise ValueError("Zstd: ukuran stream Huffman tidak sah")
+    q = (regen + 3) // 4
+    if regen < 3 * q and regen < 4:
+        raise ValueError("Zstd: literal 4 stream terlalu pendek")
+    r4 = regen - 3 * q
+    if r4 < 0:
+        raise ValueError("Zstd: ukuran literal 4 stream tidak sah")
+    out = _zstd_huf_stream(d[pos:pos + s1], table, mb, q)
+    pos += s1
+    out += _zstd_huf_stream(d[pos:pos + s2], table, mb, q)
+    pos += s2
+    out += _zstd_huf_stream(d[pos:pos + s3], table, mb, q)
+    pos += s3
+    out += _zstd_huf_stream(d[pos:stop], table, mb, r4)
+    return out, stop
+
+
+def _zstd_seq_table(d, pos: int, end: int, mode: int, kind: str, st: dict, maxsym: int, maxlog: int):
+    """Satu tabel FSE seksi sequences (mode 0 bawaan, 1 RLE, 2 FSE, 3 ulang) -> (tabel, pos berikutnya)."""
+    if mode == 0:
+        t = _zstd_def_table(kind)
+        return t, pos
+    if mode == 1:
+        if pos >= end:
+            raise ValueError("Zstd: tabel RLE terpotong")
+        s = d[pos]
+        if s > maxsym:
+            raise ValueError("Zstd: simbol RLE di luar batas")
+        return ([s], [0], [0], 0), pos + 1
+    if mode == 2:
+        norm, al, used = _zstd_fse_header(d[pos:end], 0, maxsym, maxlog)
+        return _zstd_fse_table(norm, al) + (al,), pos + used
+    t = st.get("t_" + kind)
+    if t is None:
+        raise ValueError("Zstd: tabel FSE 'ulang' tanpa tabel sebelumnya")
+    return t, pos
+
+
+def _zstd_block(d, pos: int, end: int, out: bytearray, st: dict, deadline: float) -> None:
+    """Satu blok terkompresi d[pos:end] -> ditambahkan ke `out` (riwayat offset + tabel disimpan di st)."""
+    lits, pos = _zstd_literals(d, pos, end, st)
+    if pos >= end:
+        raise ValueError("Zstd: seksi sequences hilang")
+    b0 = d[pos]
+    if b0 == 0:
+        nseq, pos = 0, pos + 1
+    elif b0 < 128:
+        nseq, pos = b0, pos + 1
+    elif b0 < 255:
+        if pos + 2 > end:
+            raise ValueError("Zstd: header sequences terpotong")
+        nseq, pos = ((b0 - 128) << 8) + d[pos + 1], pos + 2
+    else:
+        if pos + 3 > end:
+            raise ValueError("Zstd: header sequences terpotong")
+        nseq, pos = d[pos + 1] + (d[pos + 2] << 8) + 0x7F00, pos + 3
+    if nseq == 0:
+        out += lits
+        if pos != end:
+            raise ValueError("Zstd: sisa byte setelah blok tanpa sequence")
+        return
+    if pos >= end:
+        raise ValueError("Zstd: byte mode sequences hilang")
+    mb = d[pos]
+    pos += 1
+    if mb & 3:
+        raise ValueError("Zstd: bit cadangan mode sequences tidak nol")
+    tll, pos = _zstd_seq_table(d, pos, end, mb >> 6, "ll", st, 35, 9)
+    tof, pos = _zstd_seq_table(d, pos, end, (mb >> 4) & 3, "of", st, 31, 8)
+    tml, pos = _zstd_seq_table(d, pos, end, (mb >> 2) & 3, "ml", st, 52, 9)
+    st["t_ll"], st["t_of"], st["t_ml"] = tll, tof, tml
+    rd = _ZRev(d[pos:end])
+    lsym, lnb, lbase, lal = tll
+    osym, onb, obase, oal = tof
+    msym, mnb, mbase, mal = tml
+    sl = rd.read(lal)
+    so = rd.read(oal)
+    sm = rd.read(mal)
+    rep = st["rep"]
+    r0, r1, r2 = rep
+    li = 0
+    nl = len(lits)
+    read = rd.read
+    for k in range(nseq):
+        oc, mc, lc = osym[so], msym[sm], lsym[sl]
+        if oc > 31:
+            raise ValueError("Zstd: kode offset tidak sah")
+        ov = (1 << oc) + read(oc)
+        ml = _ZSTD_ML_BASE[mc] + read(_ZSTD_ML_BITS[mc])
+        ll = _ZSTD_LL_BASE[lc] + read(_ZSTD_LL_BITS[lc])
+        if ov > 3:
+            off = ov - 3
+            r0, r1, r2 = off, r0, r1
+        elif ll == 0:
+            if ov == 1:
+                off = r1
+                r0, r1 = r1, r0
+            elif ov == 2:
+                off = r2
+                r0, r1, r2 = r2, r0, r1
+            else:
+                off = r0 - 1
+                r0, r1, r2 = off, r0, r1
+        else:
+            if ov == 1:
+                off = r0
+            elif ov == 2:
+                off = r1
+                r0, r1 = r1, r0
+            else:
+                off = r2
+                r0, r1, r2 = r2, r0, r1
+        if off <= 0:
+            raise ValueError("Zstd: offset nol")
+        if ll:
+            if li + ll > nl:
+                raise ValueError("Zstd: sequence melebihi literal")
+            out += lits[li:li + ll]
+            li += ll
+        n0 = len(out)
+        if off > n0:
+            raise ValueError("Zstd: offset melewati awal keluaran")
+        st0 = n0 - off
+        if off >= ml:
+            out += out[st0:st0 + ml]
+        else:
+            out += (bytes(out[st0:n0]) * (ml // off + 1))[:ml]
+        if k + 1 < nseq:
+            sl = lbase[sl] + read(lnb[sl])
+            sm = mbase[sm] + read(mnb[sm])
+            so = obase[so] + read(onb[so])
+            if rd.left < 0:
+                raise ValueError("Zstd: bitstream sequences habis terlalu cepat")
+            if not (k & 1023) and time.time() > deadline:
+                raise ValueError("Zstd: batas waktu dekompresi")
+    if rd.left != 0:
+        raise ValueError("Zstd: bitstream sequences tidak habis tepat")
+    st["rep"] = [r0, r1, r2]
+    out += lits[li:]
+
+
+def _zstd_dict_parse(data) -> dict:
+    """v99.51: dictionary Zstd (RFC 8878 bagian 5) -> {id, content, rep, huf, tll, tof, tml}. Berawalan magic 0xEC30A437: dictionary terformat (id, tabel Huffman +
+    tiga tabel FSE offset / match / literal-length, tiga offset ulang, lalu konten). Selain itu: dictionary konten mentah (id 0, tabel bawaan, offset ulang 1 / 4 / 8)."""
+    d = bytes(data)
+    if len(d) < 8 or d[:4] != b"\x37\xa4\x30\xec":
+        if not d:
+            raise ValueError("Zstd: dictionary kosong")
+        return {"id": 0, "content": d, "rep": [1, 4, 8], "huf": None, "tll": None, "tof": None, "tml": None}
+    did = struct.unpack_from("<I", d, 4)[0]
+    pos, n = 8, len(d)
+    table, mb, used = _zstd_huf_read(d, pos, n)
+    pos += used
+    tabs = []
+    for maxsym, maxlog in ((31, 8), (52, 9), (35, 9)):               # urutan di berkas: offset, match length, literal length
+        if pos >= n:
+            raise ValueError("Zstd: dictionary terpotong (tabel FSE)")
+        norm, al, used = _zstd_fse_header(d, pos, maxsym, maxlog)
+        tabs.append(_zstd_fse_table(norm, al) + (al,))
+        pos += used
+    if pos + 12 > n:
+        raise ValueError("Zstd: dictionary terpotong (offset ulang)")
+    rep = list(struct.unpack_from("<3I", d, pos))
+    pos += 12
+    content = d[pos:]
+    if any(r == 0 or r > len(content) for r in rep):
+        raise ValueError("Zstd: offset ulang dictionary tidak sah")
+    return {"id": did, "content": content, "rep": rep, "huf": (table, mb), "tof": tabs[0], "tml": tabs[1], "tll": tabs[2]}
+
+
+def _zstd_dicts(dictionary) -> dict:
+    """v99.51: `dictionary` (bytes, daftar bytes, atau {id: bytes}) -> {id: hasil _zstd_dict_parse}."""
+    if not dictionary:
+        return {}
+    items = dictionary.values() if isinstance(dictionary, dict) else ([dictionary] if isinstance(dictionary, (bytes, bytearray, memoryview)) else list(dictionary))
+    out = {}
+    for it in items:
+        pd = it if isinstance(it, dict) else _zstd_dict_parse(it)
+        out[pd["id"]] = pd
+    return out
+
+
+def _zstd_frame(d, pos: int, out: bytearray, max_out: int, deadline: float, verify: bool, info: dict | None = None, head: int | None = None, dicts: dict | None = None) -> int:
+    """Satu frame Zstd di d[pos:] -> ditambahkan ke out; mengembalikan pos setelah frame (-1 bila berhenti dini karena `head` tercapai)."""
+    n = len(d)
+    if pos + 5 > n:
+        raise ValueError("Zstd: frame terpotong")
+    fd = d[pos + 4]
+    pos += 5
+    if fd & 8:
+        raise ValueError("Zstd: bit cadangan header frame tidak nol")
+    single, dflag, csum, fcsf = (fd >> 5) & 1, fd & 3, (fd >> 2) & 1, fd >> 6
+    window = None
+    if not single:
+        if pos >= n:
+            raise ValueError("Zstd: header frame terpotong")
+        wd = d[pos]
+        pos += 1
+        base = 1 << (10 + (wd >> 3))
+        window = base + (base >> 3) * (wd & 7)
+    dsz = (0, 1, 2, 4)[dflag]
+    did = int.from_bytes(d[pos:pos + dsz], "little") if dsz else 0
+    pos += dsz
+    fcsz = (1 if single else 0, 2, 4, 8)[fcsf]
+    if pos + fcsz > n:
+        raise ValueError("Zstd: header frame terpotong")
+    fcs = int.from_bytes(d[pos:pos + fcsz], "little") if fcsz else None
+    if fcs is not None and fcsf == 1:
+        fcs += 256
+    pos += fcsz
+    if single:
+        window = fcs
+    zd = None
+    if did or (dicts and 0 in dicts):                                # v99.51: dictionary dipakai bila id cocok (atau dictionary konten mentah untuk frame tanpa id)
+        zd = (dicts or {}).get(did)
+        if zd is None:
+            raise ValueError("Zstd: frame memakai dictionary (id %d); berikan dengan dictionary= / --dict" % did)
+    if fcs is not None and len(out) + fcs > max_out:
+        raise ValueError("Zstd: ukuran isi frame (%d) melebihi batas keluaran" % fcs)
+    if info is not None:
+        info.update({"window": window, "content_size": fcs, "checksum": bool(csum), "dict_id": did})
+    st = {"rep": [1, 4, 8], "huf": None}
+    real_out, base_len = out, 0
+    if zd is not None:                                               # v99.51: konten dictionary menjadi riwayat sebelum keluaran; offset boleh menunjuk ke sana
+        st = {"rep": list(zd["rep"]), "huf": zd["huf"]}
+        if zd["tll"]:
+            st["t_ll"], st["t_of"], st["t_ml"] = zd["tll"], zd["tof"], zd["tml"]
+        out = bytearray(zd["content"])
+        base_len = len(out)
+        max_out = max_out - len(real_out) + base_len
+        if head is not None:
+            head = head - len(real_out) + base_len
+    start = len(out)
+    while True:
+        if pos + 3 > n:
+            raise ValueError("Zstd: header blok terpotong")
+        bh = d[pos] | (d[pos + 1] << 8) | (d[pos + 2] << 16)
+        pos += 3
+        last, typ, size = bh & 1, (bh >> 1) & 3, bh >> 3
+        if time.time() > deadline:
+            raise ValueError("Zstd: batas waktu dekompresi")
+        if typ == 3:
+            raise ValueError("Zstd: jenis blok cadangan")
+        if size > ZSTD_BLOCK_MAX:
+            raise ValueError("Zstd: ukuran blok melebihi 128 KB")
+        if typ == 1:
+            if pos + 1 > n:
+                raise ValueError("Zstd: blok RLE terpotong")
+            if len(out) + size > max_out:
+                raise ValueError("Zstd: keluaran melebihi batas")
+            out += bytes([d[pos]]) * size
+            pos += 1
+        else:
+            if pos + size > n:
+                raise ValueError("Zstd: blok terpotong")
+            if typ == 0:
+                if len(out) + size > max_out:
+                    raise ValueError("Zstd: keluaran melebihi batas")
+                out += d[pos:pos + size]
+            else:
+                _zstd_block(d, pos, pos + size, out, st, deadline)
+                if len(out) > max_out:
+                    raise ValueError("Zstd: keluaran melebihi batas")
+            pos += size
+        if head is not None and len(out) >= head:
+            if zd is not None:
+                real_out += out[base_len:]
+            return -1                                        # mode intip: cukup `head` byte pertama (tanpa checksum / cek ukuran)
+        if last:
+            break
+    if csum:
+        if pos + 4 > n:
+            raise ValueError("Zstd: checksum terpotong")
+        if verify and len(out) - start <= ZSTD_VERIFY_MAX:
+            if (_xxh64(bytes(out[start:])) & 0xFFFFFFFF) != struct.unpack_from("<I", d, pos)[0]:
+                raise ValueError("Zstd: checksum xxh64 tidak cocok")
+        pos += 4
+    if fcs is not None and len(out) - start != fcs:
+        raise ValueError("Zstd: ukuran isi frame tidak cocok (%d, diharapkan %d)" % (len(out) - start, fcs))
+    if zd is not None:
+        real_out += out[base_len:]
+    return pos
+
+
+def _zstd_decompress(data, max_out: int | None = None, verify: bool = True, time_limit: float | None = None, info: list | None = None, head: int | None = None, dictionary=None) -> bytes:
+    """Dekompresi satu atau lebih frame Zstd berurutan (frame skippable dilewati). Murni stdlib, keluaran + waktu dibatasi
+    (MAX_OUT_FILE / ZSTD_TIME). ValueError bila rusak, terpotong, memakai dictionary yang tidak diberikan (v99.51: dictionary= bytes / daftar / {id: bytes}), atau melebihi batas.
+    head=N: mode intip, berhenti setelah blok yang membuat keluaran >= N byte dan mengembalikan N byte pertama (tanpa cek checksum / ukuran)."""
+    d = bytes(data)
+    mo = MAX_OUT_FILE if max_out is None else min(int(max_out), MAX_OUT_FILE)
+    deadline = time.time() + (ZSTD_TIME if time_limit is None else time_limit)
+    out = bytearray()
+    dicts = _zstd_dicts(dictionary)
+    pos, n, frames = 0, len(d), 0
+    while pos < n:
+        if pos + 4 > n:
+            if frames:
+                break                                          # sampah di ekor setelah frame sah: abaikan
+            raise ValueError("Zstd: data terlalu pendek")
+        magic = struct.unpack_from("<I", d, pos)[0]
+        if 0x184D2A50 <= magic <= 0x184D2A5F:
+            if pos + 8 > n:
+                raise ValueError("Zstd: frame skippable terpotong")
+            sz = struct.unpack_from("<I", d, pos + 4)[0]
+            if pos + 8 + sz > n:
+                raise ValueError("Zstd: frame skippable terpotong")
+            pos += 8 + sz
+            continue
+        if magic != 0xFD2FB528:
+            if frames:
+                break
+            raise ValueError("Zstd: magic tidak cocok")
+        fi: dict = {}
+        if info is not None:
+            info.append(fi)
+        pos = _zstd_frame(d, pos, out, mo, deadline, verify, fi, head, dicts)
+        frames += 1
+        if pos < 0:
+            return bytes(out[:head])
+    if not frames:
+        raise ValueError("Zstd: tidak ada frame")
+    return bytes(out)
+
+
+# --- Kontainer Zstandard (.zst / .tar.zst) + utilitas unzstd (v99.31) ---
+def _zstd_arc(d, p):
+    info: list = []
+    zd = _ZSTD_DICT_CTX.get()                                           # v99.53: dictionary dari assets_text / assets_extract (dict_path=)
+    peek = _zstd_decompress(d, head=1024, verify=False, info=info, dictionary=zd)     # intip: tidak perlu dekompres penuh hanya untuk mendaftar
+    if _is_tar_raw(peek):
+        data = _zstd_decompress(d, dictionary=zd)                       # .tar.zst: dekompres penuh (dibatasi MAX_OUT_FILE / ZSTD_TIME) lalu daftar TAR
+        tf = tarfile.open(fileobj=io.BytesIO(data), mode="r:")
+        ents = []
+        for m in tf:
+            if m.isfile():
+                ents.append({"name": m.name, "size": m.size, "m": m})
+                if len(ents) > MAX_ENTRIES:
+                    tf.close()
+                    raise ValueError("terlalu banyak entri TAR")
+
+        def read_t(e):
+            if e["size"] > MAX_OUT_FILE:
+                raise ValueError("terlalu besar")
+            return tf.extractfile(e["m"]).read(MAX_OUT_FILE + 1)
+        return _Arc(ents, read_t, ["TAR di dalam Zstandard (dekoder murni Python)"], close=tf.close, kind="TAR.ZST")
+    fcs = info[0].get("content_size") if info else None
+    nm = p.stem if p.suffix.lower() == ".zst" else p.name + ".out"
+    notes = ["dekoder Zstd murni Python"] + ([] if fcs is not None else ["ukuran isi tidak tercatat di header frame"])
+    return _Arc([{"name": nm, "size": fcs or 0}], lambda e: _zstd_decompress(d, dictionary=zd), notes, kind="ZSTD")
+
+
+_add_archive("ZSTD", lambda d, e: bytes(d[:4]) == b"\x28\xb5\x2f\xfd" and len(d) > 8, _zstd_arc, "Zstandard satu berkas (+ .tar.zst), dekoder murni Python", 35)
+
+
+import contextlib
+import contextvars
+
+_ZSTD_DICT_CTX = contextvars.ContextVar("rea_zstd_dict", default=None)   # v99.53: dictionary Zstd untuk Asset Explorer / pembaca pak
+
+
+@contextlib.contextmanager
+def _zstd_dict_scope(dictionary):
+    """v99.53: selama blok `with`, `_zstd_arc` dan pembaca Unreal pak memakai `dictionary` (bytes / daftar / {id: bytes}); None = tanpa."""
+    tok = _ZSTD_DICT_CTX.set(dictionary)
+    try:
+        yield
+    finally:
+        _ZSTD_DICT_CTX.reset(tok)
+
+
+def _zstd_load_dict(dict_path) -> bytes:
+    """v99.52: baca berkas dictionary Zstd (terformat atau konten mentah), dibatasi UNPACK_MAX. ValueError / OSError bila gagal."""
+    f, size = _open_regular(dict_path)
+    with f:
+        if size > UNPACK_MAX:
+            raise ValueError("dictionary lebih besar dari batas %d MB" % (UNPACK_MAX >> 20))
+        return f.read(size)
+
+
+# --- AES (ECB) murni Python + kunci untuk pembaca Unreal pak terenkripsi (v99.54) ---
+AES_TIME = 60.0            # batas waktu satu dekripsi / enkripsi AES murni Python (detik)
+_AES_T = None
+
+
+def _aes_init():
+    """Tabel AES (S-box dibangkitkan, bukan ditempel) + tabel T enkripsi / dekripsi. Dibangun sekali, malas."""
+    global _AES_T
+    if _AES_T is not None:
+        return _AES_T
+    sb = [0] * 256
+    p = q = 1
+    while True:
+        p = (p ^ ((p << 1) & 0xFF) ^ (0x1B if p & 0x80 else 0)) & 0xFF          # p *= 3
+        q ^= (q << 1) & 0xFF
+        q ^= (q << 2) & 0xFF
+        q ^= (q << 4) & 0xFF
+        if q & 0x80:
+            q ^= 0x09                                                           # q /= 3
+        x = q
+        for r in (1, 2, 3, 4):
+            x ^= ((q << r) | (q >> (8 - r))) & 0xFF
+        sb[p] = x ^ 0x63
+        if p == 1:
+            break
+    sb[0] = 0x63
+    isb = [0] * 256
+    for i, v in enumerate(sb):
+        isb[v] = i
+
+    def xt(a):
+        return ((a << 1) ^ 0x11B) & 0xFF if a & 0x80 else (a << 1)
+
+    def mul(a, b):
+        r = 0
+        while b:
+            if b & 1:
+                r ^= a
+            a = xt(a)
+            b >>= 1
+        return r
+    te0, td0 = [0] * 256, [0] * 256
+    for i in range(256):
+        s = sb[i]
+        te0[i] = (mul(s, 2) << 24) | (s << 16) | (s << 8) | mul(s, 3)
+        t = isb[i]
+        td0[i] = (mul(t, 14) << 24) | (mul(t, 9) << 16) | (mul(t, 13) << 8) | mul(t, 11)
+
+    def rot(tb, n):
+        return [((w >> n) | (w << (32 - n))) & 0xFFFFFFFF for w in tb]
+    _AES_T = (sb, isb, te0, rot(te0, 8), rot(te0, 16), rot(te0, 24), td0, rot(td0, 8), rot(td0, 16), rot(td0, 24))
+    return _AES_T
+
+
+def _aes_schedule(key: bytes, decrypt: bool):
+    if len(key) not in (16, 24, 32):
+        raise ValueError("kunci AES harus 16 / 24 / 32 byte")
+    sb, isb, te0, te1, te2, te3, td0, td1, td2, td3 = _aes_init()
+    nk = len(key) // 4
+    nr = nk + 6
+    w = list(struct.unpack(">%dI" % nk, key))
+    rc = 1
+    for i in range(nk, 4 * (nr + 1)):
+        t = w[i - 1]
+        if i % nk == 0:
+            t = ((t << 8) | (t >> 24)) & 0xFFFFFFFF
+            t = (sb[t >> 24] << 24) | (sb[(t >> 16) & 255] << 16) | (sb[(t >> 8) & 255] << 8) | sb[t & 255]
+            t ^= rc << 24
+            rc = ((rc << 1) ^ 0x11B) & 0xFF if rc & 0x80 else rc << 1
+        elif nk > 6 and i % nk == 4:
+            t = (sb[t >> 24] << 24) | (sb[(t >> 16) & 255] << 16) | (sb[(t >> 8) & 255] << 8) | sb[t & 255]
+        w.append(w[i - nk] ^ t)
+    if not decrypt:
+        return nr, w
+    dk = []
+    for r in range(nr, -1, -1):                       # kunci putaran dibalik; InvMixColumns pada putaran tengah (inverse cipher setara)
+        blk = w[4 * r:4 * r + 4]
+        if 0 < r < nr:
+            blk = [td0[sb[x >> 24]] ^ td1[sb[(x >> 16) & 255]] ^ td2[sb[(x >> 8) & 255]] ^ td3[sb[x & 255]] for x in blk]
+        dk += blk
+    return nr, dk
+
+
+_AES_FAST = None
+
+
+def _aes_fast(key: bytes, data: bytes, decrypt: bool):
+    """Jalur cepat OPSIONAL lewat paket `cryptography` bila terpasang; None bila tidak ada / gagal (lalu dipakai jalur murni Python)."""
+    global _AES_FAST
+    if _AES_FAST is False:
+        return None
+    try:
+        if _AES_FAST is None:
+            from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+            _AES_FAST = (Cipher, algorithms, modes)
+        Cipher, algorithms, modes = _AES_FAST
+        c = Cipher(algorithms.AES(key), modes.ECB())
+        o = c.decryptor() if decrypt else c.encryptor()
+        return o.update(data) + o.finalize()
+    except Exception:
+        _AES_FAST = False if _AES_FAST is None else _AES_FAST
+        return None
+
+
+def _aes_ecb(key: bytes, data: bytes, decrypt: bool = True, fast: bool = True) -> bytes:
+    """AES-ECB tanpa padding (panjang data kelipatan 16). Murni Python (tabel T); dibatasi waktu AES_TIME. Unreal pak memakai AES-256 ECB."""
+    if len(data) % 16:
+        raise ValueError("panjang data AES bukan kelipatan 16")
+    if not data:
+        return b""
+    if fast:
+        r = _aes_fast(bytes(key), bytes(data), decrypt)
+        if r is not None and len(r) == len(data):
+            return r
+    sb, isb, te0, te1, te2, te3, td0, td1, td2, td3 = _aes_init()
+    nr, rk = _aes_schedule(bytes(key), decrypt)
+    out = []
+    nb = len(data) // 16
+    words = struct.unpack(">%dI" % (nb * 4), data)
+    deadline = time.monotonic() + AES_TIME
+    k0, k1, k2, k3 = rk[0], rk[1], rk[2], rk[3]
+    last = 4 * nr
+    for b in range(nb):
+        if not b & 4095 and time.monotonic() > deadline:
+            raise ValueError("AES murni Python melewati batas waktu (%d dtk); pasang paket `cryptography` untuk berkas besar" % AES_TIME)
+        i = b * 4
+        s0, s1, s2, s3 = words[i] ^ k0, words[i + 1] ^ k1, words[i + 2] ^ k2, words[i + 3] ^ k3
+        j = 4
+        if decrypt:
+            while j < last:
+                t0 = td0[s0 >> 24] ^ td1[(s3 >> 16) & 255] ^ td2[(s2 >> 8) & 255] ^ td3[s1 & 255] ^ rk[j]
+                t1 = td0[s1 >> 24] ^ td1[(s0 >> 16) & 255] ^ td2[(s3 >> 8) & 255] ^ td3[s2 & 255] ^ rk[j + 1]
+                t2 = td0[s2 >> 24] ^ td1[(s1 >> 16) & 255] ^ td2[(s0 >> 8) & 255] ^ td3[s3 & 255] ^ rk[j + 2]
+                s3 = td0[s3 >> 24] ^ td1[(s2 >> 16) & 255] ^ td2[(s1 >> 8) & 255] ^ td3[s0 & 255] ^ rk[j + 3]
+                s0, s1, s2 = t0, t1, t2
+                j += 4
+            o0 = ((isb[s0 >> 24] << 24) | (isb[(s3 >> 16) & 255] << 16) | (isb[(s2 >> 8) & 255] << 8) | isb[s1 & 255]) ^ rk[last]
+            o1 = ((isb[s1 >> 24] << 24) | (isb[(s0 >> 16) & 255] << 16) | (isb[(s3 >> 8) & 255] << 8) | isb[s2 & 255]) ^ rk[last + 1]
+            o2 = ((isb[s2 >> 24] << 24) | (isb[(s1 >> 16) & 255] << 16) | (isb[(s0 >> 8) & 255] << 8) | isb[s3 & 255]) ^ rk[last + 2]
+            o3 = ((isb[s3 >> 24] << 24) | (isb[(s2 >> 16) & 255] << 16) | (isb[(s1 >> 8) & 255] << 8) | isb[s0 & 255]) ^ rk[last + 3]
+        else:
+            while j < last:
+                t0 = te0[s0 >> 24] ^ te1[(s1 >> 16) & 255] ^ te2[(s2 >> 8) & 255] ^ te3[s3 & 255] ^ rk[j]
+                t1 = te0[s1 >> 24] ^ te1[(s2 >> 16) & 255] ^ te2[(s3 >> 8) & 255] ^ te3[s0 & 255] ^ rk[j + 1]
+                t2 = te0[s2 >> 24] ^ te1[(s3 >> 16) & 255] ^ te2[(s0 >> 8) & 255] ^ te3[s1 & 255] ^ rk[j + 2]
+                s3 = te0[s3 >> 24] ^ te1[(s0 >> 16) & 255] ^ te2[(s1 >> 8) & 255] ^ te3[s2 & 255] ^ rk[j + 3]
+                s0, s1, s2 = t0, t1, t2
+                j += 4
+            o0 = ((sb[s0 >> 24] << 24) | (sb[(s1 >> 16) & 255] << 16) | (sb[(s2 >> 8) & 255] << 8) | sb[s3 & 255]) ^ rk[last]
+            o1 = ((sb[s1 >> 24] << 24) | (sb[(s2 >> 16) & 255] << 16) | (sb[(s3 >> 8) & 255] << 8) | sb[s0 & 255]) ^ rk[last + 1]
+            o2 = ((sb[s2 >> 24] << 24) | (sb[(s3 >> 16) & 255] << 16) | (sb[(s0 >> 8) & 255] << 8) | sb[s1 & 255]) ^ rk[last + 2]
+            o3 = ((sb[s3 >> 24] << 24) | (sb[(s0 >> 16) & 255] << 16) | (sb[(s1 >> 8) & 255] << 8) | sb[s2 & 255]) ^ rk[last + 3]
+        out += (o0, o1, o2, o3)
+    return struct.pack(">%dI" % len(out), *out)
+
+
+_AES_KEY_CTX = contextvars.ContextVar("rea_aes_key", default=None)       # v99.54: kunci AES-256 (32 byte) untuk pembaca Unreal pak
+
+
+@contextlib.contextmanager
+def _aes_key_scope(key):
+    """v99.54: selama blok `with`, pembaca Unreal pak (`_upak_raw`) mendekripsi indeks dan entri terenkripsi dengan `key` (32 byte); None = tanpa."""
+    tok = _AES_KEY_CTX.set(key)
+    try:
+        yield
+    finally:
+        _AES_KEY_CTX.reset(tok)
+
+
+_AES_KEY_HELP = "kunci AES tidak valid (harus 32 byte: hex 64 karakter, base64, 32 karakter ASCII, atau Crypto.json)"
+
+
+def _aes_parse_key(src) -> bytes:
+    """v99.54: kunci AES-256 dari bytes mentah (32), hex (64, boleh 0x), base64 (32 byte), teks ASCII 32 karakter, atau isi Crypto.json
+    ({"EncryptionKey": {"Key": "<base64>"}} / {"Key": ...}). ValueError (tanpa memuat kunci di pesan) bila tidak valid."""
+    import base64
+    import binascii
+    if isinstance(src, (bytes, bytearray, memoryview)):
+        b = bytes(src)
+        if len(b) == 32:
+            return b
+        try:
+            src = b.decode("utf-8")
+        except UnicodeDecodeError:
+            raise ValueError(_AES_KEY_HELP) from None
+    s = str(src).strip().lstrip("\ufeff")
+    if s[:1] in "{[":
+        try:
+            j = json.loads(s)
+        except ValueError:
+            raise ValueError(_AES_KEY_HELP) from None
+        ek = j.get("EncryptionKey", j) if isinstance(j, dict) else None
+        v = None
+        if isinstance(ek, dict):
+            v = ek.get("Key", ek.get("key"))
+        elif isinstance(ek, str):
+            v = ek
+        if not isinstance(v, str):
+            raise ValueError(_AES_KEY_HELP)
+        s = v.strip()
+    h = s[2:] if s[:2].lower() == "0x" else s
+    if len(h) == 64:
+        try:
+            return binascii.unhexlify(h)
+        except (binascii.Error, ValueError):
+            pass
+    try:
+        r = base64.b64decode(s + "=" * (-len(s) % 4), validate=True)
+        if len(r) == 32 and len(s) >= 43:
+            return r
+    except (binascii.Error, ValueError):
+        pass
+    if len(s) == 32 and s.isascii() and s.isprintable() and not all(c in "0123456789abcdefABCDEF" for c in s):
+        return s.encode("ascii")
+    raise ValueError(_AES_KEY_HELP)
+
+
+def _aes_guid_norm(g):
+    """v99.55: GUID enkripsi UE (32 digit hex; boleh bertanda hubung / kurung kurawal) -> 32 digit hex huruf besar (urutan A B C D, sama dengan footer pak);
+    GUID nol -> None (kunci bawaan)."""
+    h = re.sub(r"[{}\-\s]", "", str(g)).upper()
+    if len(h) != 32 or any(c not in "0123456789ABCDEF" for c in h):
+        raise ValueError("GUID enkripsi tidak valid (32 digit hex, boleh bertanda hubung)")
+    return None if h == "0" * 32 else h
+
+
+_AES_GUID_LINE = re.compile(r"^\{?([0-9A-Fa-f\-]{32,38})\}?\s*[:=]\s*(\S.*)$")
+
+
+def _aes_parse_keys(src):
+    """v99.55: daftar [(guid | None, kunci 32 byte)] dari satu sumber. Bentuk yang diterima: satu kunci seperti `_aes_parse_key` (guid None); `GUID:KUNCI` /
+    `GUID=KUNCI`; beberapa baris (kosong, `#`, `;`, `//` dilewati); Crypto.json UnrealPak (`EncryptionKey` + `SecondaryEncryptionKeys`, tiap item `Key` + `Guid`);
+    daftar JSON berisi objek serupa. ValueError (tanpa memuat kunci di pesan) bila tidak valid."""
+    if isinstance(src, (bytes, bytearray, memoryview)):
+        b = bytes(src)
+        if len(b) == 32:
+            return [(None, b)]
+        try:
+            src = b.decode("utf-8")
+        except UnicodeDecodeError:
+            raise ValueError(_AES_KEY_HELP) from None
+    s_ = str(src).strip().lstrip("\ufeff")
+    out = []
+
+    def add(g, k):
+        gk = (_aes_guid_norm(g) if g not in (None, "") else None, _aes_parse_key(k))
+        if gk not in out:
+            out.append(gk)
+    if s_[:1] in "{[":
+        try:
+            j = json.loads(s_)
+        except ValueError:
+            raise ValueError(_AES_KEY_HELP) from None
+        objs = []
+        if isinstance(j, dict):
+            if "EncryptionKey" in j or "SecondaryEncryptionKeys" in j:
+                ek = j.get("EncryptionKey")
+                if isinstance(ek, (dict, str)):
+                    objs.append(ek)
+                sec = j.get("SecondaryEncryptionKeys")
+                if isinstance(sec, list):
+                    objs += sec
+            else:
+                objs.append(j)
+        elif isinstance(j, list):
+            objs = j
+        for o in objs:
+            if isinstance(o, str):
+                add(None, o)
+            elif isinstance(o, dict) and isinstance(o.get("Key", o.get("key")), str):
+                add(o.get("Guid", o.get("guid")), o.get("Key", o.get("key")))
+            else:
+                raise ValueError(_AES_KEY_HELP)
+    else:
+        lines = [l.strip() for l in s_.splitlines()]
+        lines = [l for l in lines if l and not l.startswith(("#", ";", "//"))]
+        if len(lines) > 64:
+            raise ValueError("terlalu banyak kunci AES (maks 64)")
+        for l in lines:
+            m = _AES_GUID_LINE.match(l)
+            if m:
+                add(m.group(1), m.group(2).strip())
+            else:
+                add(None, l)
+    if not out:
+        raise ValueError(_AES_KEY_HELP)
+    return out
+
+
+def _aes_resolve(aes_key=None, aes_file=None):
+    """v99.54 / v99.55: daftar [(guid | None, kunci)] dari `aes_key` (teks / bytes / daftar) dan `aes_file` (berkas atau daftar berkas, tiap berkas dibatasi 1 MB).
+    None bila tidak ada sumber. Banyak kunci (maks 64) dipilih per pak lewat GUID enkripsi di footer (`_aes_candidates`)."""
+    out = []
+
+    def one(v):
+        for gk in _aes_parse_keys(v):
+            if gk not in out:
+                out.append(gk)
+    for f_ in (aes_file if isinstance(aes_file, (list, tuple)) else [aes_file]):
+        if f_:
+            f, size = _open_regular(f_)
+            with f:
+                if size > (1 << 20):
+                    raise ValueError("berkas kunci AES terlalu besar")
+                one(f.read(size))
+    for k_ in (aes_key if isinstance(aes_key, (list, tuple)) else [aes_key]):
+        if k_ is not None and k_ != "":
+            one(k_)
+    if len(out) > 64:
+        raise ValueError("terlalu banyak kunci AES (maks 64)")
+    return out or None
+
+
+def _aes_keyset(v):
+    """v99.55: isi `_AES_KEY_CTX` -> daftar [(guid | None, kunci)] atau None. Menerima bytes 32 (v99.54), daftar tuple, atau daftar bytes."""
+    if v is None:
+        return None
+    if isinstance(v, (bytes, bytearray, memoryview)):
+        return [(None, bytes(v))]
+    r = [(x if isinstance(x, tuple) else (None, bytes(x))) for x in v]
+    return r or None
+
+
+def _aes_candidates(keys, guid):
+    """v99.55: urutan kunci yang dicoba untuk pak ber-GUID `guid` (None = nol / pak lama): GUID cocok, lalu kunci bawaan (tanpa GUID), lalu sisanya.
+    Mengembalikan [(label, kunci)] tanpa duplikat."""
+    out, seen = [], set()
+    for lab, sel in (("GUID cocok", lambda g: guid is not None and g == guid), ("kunci bawaan (tanpa GUID)", lambda g: g is None),
+                     ("GUID berbeda", lambda g: True)):
+        for g, k in keys:
+            if k not in seen and sel(g):
+                seen.add(k)
+                out.append((lab, k))
+    return out
+
+
+_AES_MAGICS = (b"\xc1\x83\x2a\x9e", b"\x9e\x2a\x83\xc1", b"RIFF", b"OggS", b"\x89PNG", b"DDS ", b"BM", b"\xff\xd8\xff", b"PK\x03\x04", b"\x1f\x8b", b"GIF8", b"fLaC", b"ID3", b"\x00\x01\x00\x00", b"OTTO", b"{", b"[", b"<", b"#", b"\xef\xbb\xbf")
+
+
+def _aes_plain_ok(b: bytes) -> bool:
+    """v99.56: apakah hasil dekripsi entri tak terkompresi tampak benar (bukan sampah)? Magic format umum (uasset / png / dds / riff / ogg / zip ...),
+    teks (>= 85% byte cetak), atau biner terstruktur (>= 10% byte nol). Entropi sengaja tidak dipakai (sampah ECB dari plaintext berulang ikut berentropi rendah). Data pendek / biner acak -> False (tak terbukti, bukan terbukti salah)."""
+    if len(b) < 16:
+        return False
+    h = b[:8]
+    if any(h.startswith(m) for m in _AES_MAGICS[:12]):
+        return True
+    w = b[:4096]
+    pr = sum(1 for c in w if 32 <= c < 127 or c in (9, 10, 13))
+    if pr >= 0.85 * len(w):
+        return True
+    return len(w) >= 64 and w.count(0) >= 0.10 * len(w)           # data biner terstruktur (uasset, tabel, float) penuh byte nol; sampah ECB hampir tak punya
+
+
+def _aes_pick_data(keys, guid):
+    """v99.55: kunci untuk entri terenkripsi saat indeks pak TIDAK terenkripsi (tidak ada pemeriksaan isi): GUID cocok -> kunci bawaan -> satu-satunya kunci.
+    ValueError bila ada beberapa kunci dan tak satu pun cocok."""
+    c = _aes_candidates(keys, guid)
+    if c and c[0][0] != "GUID berbeda":
+        return c[0][1]
+    if len(c) == 1:
+        return c[0][1]
+    raise ValueError("ada %d kunci AES tetapi tak satu pun cocok dengan GUID pak%s; berikan GUID:KUNCI" % (len(c), " " + guid if guid else " (GUID nol)"))
+
+
+def unzstd(path, outpath=None, max_out=None, force: bool = False, dict_path=None) -> dict:
+    """Dekompres berkas Zstandard (satu atau beberapa frame, frame skippable dilewati) dengan dekoder murni Python (v99.31). dict_path: berkas dictionary (v99.51; terformat atau konten mentah).
+    Keluaran dibatasi MAX_OUT_FILE (atau max_out) dan waktu ZSTD_TIME; checksum xxh64 diverifikasi bila ada dan keluaran <= ZSTD_VERIFY_MAX.
+    outpath=None: hanya ringkasan (tanpa menulis). Tidak menimpa berkas yang sudah ada kecuali force=True. Tidak pernah melempar."""
+    try:
+        f, size = _open_regular(path)
+        with f:
+            if size > UNPACK_MAX:
+                return {"ok": False, "error": "berkas lebih besar dari batas %d MB" % (UNPACK_MAX >> 20)}
+            raw = f.read(size)
+        info: list = []
+        zdict = None
+        if dict_path:
+            fd_, dsz_ = _open_regular(dict_path)
+            with fd_:
+                if dsz_ > UNPACK_MAX:
+                    return {"ok": False, "error": "dictionary lebih besar dari batas %d MB" % (UNPACK_MAX >> 20)}
+                zdict = fd_.read(dsz_)
+        t0 = time.time()
+        data = _zstd_decompress(raw, max_out=max_out, info=info, dictionary=zdict)
+        res = {"ok": True, "frames": len(info), "compressed": len(raw), "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+               "checksum_in_frames": bool(info) and all(i.get("checksum") for i in info), "seconds": round(time.time() - t0, 2)}
+        if outpath:
+            op = Path(outpath).expanduser()
+            if op.exists() and not force:
+                res.update({"ok": False, "error": "tujuan sudah ada (gunakan --force): %s" % op})
+                return res
+            op.parent.mkdir(parents=True, exist_ok=True)
+            op.write_bytes(data)
+            res["out"] = str(op)
+        return res
+    except (ValueError, OSError) as e:
+        return {"ok": False, "error": _as_clean(e, 200)}
+
+
+def unzstd_text(path, outpath=None, force: bool = False) -> str:
+    r = unzstd(path, outpath, force=force)
+    if not r.get("ok") and "size" not in r:
+        return "unzstd gagal: %s" % r.get("error", "?")
+    L = ["Zstandard: %d frame, %s -> %s (%.2f dtk)" % (r["frames"], _as_human(r["compressed"]), _as_human(r["size"]), r["seconds"]),
+         "sha256: %s" % r["sha256"], "checksum xxh64 di frame: %s" % ("ada (diverifikasi)" if r["checksum_in_frames"] and r["size"] <= ZSTD_VERIFY_MAX else ("ada (tidak diverifikasi: keluaran besar)" if r["checksum_in_frames"] else "tidak ada"))]
+    if r.get("out"):
+        L.append("ditulis: %s" % r["out"])
+    if not r.get("ok"):
+        L.append("GAGAL: %s" % r.get("error", "?"))
+    return "\n".join(L)
+
+
 _CARVE_NEED_LEN = frozenset({"wasm", "sqlite-wal", "pem-cert", "pem-key", "der-cert", "zstd"})   # tanpa panjang yang valid = positif palsu, dibuang
 
 _SIGS = [
@@ -14921,23 +20909,35 @@ def _assets_mod():
     return _AS_API
 
 
-def assets_text(path, max_chars: int = 0) -> str:
+def assets_text(path, max_chars: int = 0, dict_path=None, aes_key=None, aes_file=None) -> str:
     """v99: ringkasan ISI berkas non-exe (model 3D, animasi, tekstur, audio, arsip, SQLite ...). Gagal -> pesan, tidak melempar."""
     mod = _assets_mod()
     if mod is None:
         return "Asset Explorer (rea_assets.py) tidak ditemukan di folder yang sama; fitur isi berkas tidak tersedia."
     try:
-        return mod.describe_text(path, max_chars=max_chars)
+        zd = _zstd_load_dict(dict_path) if dict_path else None         # v99.53: dictionary Zstd untuk .zst / .tar.zst / Unreal pak
+        ak = _aes_resolve(aes_key, aes_file)                           # v99.54: kunci AES-256 untuk Unreal pak terenkripsi (tidak pernah dicetak)
+        with _zstd_dict_scope(zd), _aes_key_scope(ak):
+            return mod.describe_text(path, max_chars=max_chars)
     except Exception as e:
         return "ASSETS gagal (%s: %s)." % (type(e).__name__, str(e)[:120])
 
 
-def assets_extract(path, outdir, pattern=None, convert: bool = True) -> dict:
+def assets_extract(path, outdir, pattern=None, convert: bool = True, dict_path=None, aes_key=None, aes_file=None) -> dict:
     """v99: keluarkan isi berkas ke outdir (mesh -> .obj, animasi -> .json / .csv, tekstur -> .png, entri arsip, tabel -> .csv). Mengembalikan manifest."""
     mod = _assets_mod()
     if mod is None:
         return {"status": "error", "code": "module_missing", "message": "rea_assets.py tidak ditemukan"}
-    return mod.extract(path, outdir, pattern=pattern, convert=convert)
+    try:
+        zd = _zstd_load_dict(dict_path) if dict_path else None
+    except (ValueError, OSError) as e:
+        return {"status": "error", "code": "bad_dictionary", "message": "dictionary tidak bisa dibaca: %s" % _as_clean(e, 160)}
+    try:
+        ak = _aes_resolve(aes_key, aes_file)                           # v99.54
+    except (ValueError, OSError) as e:
+        return {"status": "error", "code": "bad_aes_key", "message": "kunci AES tidak bisa dibaca: %s" % _as_clean(e, 160)}
+    with _zstd_dict_scope(zd), _aes_key_scope(ak):
+        return mod.extract(path, outdir, pattern=pattern, convert=convert)
 
 
 def assets_carve(path, outdir=None) -> dict:
@@ -15808,7 +21808,7 @@ def _bn_main(argv=None) -> int:
 _EX_DOC = """rea_extract.py - mesin ekstraksi / penjelajahan container untuk REA (v95; dipanggil lewat jembatan tipis di rea_triage.py).
 
 Hanya pustaka standar. TIDAK menjalankan apa pun dari berkas; container hanya dibaca, hasil selalu ditulis ke workspace terpisah.
-Format: ZIP (termasuk APK / JAR / SFX), TAR (+ gz / bz2 / xz), GZIP / BZIP2 / XZ tunggal, ISO 9660 (Joliet / Rock Ridge, sektor 2048 / raw 2352),
+Format: ZIP (termasuk APK / JAR / SFX), TAR (+ gz / bz2 / xz / zst), GZIP / BZIP2 / XZ / ZSTD tunggal, ISO 9660 (Joliet / Rock Ridge, sektor 2048 / raw 2352),
 ISO PSP (UMD: membaca PSP_GAME/PARAM.SFO) dan CSO PSP (zlib per blok) yang berisi ISO. ZSO (LZ4) dan 7z / RAR belum didukung (dilaporkan jelas).
 
 Kontrak yang dipakai rea_triage.py (jangan diubah tanpa mengubah pemanggilnya):
@@ -15872,7 +21872,7 @@ SOURCE_HASH_LIMIT = 2 * 1024 ** 3
 
 _EXEC_EXT = {".exe", ".dll", ".scr", ".com", ".bat", ".cmd", ".ps1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".hta", ".lnk", ".msi", ".jar",
              ".sh", ".elf", ".so", ".pif", ".cpl", ".sys", ".apk", ".dex", ".py", ".pyc"}
-_ARCHIVE_TYPES = {"ZIP", "GZIP", "BZIP2", "XZ", "7z", "RAR", "TAR", "ISO 9660", "CAB", "OLE / Office lama"}
+_ARCHIVE_TYPES = {"ZIP", "GZIP", "BZIP2", "XZ", "ZSTD", "7z", "RAR", "TAR", "ISO 9660", "CAB", "OLE / Office lama"}
 _ex_RESERVED = {"CON", "PRN", "AUX", "NUL"} | {"COM%d" % i for i in range(1, 10)} | {"LPT%d" % i for i in range(1, 10)}
 
 
@@ -15969,6 +21969,8 @@ def _sniff(head: bytes) -> str:
         return "BZIP2"
     if h[:6] == b"\xfd7zXZ\x00":
         return "XZ"
+    if h[:4] == b"\x28\xb5\x2f\xfd":
+        return "ZSTD"
     if h[:6] == b"7z\xbc\xaf\x27\x1c":
         return "7z"
     if h[:4] == b"Rar!":
@@ -16137,6 +22139,8 @@ class _ZipHandler(_Handler):
 
     def __init__(self, fh, size, name):
         super().__init__()
+        if _zip_cd_bytes(fh) > MAX_ZIP_CD:   # v104
+            raise ContainerError("corrupt", "direktori pusat ZIP terlalu besar (> %d byte)" % MAX_ZIP_CD)
         try:
             self.zf = zipfile.ZipFile(fh)
         except (zipfile.BadZipFile, EOFError, OSError, ValueError) as e:
@@ -16209,7 +22213,7 @@ class _TarHandler(_Handler):
             tf.close()
         if comp:
             self.label = "TAR + %s" % comp
-            self.fmt = "tar." + {"gzip": "gz", "bzip2": "bz2", "xz": "xz"}.get(comp, comp)
+            self.fmt = "tar." + {"gzip": "gz", "bzip2": "bz2", "xz": "xz", "zstd": "zst"}.get(comp, comp)
             self.packed_total = size
 
     def iter_data(self, wanted: set):
@@ -16229,11 +22233,24 @@ class _TarHandler(_Handler):
 class _SingleHandler(_Handler):
     """GZIP / BZIP2 / XZ yang bukan tar: satu berkas di dalamnya."""
 
-    def __init__(self, fh, size, name, comp: str):
+    def __init__(self, fh, size, name, comp: str, data: bytes | None = None, zdict=None):
         super().__init__()
         self.fh, self.comp, self.size_c = fh, comp, size
-        self.fmt, self.label = {"gzip": ("gzip", "GZIP"), "bzip2": ("bzip2", "BZIP2"), "xz": ("xz", "XZ")}[comp]
+        self.fmt, self.label = {"gzip": ("gzip", "GZIP"), "bzip2": ("bzip2", "BZIP2"), "xz": ("xz", "XZ"), "zstd": ("zstd", "ZSTD")}[comp]
+        self._zdata = data                    # v99.34: isi berkas .zst (sudah divalidasi oleh _zstd_handler)
+        self._zdict = zdict                   # v99.52: dictionary Zstd (None = tanpa)
         inner, mt, usize = None, None, -1
+        if comp == "zstd":
+            info: list = []
+            try:
+                _zstd_decompress(data or b"", head=16, verify=False, info=info, dictionary=zdict)
+            except ValueError as e:
+                raise ContainerError("corrupt", "aliran ZSTD rusak: %s" % _ex_clean(e, 120))
+            fcs = info[0].get("content_size") if info else None
+            usize = fcs if fcs is not None else -1
+            if fcs is None:
+                self.notes.append("ukuran isi tidak tercatat di header frame Zstd")
+            self.notes.append("dekoder Zstd murni Python")
         if comp == "gzip":
             hdr = self._gz_header()
             if hdr is None:
@@ -16245,16 +22262,17 @@ class _SingleHandler(_Handler):
                 self.notes.append("ukuran dari trailer gzip (modulo 2^32)")
         if not inner:
             stem = Path(name).name
-            for suf in (".gz", ".bz2", ".xz", ".tgz", ".gzip", ".bzip2"):
+            for suf in (".gz", ".bz2", ".xz", ".tgz", ".gzip", ".bzip2", ".zst", ".zstd"):
                 if stem.lower().endswith(suf):
                     stem = stem[:-len(suf)]
                     break
             inner = stem if stem and stem != Path(name).name else (stem or "data") + ".out"
-        # uji bahwa aliran memang bisa didekompresi
+        # uji bahwa aliran memang bisa didekompresi (Zstd sudah diuji di atas dengan mode intip)
         try:
-            s = self.open_entry(None)
-            s.read(16)
-            s.close()
+            if comp != "zstd":
+                s = self.open_entry(None)
+                s.read(16)
+                s.close()
         except (OSError, EOFError, zlib.error, lzma.LZMAError) as e:
             raise ContainerError("corrupt", "aliran %s rusak: %s" % (self.label, e))
         self.entries.append(Entry(0, inner, usize, size, "file", mt))
@@ -16283,6 +22301,8 @@ class _SingleHandler(_Handler):
         return name, (mt or None)
 
     def open_entry(self, e):
+        if self.comp == "zstd":
+            return _ZstdStream(self._zdata, self.size_c, self._zdict)
         self.fh.seek(0)
         return {"gzip": lambda: gzip.GzipFile(fileobj=self.fh, mode="rb"), "bzip2": lambda: bz2.BZ2File(self.fh, "rb"),
                 "xz": lambda: lzma.LZMAFile(self.fh, "rb")}[self.comp]()
@@ -16544,7 +22564,52 @@ def _ex_open_regular(path):
         raise
 
 
-def _make_handler(fh, size: int, name: str) -> _Handler:
+def _zstd_cap(size: int) -> int:
+    """Batas keluaran dekompresi Zstd: sama dengan kebijakan rasio container lain (MAX_RATIO, lantai RATIO_FLOOR), maksimum MAX_ENTRY_BYTES."""
+    return min(MAX_ENTRY_BYTES, max(RATIO_FLOOR, int(size) * MAX_RATIO))
+
+
+class _ZstdStream:
+    """Aliran baca Zstd (v99.34): dekompres penuh di memori saat read() pertama, dibatasi _zstd_cap. Melebihi batas -> _Limit (dilewati, bukan galat)."""
+
+    def __init__(self, data: bytes, size: int, zdict=None):
+        self.data, self.cap, self.buf, self.zdict = data, _zstd_cap(size), None, zdict
+
+    def read(self, n: int = -1) -> bytes:
+        if self.buf is None:
+            try:
+                self.buf = io.BytesIO(_zstd_decompress(self.data, max_out=self.cap, dictionary=self.zdict))
+            except ValueError as x:
+                if "melebihi" in str(x):
+                    raise _Limit("rasio kompresi mencurigakan atau melebihi batas ukuran (zip bomb?)") from None
+                raise
+            self.data = None
+        return self.buf.read(-1 if n is None else n)
+
+    def close(self):
+        self.buf = self.data = None
+
+
+def _zstd_handler(fh, size: int, name: str, zdict=None) -> _Handler:
+    """.zst tunggal atau .tar.zst (v99.34), dekoder murni Python. zdict (v99.52): dictionary Zstd (bytes / daftar / {id: bytes})."""
+    if size > MAX_ENTRY_BYTES:
+        raise ContainerError("too_large", "berkas Zstd terlalu besar (%s)" % _ex_human(size))
+    fh.seek(0)
+    data = fh.read(MAX_ENTRY_BYTES + 1)
+    try:
+        peek = _zstd_decompress(data, head=1024, verify=False, dictionary=zdict)
+    except ValueError as e:
+        raise ContainerError("corrupt", "aliran ZSTD rusak atau tidak didukung: %s" % _ex_clean(e, 120))
+    if _is_tar_raw(peek):
+        try:
+            raw = _zstd_decompress(data, max_out=_zstd_cap(size), dictionary=zdict)
+        except ValueError as e:
+            raise ContainerError("corrupt", "TAR.ZST rusak atau melebihi batas: %s" % _ex_clean(e, 120))
+        return _TarHandler(io.BytesIO(raw), size, name, "r:", "zstd")
+    return _SingleHandler(fh, size, name, "zstd", data=data, zdict=zdict)
+
+
+def _make_handler(fh, size: int, name: str, zdict=None) -> _Handler:
     if size == 0:
         raise ContainerError("empty", "berkas kosong (0 byte)")
     base = _FileImg(fh, size)
@@ -16561,6 +22626,8 @@ def _make_handler(fh, size: int, name: str) -> _Handler:
     lay = _find_iso_layout(base)
     if lay:
         return _IsoHandler(base, lay[0], lay[1])
+    if head[:4] == b"\x28\xb5\x2f\xfd":
+        return _zstd_handler(fh, size, name, zdict)
     for magic, comp, mode in ((b"\x1f\x8b", "gzip", "r:gz"), (b"BZh", "bzip2", "r:bz2"), (b"\xfd7zXZ\x00", "xz", "r:xz")):
         if head.startswith(magic):
             try:
@@ -16577,13 +22644,13 @@ def _make_handler(fh, size: int, name: str) -> _Handler:
         pass
     if head[:6] == b"7z\xbc\xaf\x27\x1c" or head[:4] == b"Rar!":
         raise ContainerError("unsupported_format", "7z / RAR belum didukung di rea_extract (pakai `unpack7z` di rea_triage bila 7-Zip terpasang)")
-    raise ContainerError("unsupported_format", "format container tidak dikenal (didukung: ZIP, TAR, GZIP, BZIP2, XZ, ISO 9660, ISO PSP, CSO)")
+    raise ContainerError("unsupported_format", "format container tidak dikenal (didukung: ZIP, TAR, GZIP, BZIP2, XZ, ZSTD, ISO 9660, ISO PSP, CSO)")
 
 
 def _ex_formats() -> list:
     return [{"name": "zip", "about": "ZIP / APK / JAR / SFX, tanpa kata sandi"},
-            {"name": "tar", "about": "TAR, TAR.GZ / .BZ2 / .XZ (sekuensial)"},
-            {"name": "gzip / bzip2 / xz", "about": "aliran terkompresi tunggal"},
+            {"name": "tar", "about": "TAR, TAR.GZ / .BZ2 / .XZ / .ZST (sekuensial)"},
+            {"name": "gzip / bzip2 / xz / zstd", "about": "aliran terkompresi tunggal (Zstd: dekoder murni Python)"},
             {"name": "iso9660", "about": "ISO 9660 (Joliet, Rock Ridge, sektor 2048 / raw 2352 / 2336, multi-extent)"},
             {"name": "iso-psp", "about": "ISO UMD PSP: info PARAM.SFO / EBOOT"},
             {"name": "cso", "about": "CSO PSP (zlib per blok) berisi ISO"}]
@@ -16614,13 +22681,13 @@ _OPEN: dict = {}
 _OPEN_LOCK = threading.Lock()
 
 
-def open_container(path) -> dict:
-    """Buka container (hanya-baca) dan daftar isinya. Tutup dengan close_container()."""
+def open_container(path, zstd_dict=None) -> dict:
+    """Buka container (hanya-baca) dan daftar isinya. Tutup dengan close_container(). zstd_dict (v99.52): dictionary untuk .zst / .tar.zst."""
     fh = None
     try:
         fh, size = _ex_open_regular(path)
         name = Path(str(path)).name
-        h = _make_handler(fh, size, name)
+        h = _make_handler(fh, size, name, zstd_dict)
         cid = "c" + secrets.token_hex(6)
         c = _Container(cid, Path(str(path)).expanduser(), fh, size, h)
         with _OPEN_LOCK:
@@ -16994,9 +23061,9 @@ def _close(s):
         pass
 
 
-def _ex_extract(path, outdir, pattern=None, scan: bool = False) -> dict:
+def _ex_extract(path, outdir, pattern=None, scan: bool = False, zstd_dict=None) -> dict:
     """Pembungkus: buka -> ekstrak -> tutup."""
-    r = open_container(path)
+    r = open_container(path, zstd_dict)
     if r.get("status") != "success":
         return r
     try:
@@ -17031,8 +23098,8 @@ def _entry_flags(e: Entry) -> list:
     return f
 
 
-def describe_container(path) -> dict:
-    r = open_container(path)
+def describe_container(path, zstd_dict=None) -> dict:
+    r = open_container(path, zstd_dict)
     if r.get("status") != "success":
         return r
     try:
@@ -17053,10 +23120,10 @@ def describe_container(path) -> dict:
         close_container(r["container_id"])
 
 
-def describe_container_text(path, max_chars: int = 0) -> str:
+def describe_container_text(path, max_chars: int = 0, zstd_dict=None) -> str:
     """Daftar isi ringkas untuk laporan / Hermes. Tidak melempar."""
     try:
-        d = describe_container(path)
+        d = describe_container(path, zstd_dict)
         if d.get("status") != "success":
             return "CONTAINER gagal dibuka: %s" % d.get("message", d.get("code"))
         head = "CONTAINER: %s | %d entri (%d berkas, %d folder) | isi %s%s" % (
@@ -19250,6 +25317,30 @@ if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [-
         for _f in (_m.formats() if _m else []):
             print("%-12s %-10s inspect=%s extract=%s%s  %s" % (_f["name"], _f["category"], "ya" if _f["inspect"] else "-", "ya" if _f["extract"] else "-", " [plugin]" if _f["plugin"] else "", _f["about"]))
         raise SystemExit(0)
+    if "--unzstd" in argv:   # --unzstd FILE [OUT] [--force] [--dict DICT]  -> dekompres Zstandard dengan dekoder murni Python (v99.31; dictionary v99.51)
+        _dz = None
+        _av = list(argv)
+        if "--dict" in _av:
+            _k = _av.index("--dict")
+            _dz = _av[_k + 1] if _k + 1 < len(_av) else None
+            del _av[_k:_k + 2]
+        t = [x for x in _av[_av.index("--unzstd") + 1:] if not x.startswith("--")]
+        if not t or ("--dict" in argv and not _dz):
+            print("pemakaian: --unzstd FILE [OUT] [--force] [--dict DICT]   (tanpa OUT: nama FILE tanpa .zst di folder kerja)")
+            raise SystemExit(2)
+        _src = Path(t[0])
+        _dst = t[1] if len(t) > 1 else (_src.stem if _src.suffix.lower() == ".zst" else _src.name + ".out")
+        _r = unzstd(t[0], _dst, force="--force" in argv, dict_path=_dz)
+        if "frames" in _r:
+            print("Zstandard: %d frame, %s -> %s (%.2f dtk)" % (_r["frames"], _as_human(_r["compressed"]), _as_human(_r["size"]), _r["seconds"]))
+            print("sha256: %s" % _r["sha256"])
+            if _r.get("out"):
+                print("ditulis: %s" % _r["out"])
+            if not _r.get("ok"):
+                print("GAGAL: %s" % _r.get("error", "?"))
+        else:
+            print("unzstd gagal: %s" % _r.get("error", "?"))
+        raise SystemExit(0 if _r.get("ok") else 1)
     if "--unity" in argv:   # --unity FILE  -> ringkasan bundle / SerializedFile Unity (v99.21)
         t = [x for x in argv[argv.index("--unity") + 1:] if not x.startswith("--")]
         print(unity_text(t[0]) if t else "pemakaian: --unity FILE")
@@ -19271,18 +25362,37 @@ if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [-
         m = unity_extract(t[1], t[0], types=opt.get("--types"), name=opt.get("--name"), flip=flip_)
         print(json.dumps({k_: v for k_, v in m.items() if k_ not in ("files",)}, ensure_ascii=False, indent=1, default=str))
         raise SystemExit(0 if m.get("status") in ("success", "partial") else 1)
-    if "--assets" in argv:   # --assets FILE
+    _adict = None                                         # v99.53: --dict DICT untuk --assets / --assets-extract (.zst / .tar.zst / Unreal pak)
+    if ("--assets" in argv or "--assets-extract" in argv) and "--dict" in argv:
+        _k = argv.index("--dict")
+        _adict = argv[_k + 1] if _k + 1 < len(argv) and not argv[_k + 1].startswith("--") else None
+        if _adict is None:
+            print("pemakaian: --dict DICT (berkas dictionary Zstd)")
+            raise SystemExit(2)
+        argv = argv[:_k] + argv[_k + 2:]
+    _aeskey, _aesfile = [], []                            # v99.54 / v99.55: --aes [GUID:]KUNCI|BERKAS untuk --assets / --assets-extract (boleh diulang; dipilih lewat GUID pak)
+    if ("--assets" in argv or "--assets-extract" in argv) and "--aes" in argv:
+        while "--aes" in argv:
+            _k = argv.index("--aes")
+            _av_ = argv[_k + 1] if _k + 1 < len(argv) and not argv[_k + 1].startswith("--") else None
+            if _av_ is None:
+                print("pemakaian: --aes [GUID:]KUNCI (hex 64 / base64 / 32 karakter ASCII) atau --aes BERKAS (Crypto.json / teks); boleh diulang")
+                raise SystemExit(2)
+            (_aesfile if os.path.isfile(_av_) else _aeskey).append(_av_)
+            argv = argv[:_k] + argv[_k + 2:]
+    _aeskey, _aesfile = (_aeskey or None), (_aesfile or None)
+    if "--assets" in argv:   # --assets FILE [--dict DICT] [--aes [GUID:]KUNCI|BERKAS]
         t = [x for x in argv[argv.index("--assets") + 1:] if not x.startswith("--")]
-        print(assets_text(t[0]) if t else "pemakaian: --assets FILE")
+        print(assets_text(t[0], dict_path=_adict, aes_key=_aeskey, aes_file=_aesfile) if t else "pemakaian: --assets FILE [--dict DICT] [--aes [GUID:]KUNCI|BERKAS]")
         raise SystemExit(0)
     if "--assets-extract" in argv:   # --assets-extract OUTDIR FILE [pola] [--no-convert]
         k = argv.index("--assets-extract")
         _out = argv[k + 1] if k + 1 < len(argv) else "rea_assets_out"
         _rest = [x for i, x in enumerate(argv) if i not in (k, k + 1) and not x.startswith("--")]
         if not _rest:
-            print("pemakaian: --assets-extract OUTDIR FILE [pola] [--no-convert]")
+            print("pemakaian: --assets-extract OUTDIR FILE [pola] [--no-convert] [--dict DICT] [--aes [GUID:]KUNCI|BERKAS]")
             raise SystemExit(1)
-        _m = assets_extract(_rest[0], _out, pattern=_rest[1] if len(_rest) > 1 else None, convert="--no-convert" not in argv)
+        _m = assets_extract(_rest[0], _out, pattern=_rest[1] if len(_rest) > 1 else None, convert="--no-convert" not in argv, dict_path=_adict, aes_key=_aeskey, aes_file=_aesfile)
         print("status=%s diekstrak=%s dilewati=%s gagal=%s konversi=%s | manifest: %s%s" % (_m.get("status"), _m.get("entries_extracted"), _m.get("entries_skipped"), _m.get("entries_failed"),
               _m.get("converted_items"), _m.get("manifest_path"), (" | " + _m["message"]) if _m.get("message") else ""))
         raise SystemExit(0 if _m.get("status") in ("success", "partial") else 1)
@@ -19294,15 +25404,32 @@ if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [-
         else:
             print(getattr(_m, "_carve_text", lambda r: json.dumps(r, ensure_ascii=False, indent=2, default=str))(assets_carve(t[0], t[1] if len(t) > 1 else None)))
         raise SystemExit(0)
+    _cdict = None                                         # v99.52: --dict DICT untuk --list / --extract (.zst / .tar.zst)
+    if ("--list" in argv or "--extract" in argv) and "--dict" in argv:
+        _k = argv.index("--dict")
+        _cdict = argv[_k + 1] if _k + 1 < len(argv) and not argv[_k + 1].startswith("--") else None
+        if _cdict is None:
+            print("pemakaian: --dict DICT (berkas dictionary Zstd)")
+            raise SystemExit(2)
+        argv = argv[:_k] + argv[_k + 2:]
     if "--list" in argv:
-        print(container_text(next((x for x in argv if not x.startswith("--")), "")))
+        _lt = next((x for x in argv if not x.startswith("--")), None)
+        if _lt is None:                                   # v99.35: tanpa berkas -> pemakaian (sebelumnya path kosong dibaca sebagai folder kerja)
+            print("pemakaian: python rea_triage.py --list <container> [--dict DICT]")
+            raise SystemExit(2)
+        print(container_text(_lt, dict_path=_cdict))
         raise SystemExit(0)
     if "--extract" in argv:
         k = argv.index("--extract")
-        _out = argv[k + 1] if k + 1 < len(argv) else "rea_workspace"
+        _out = argv[k + 1] if k + 1 < len(argv) and not argv[k + 1].startswith("--") else None
         _rest = [x for i, x in enumerate(argv) if i not in (k, k + 1) and not x.startswith("--")]
-        _m = container_extract(_rest[0], _out, pattern=_rest[1] if len(_rest) > 1 else None, scan="--scan" in argv)
+        if _out is None or not _rest:                     # v99.35: argumen kurang -> pemakaian (sebelumnya IndexError)
+            print("pemakaian: python rea_triage.py --extract OUTDIR <container> [pola] [--scan] [--dict DICT]")
+            raise SystemExit(2)
+        _m = container_extract(_rest[0], _out, pattern=_rest[1] if len(_rest) > 1 else None, scan="--scan" in argv, dict_path=_cdict)
         print("status=%s diekstrak=%s dilewati=%s gagal=%s | manifest: %s" % (_m.get("status"), _m.get("entries_extracted"), _m.get("entries_skipped"), _m.get("entries_failed"), _m.get("manifest_path")))
+        if _m.get("status") != "success" and _m.get("message"):   # v99.35: alasan kegagalan ikut dicetak
+            print("pesan: %s" % _m.get("message"))
         raise SystemExit(0 if _m.get("status") == "success" else 1)
     if "--carve" in argv:
         k = argv.index("--carve")
@@ -19311,7 +25438,7 @@ if __name__ == "__main__":   # uji manual: python rea_triage.py <file|folder> [-
     args = [x for x in argv if not x.startswith("--")]
     flags = {x for x in argv if x.startswith("--")}
     if not args:
-        print("pemakaian: python rea_triage.py <file|folder> [--compact] [--card] [--json] [--ioc] [--raw (tanpa defang)] [--yara] [--carve DIR] | --config FILE [--key STR] | --deobf FILE [--json] [--full] | --hex FILE [OFFSET [LENGTH]] | --compare A B | --list <container> | --extract OUTDIR <container> [pola] [--scan] | --similar A B | --md FILE | --html FILE [OUT.html] | --gamelab pak|re|unity ... | --dex FILE [--compact] | --net FILE [--compact] | --cfg FILE [entry|0xVA] | --emu FILE [entry|0xVA] | --export FILE ghidra|ida|x64dbg [OUT] | --funcdiff A B | --ctph FILE | --re FILE | --xref FILE QUERY | --disasm FILE [AT [N [ARCH]]] | --unpack FILE OUTDIR | --unpack7z FILE OUTDIR | --sigcheck FILE [--online] | --vt FILE|SHA256 --online | --yarascan FILE RULES | --unity FILE | --unity-extract OUTDIR FILE [--types T1,T2] [--name REGEX] | --assets FILE | --assets-extract OUTDIR FILE [pola] [--no-convert] | --assets-carve FILE [OUTDIR] | --formats | --plugins FOLDER | --bin CMD ... | --ex CMD ... | --api JSON | --no-cache | --cache-info | --cache-clear")
+        print("pemakaian: python rea_triage.py <file|folder> [--compact] [--card] [--json] [--ioc] [--raw (tanpa defang)] [--yara] [--carve DIR] | --config FILE [--key STR] | --deobf FILE [--json] [--full] | --hex FILE [OFFSET [LENGTH]] | --compare A B | --list <container> [--dict DICT] | --extract OUTDIR <container> [pola] [--scan] [--dict DICT] | --similar A B | --md FILE | --html FILE [OUT.html] | --gamelab pak|re|unity ... | --dex FILE [--compact] | --net FILE [--compact] | --cfg FILE [entry|0xVA] | --emu FILE [entry|0xVA] | --export FILE ghidra|ida|x64dbg [OUT] | --funcdiff A B | --ctph FILE | --re FILE | --xref FILE QUERY | --disasm FILE [AT [N [ARCH]]] | --unpack FILE OUTDIR | --unpack7z FILE OUTDIR | --sigcheck FILE [--online] | --vt FILE|SHA256 --online | --yarascan FILE RULES | --unzstd FILE [OUT] [--force] | --unity FILE | --unity-extract OUTDIR FILE [--types T1,T2] [--name REGEX] | --assets FILE [--dict DICT] [--aes [GUID:]KUNCI|BERKAS] | --assets-extract OUTDIR FILE [pola] [--no-convert] [--dict DICT] [--aes [GUID:]KUNCI|BERKAS] | --assets-carve FILE [OUTDIR] | --formats | --plugins FOLDER | --bin CMD ... | --ex CMD ... | --api JSON | --no-cache | --cache-info | --cache-clear")
     elif Path(args[0]).is_dir():
         print(triage_dir_text(args[0], defang="--raw" not in flags))
     elif "--card" in flags and not ({"--json", "--ioc", "--yara"} & flags):

@@ -260,7 +260,7 @@ def _latin(s: str) -> bool:
 
 
 # v101: kata negasi / pilihan ganda tidak boleh meloloskan tebakan ("bukan api", "api atau air" salah untuk jawaban "api")
-_NEGASI = {"bukan", "bkn", "tidak", "tak", "nggak", "ngga", "gak", "ga", "enggak", "engga", "no", "not", "non"}
+_NEGASI = {"bukan", "bkn", "tidak", "tak", "nggak", "ngga", "gak", "gk", "ga", "ndak", "enggak", "engga", "jangan", "jgn", "no", "not", "non"}   # v103: + jangan / jgn / ndak / gk
 _AMBIGU = {"atau", "or"}
 
 
@@ -279,6 +279,17 @@ def _bocor(jawaban: str, teks: str) -> bool:
     return normalisasi(jawaban) in normalisasi(teks)
 
 
+# v103: akhiran kopula / partikel penutup Jepang ("めがねです", "めがねだよ"); urut dari yang terpanjang
+_AKHIRAN_JA = ("ですよね", "だよね", "ですよ", "ですね", "です", "だよ", "だね", "だ")
+
+
+def _tanpa_kopula(t: str) -> str:
+    for s in _AKHIRAN_JA:
+        if t.endswith(s) and len(t) > len(s):
+            return t[:-len(s)]
+    return t
+
+
 def cocok(tebakan: str, teka: Teka) -> bool:
     """Cocok bila (1) sama persis setelah dinormalisasi, atau untuk jawaban beraksara Latin: (2) semua kata jawaban
     ada berurutan di dalam tebakan pendek (mis. "koin logam" untuk "koin"), atau (3) salah ketik satu huruf pada
@@ -289,6 +300,10 @@ def cocok(tebakan: str, teka: Teka) -> bool:
     jaw = [normalisasi(a) for a in teka.semua_jawaban]
     if t in jaw:
         return True
+    if teka.bahasa == "ja":   # v103: dicoba SETELAH pencocokan persis, supaya jawaban yang memang berakhiran だ tetap utuh
+        s = _tanpa_kopula(t)
+        if s != t and s in jaw:
+            return True
     kt = _kata(tebakan)
     if not kt or len(kt) > 6:
         return False
@@ -486,8 +501,9 @@ class GameTekaTeki:
 
     # --- status -------------------------------------------------------
     def sedang_main(self) -> bool:
-        self._cek_kedaluwarsa()
-        return self.aktif is not None
+        with self._kunci:
+            self._cek_kedaluwarsa()
+            return self.aktif is not None
 
     def _cek_kedaluwarsa(self) -> None:
         if self.aktif and self.sekarang() - self.aktif.aktivitas > KEDALUWARSA_DETIK:
@@ -495,7 +511,13 @@ class GameTekaTeki:
 
     # --- pintu masuk dari server.py -----------------------------------
     def tangani(self, teks: str) -> Optional[list[Balasan]]:
-        """Kembalikan daftar Balasan bila pesan ini urusan game, selain itu None."""
+        """Kembalikan daftar Balasan bila pesan ini urusan game, selain itu None.
+        v103: seluruh penanganan di bawah kunci (RLock): dua pesan yang masuk bersamaan tidak lagi bisa membuat
+        self.aktif berubah jadi None di antara pemeriksaan dan pemakaiannya (AttributeError)."""
+        with self._kunci:
+            return self._tangani(teks)
+
+    def _tangani(self, teks: str) -> Optional[list[Balasan]]:
         t = (teks or "").strip()
         if not t:
             return None
@@ -523,11 +545,12 @@ class GameTekaTeki:
             if not cocok(t, self.aktif.teka):
                 kt = set(_kata(t))
                 n = len(_kata(t))
-                if kt & _KATA_NYERAH and n <= 5:
+                negasi = bool(kt & _NEGASI)   # v103: "aku tidak menyerah" / "jangan skip" bukan perintah menyerah / lewati
+                if not negasi and kt & _KATA_NYERAH and n <= 5:
                     return self.menyerah()
                 if kt & _KATA_PETUNJUK and n <= 3:
                     return self.petunjuk()
-                if kt & _KATA_LEWATI and n <= 2:
+                if not negasi and kt & _KATA_LEWATI and n <= 2:
                     return self.lewati()
             return self.jawab(t)
         return None

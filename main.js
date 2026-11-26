@@ -109,6 +109,7 @@ const webPopups = new Set();   // popup login Google yang sedang terbuka (jendel
 // Tab akun yang sudah dibuka tetap hidup (disembunyikan, bukan dibuang) supaya kembali ke halaman terakhir, tidak ke link awal.
 // Batas jumlah tab hidup (termasuk yang tampil) = IRIS_WEB_KEEP, bawaan 3; yang paling lama tidak dipakai dibuang dulu. 1 = perilaku lama (satu akun hidup).
 const WEB_KEEP = Math.max(1, Math.min(10, parseInt(process.env.IRIS_WEB_KEEP || '3', 10) || 3));
+let webPending = null;   // v103: { view, acct } tab lama yang sudah diambil dari webParked dan menunggu buildWebView (jeda WEB_SETTLE); dikembalikan ke webParked bila dibatalkan
 const webParked = new Map();   // partisi -> { view, acct }; urutan Map = yang paling lama tidak dipakai di depan
 const isWebPanel = (wc) => !!wc && webSessions.size > 0 && webSessions.has(wc.session);
 function webPanelUrlOk(u) {
@@ -247,7 +248,7 @@ function animateWebGrow(grow, ms, done, ease) {
   webAnimIv = setInterval(() => {
     const k = Math.min(1, (Date.now() - t0) / ms);
     try {
-      if (!webPanel || webPanel.webContents.isDestroyed()) { clearInterval(webAnimIv); webAnimIv = null; return; }
+      if (!webPanel || webPanel.webContents.isDestroyed()) { clearInterval(webAnimIv); webAnimIv = null; if (done) done(); else if (!grow) webClosing = false; return; }   // v103: panel hancur di tengah animasi: tetap selesaikan (done mereset webClosing); dulu return diam-diam dan webClosing macet true
       if (k >= 1 && grow) layoutWebPanel(); else frame(k);   // akhir buka: ukuran penuh persis
     } catch { /* abaikan */ }
     if (k >= 1) { clearInterval(webAnimIv); webAnimIv = null; try { syncWebIgnore(); } catch { /* abaikan */ } if (done) done(); }
@@ -280,7 +281,12 @@ function webNarrow() {
   const b = win.getBounds(), ex = webExtra, eh = webExtraH;
   webExtra = 0; webExtraH = 0;
   if (peek.out && peek.home) { const h = peek.home; peek.home = { x: webSide === 'right' ? h.x : h.x + ex, y: h.y + eh, width: h.width - ex, height: h.height - eh }; }   // v52b: posisi asal ikut menyempit
-  win.setBounds({ x: webSide === 'right' ? b.x : b.x + ex, y: b.y + eh, width: b.width - ex, height: b.height - eh });
+  if (peek.out && peek.home) {   // v103: sedang mengintip di tepi: jangan geser dari posisi intip; hitung ulang posisi intip untuk ukuran baru
+    if (peek.anim) { clearInterval(peek.anim); peek.anim = null; }
+    const h = peek.home, tgt = peekTarget(h, peek.edge);
+    if (tgt) win.setBounds({ x: tgt.x, y: tgt.y, width: h.width, height: h.height });
+    else { win.setBounds(h); peek.out = false; peek.back = false; peek.home = null; peek.edge = null; peekNotify(); }   // tepi tak bisa dipakai lagi: muncul di posisi asal
+  } else win.setBounds({ x: webSide === 'right' ? b.x : b.x + ex, y: b.y + eh, width: b.width - ex, height: b.height - eh });
   if (webSide === 'right') {   // jendela sudah kembali sempit; baru lepas kunci lebar #root
     webSide = 'left';
     try { if (!win.webContents.isDestroyed()) win.webContents.send('web-side', 'left'); } catch { /* abaikan */ }
@@ -386,6 +392,7 @@ function dropParked(partisi) {
 }
 // Tutup semuanya: tab aktif dan semua tab tersembunyi (RAM turun penuh).
 function disposeWebView() {
+  clearWebOpenT();   // v103: tab yang menunggu jeda ikut dibuang, dan panel tidak muncul lagi setelah reset / tutup semua
   for (const cw of [...webPopups]) { try { if (!cw.isDestroyed()) cw.close(); } catch { /* abaikan */ } }
   for (const p of [...webParked.values()]) destroyWebView(p.view, p.acct);
   webParked.clear();
@@ -409,8 +416,13 @@ function webStateObj(reason) {
 function sendWebState(reason) {
   try { if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('web-state', webStateObj(reason)); } catch { /* abaikan */ }
 }
+// v103: pembatalan jeda pembuatan panel: tab lama yang sedang menunggu dikembalikan ke webParked (nanti dipakai lagi / dibuang), bukan dilupakan (renderer Chromium yatim)
+function clearWebOpenT() {
+  if (webOpenT) { clearTimeout(webOpenT); webOpenT = null; }
+  if (webPending) { const q = webPending; webPending = null; webParked.set(q.acct.partisi, q); }
+}
 function closeWebPanel(reason, now) {
-  if (webOpenT) { clearTimeout(webOpenT); webOpenT = null; }   // ditutup sebelum panel sempat dibuat
+  clearWebOpenT();   // ditutup sebelum panel sempat dibuat
   if (!webPanel && !webExtra) return;
   if (webPanel && !webClosing && !now) {   // luncurkan keluar dulu, baru dibuang
     webClosing = true; sendWebState();   // bilah alat dan pil langsung ikut keluar
@@ -428,7 +440,7 @@ function closeWebPanel(reason, now) {
 }
 function openWebPanel(acct, target, reuse) {
   if (!win || win.isDestroyed()) return;
-  if (webOpenT) { clearTimeout(webOpenT); webOpenT = null; }
+  clearWebOpenT();
   // Akun yang sama sudah tampil: tidak dimuat ulang (alamat eksplisit tetap dimuat; /chrome beranda untuk kembali ke link awal)
   if (webPanel && !webClosing && webAcct && webAcct.partisi === acct.partisi) {
     webAcct = acct;
@@ -447,11 +459,11 @@ function openWebPanel(acct, target, reuse) {
   const fresh = !webExtra;
   webWiden();
   // Jendela transparan yang berubah ukuran dan proses renderer baru yang lahir pada saat yang sama membuat karakter berkedip: dipisah, jendela dulu, panel menyusul.
-  if (fresh) { webOpenT = setTimeout(() => { webOpenT = null; buildWebView(acct, reuse ? (existing ? null : target) : target, false, existing); }, WEB_SETTLE); return; }
+  if (fresh) { webPending = existing ? p : null; webOpenT = setTimeout(() => { webOpenT = null; webPending = null; buildWebView(acct, reuse ? (existing ? null : target) : target, false, existing); }, WEB_SETTLE); return; }
   buildWebView(acct, reuse ? (existing ? null : target) : target, switching, existing);
 }
-function buildWebView(acct, target, switching, existing) {
-  if (!win || win.isDestroyed()) return;
+function buildWebView(acct, target, switching, existing) {
+  if (!win || win.isDestroyed()) { if (existing) destroyWebView(existing, acct); return; }   // v103: jendela sudah tidak ada: jangan tinggalkan tab yang diambil dari parkir
   const ss = webSessionFor(acct.partisi);
   if (webAnimIv) { clearInterval(webAnimIv); webAnimIv = null; }
   webClosing = false;
@@ -1333,6 +1345,7 @@ public static class IrisWin {
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
   [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int i);
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr ctx);
   [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")] public static extern int DwmInt(IntPtr h, int a, out int v, int s);
   [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")] public static extern int DwmRect(IntPtr h, int a, out RECT v, int s);
   public static string List(uint skipPid) {
@@ -1354,7 +1367,7 @@ public static class IrisWin {
   }
 }
 "@
-[void][IrisWin]::SetProcessDPIAware()
+try { if (-not [IrisWin]::SetProcessDpiAwarenessContext([IntPtr](-4))) { [void][IrisWin]::SetProcessDPIAware() } } catch { [void][IrisWin]::SetProcessDPIAware() }   # v103: Per-Monitor Aware V2 (-4); Windows lama: kembali ke DPIAware biasa
 [Console]::Out.WriteLine('ready')
 while ($true) {
   $l = [Console]::In.ReadLine()
@@ -1401,7 +1414,7 @@ function sitParse(lines) {
     const [id, L, T, R, B] = p.map(Number);
     if (![id, L, T, R, B].every(Number.isFinite)) continue;
     let rc = { x: L, y: T, width: R - L, height: B - T };
-    try { if (process.platform === 'win32') rc = screen.screenToDipRect(win && !win.isDestroyed() ? win : null, rc); } catch { /* pakai apa adanya */ }
+    try { if (process.platform === 'win32') rc = screen.screenToDipRect(null, rc); /* v103: null = skala monitor terdekat ke rect itu; dengan `win`, semua rect memakai skala monitor jendela Iris dan meleset di monitor lain */ } catch { /* pakai apa adanya */ }
     out.push({ id, l: rc.x, t: rc.y, r: rc.x + rc.width, b: rc.y + rc.height, rect: rc });
   }
   return out;   // urutan = dari yang paling depan (z-order)
@@ -1852,7 +1865,7 @@ app.whenReady().then(() => {
   // Layani file dari folder proyek lewat app://local/...
   // v91: daftar putih. Dulu seluruh folder proyek bisa dibaca halaman (app://local/.env, server.py, iris-history.json, iris-memory.json).
   // Sekarang hanya halaman utama, folder assets, dan modul three / @pixiv di node_modules; segmen berawalan titik atau bertanda ":" ditolak.
-  const APP_ALLOW_FILES = new Set(['/index.html', '/favicon.ico']);
+  const APP_ALLOW_FILES = new Set(['/index.html', '/app.js', '/favicon.ico']);
   const APP_ALLOW_DIRS = ['/assets/', '/node_modules/three/', '/node_modules/@pixiv/'];
   const appDenied = new Set();
   protocol.handle('app', (request) => {
@@ -2434,9 +2447,9 @@ ipcMain.handle('local-cmd', async (e, c) => {
     return { ok: false, error: 'jenis perintah tidak dikenal' };
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 });
-app.whenReady().then(() => console.log('Daftar aplikasi untuk perintah suara tambahan: ' + LOCAL_APPS_FILE() + '  (isi: {"spotify": "C:\\\\jalur\\\\Spotify.exe", "youtube": "https://www.youtube.com"})'));
+app.whenReady().then(() => gotLock && console.log('Daftar aplikasi untuk perintah suara tambahan: ' + LOCAL_APPS_FILE() + '  (isi: {"spotify": "C:\\\\jalur\\\\Spotify.exe", "youtube": "https://www.youtube.com"})'));
 
-app.whenReady().then(startWebBridge);   // v51: jembatan baca saja (mati kecuali IRIS_WEB_BRIDGE=1 dan COMPANION_TOKEN terisi)
+app.whenReady().then(() => { if (gotLock) startWebBridge(); });   // v103: instance kedua tidak boleh membuka port jembatan   // v51: jembatan baca saja (mati kecuali IRIS_WEB_BRIDGE=1 dan COMPANION_TOKEN terisi)
 app.on('will-quit', () => {
   clipWatchStop();
   try { if (bridgeSrv) bridgeSrv.close(); } catch { /* abaikan */ }

@@ -26,6 +26,10 @@ param(
   [switch]$Simulasi
 )
 
+# Tier A: samakan penyandian keluaran konsol dengan yang dibaca launcher (UTF-8, tanpa BOM). Dibungkus try: tanpa konsol
+# (proses tersembunyi / dialihkan) PowerShell 5.1 bisa melempar "handle tidak valid".
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
+
 if ($Proyek) { $Proyek = $Proyek.TrimEnd('\') }
 
 if ($Simulasi) {
@@ -75,6 +79,17 @@ function Wait-Http([string]$Url, [int]$BatasDetik) {
   return $false
 }
 
+# Tier S: Stop-Process / taskkill kembali sebelum prosesnya benar-benar hilang dan handle berkasnya dilepas. Pemanggil seperti
+# iris-update.ps1 langsung menimpa berkas (pip, npm update, tukar folder) sehingga bisa kena file-lock. Tunggu sampai prosesnya sungguh hilang.
+function Wait-ProsesHilang([scriptblock]$Cari, [int]$BatasDetik = 10) {
+  $t0 = Get-Date
+  while (((Get-Date) - $t0).TotalSeconds -lt $BatasDetik) {
+    if (@(& $Cari).Count -eq 0) { Start-Sleep -Milliseconds 500; return $true }   # jeda singkat: handle dilepas sesudah proses hilang
+    Start-Sleep -Milliseconds 300
+  }
+  return (@(& $Cari).Count -eq 0)
+}
+
 function Wait-Mati([string]$Url, [int]$BatasDetik) {
   $t0 = Get-Date
   while (((Get-Date) - $t0).TotalSeconds -lt $BatasDetik) {
@@ -92,6 +107,25 @@ function Arsip-Log([string]$Path) {
       Move-Item -LiteralPath $Path -Destination ($Path + '.old') -Force -ErrorAction Stop
     }
   } catch { }
+}
+
+# Tier S: `wsl --shutdown` mematikan SEMUA distro WSL (Docker Desktop, proyek lain) dan membuang data yang belum tersimpan di sana.
+# Dipakai hanya kalau tidak ada distro lain yang jalan. Kalau ada, hanya distro Iris yang dihentikan (--terminate).
+# Mengembalikan $true bila seluruh WSL dimatikan, $false bila hanya distro Iris.
+function Stop-WslAman {
+  $raw = ''
+  try { $raw = ((& wsl.exe -l -v 2>&1) | Out-String) -replace "`0", '' } catch { $raw = '' }
+  $lain = @()
+  foreach ($m in [regex]::Matches($raw, '(?m)^\s*\*?\s*(\S+)\s+Running\b')) {
+    if ($m.Groups[1].Value -ne $Distro) { $lain += $m.Groups[1].Value }
+  }
+  if ($lain.Count -gt 0) {
+    Write-Host ('Distro lain masih jalan (' + ($lain -join ', ') + '): WSL tidak di-shutdown, hanya ' + $Distro + ' yang dihentikan.')
+    & wsl.exe --terminate $Distro 2>$null | Out-Null
+    return $false
+  }
+  & wsl.exe --shutdown 2>$null | Out-Null
+  return $true
 }
 
 function Get-Penjaga {
@@ -146,6 +180,32 @@ function Start-Wsl([string[]]$Pertahankan) {
   return $true
 }
 
+# Tier A: beri tahu server.py (POST /internal/service-state) sebelum layanan dimatikan / sesudah dinyalakan, supaya health_probe dan
+# overlay tidak menunggu timeout ke layanan yang sengaja dimatikan. Token dibaca dari <Proyek>\.env dan tidak pernah dicetak.
+# Gagal = diam: server.py boleh sedang mati, dan sinyal ini hanya optimasi (status "off" kedaluwarsa sendiri di server.py).
+function Send-SvcState([string]$Svc, [string]$State) {
+  try {
+    if (-not $Proyek) { return }
+    $envFile = Join-Path $Proyek '.env'
+    if (-not (Test-Path -LiteralPath $envFile)) { return }
+    $tok = ''
+    foreach ($l in (Get-Content -LiteralPath $envFile -ErrorAction Stop)) {
+      $m = [regex]::Match($l, '^\s*COMPANION_TOKEN\s*=\s*(.*?)\s*$')
+      if ($m.Success) { $tok = $m.Groups[1].Value.Trim([char]34, [char]39); break }
+    }
+    if (-not $tok) { return }
+    $body = [System.Text.Encoding]::UTF8.GetBytes('{"service":"' + $Svc + '","state":"' + $State + '"}')
+    $req = [System.Net.HttpWebRequest]::Create('http://127.0.0.1:8765/internal/service-state')
+    $req.Method = 'POST'; $req.ContentType = 'application/json'
+    $req.Timeout = 2000; $req.ReadWriteTimeout = 2000; $req.Proxy = $null
+    $req.Headers['x-iris-token'] = $tok
+    $req.ContentLength = $body.Length
+    $st = $req.GetRequestStream()
+    try { $st.Write($body, 0, $body.Length) } finally { $st.Close() }
+    $res = $req.GetResponse(); $res.Close()
+  } catch { }
+}
+
 Write-Host "Layanan: $Nama  Aksi: $Aksi"
 
 # ============================================================ WSL
@@ -160,13 +220,17 @@ if ($Nama -eq 'wsl') {
   }
   # mati
   if (-not (Test-WslJalan)) { Write-Host 'WSL memang sudah mati.'; Stop-Penjaga; exit 0 }
+  Send-SvcState 'hermes' 'off'; Send-SvcState '9router' 'off'
+  if (-not ($Proyek -and (Test-Path -LiteralPath (Join-Path $Proyek 'vv-engine\run.exe')))) { Send-SvcState 'voicevox' 'off' }
   Write-Host 'Menghentikan Hermes, 9Router, VOICEVOX (maks 75 detik)...'
   & wsl.exe -d $Distro -- timeout 75 systemctl --user stop hermes-gateway 9router voicevox 2>$null
   Stop-Penjaga
   Write-Host 'Mematikan WSL...'
-  & wsl.exe --shutdown
+  $semuaMati = Stop-WslAman
   Start-Sleep -Seconds 3
-  if (Get-Process -Name vmmemWSL, vmmem -ErrorAction SilentlyContinue) {
+  if (-not $semuaMati) {
+    Write-Host ('Distro ' + $Distro + ' dihentikan; WSL tetap hidup untuk distro lain.')
+  } elseif (Get-Process -Name vmmemWSL, vmmem -ErrorAction SilentlyContinue) {
     Write-Host 'WSL dimatikan. VmmemWSL mungkin butuh beberapa detik lagi untuk hilang.'
   } else {
     Write-Host 'WSL dimatikan. RAM sudah lepas.'
@@ -184,6 +248,7 @@ if ($Nama -eq 'voicevox' -and $Proyek -and (Test-Path -LiteralPath (Join-Path $P
     Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($VvDir + '\', [System.StringComparison]::OrdinalIgnoreCase) })
 
   if ($Aksi -eq 'nyala') {
+    Send-SvcState 'voicevox' 'on'
     if ((Get-HttpCode $VvUrl) -gt 0) { Write-Host 'VOICEVOX sudah menjawab.'; exit 0 }
     $gpu = -not $TanpaGPU
     $t0 = Get-Date
@@ -219,8 +284,11 @@ if ($Nama -eq 'voicevox' -and $Proyek -and (Test-Path -LiteralPath (Join-Path $P
   }
 
   # mati
+  Send-SvcState 'voicevox' 'off'
   if ($vvProses.Count -gt 0) {
     foreach ($p in $vvProses) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+    $vvCari = { @(Get-CimInstance Win32_Process -Filter "Name='run.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($VvDir + '\', [System.StringComparison]::OrdinalIgnoreCase) }) }
+    if (-not (Wait-ProsesHilang $vvCari 10)) { Write-Host 'PERINGATAN: proses VOICEVOX belum hilang setelah 10 detik (berkas bisa masih terkunci).' }
     Write-Host 'VOICEVOX (Windows) dihentikan'
   }
   if (((Get-HttpCode $VvUrl 1500) -gt 0) -and (Test-WslJalan)) {
@@ -228,6 +296,7 @@ if ($Nama -eq 'voicevox' -and $Proyek -and (Test-Path -LiteralPath (Join-Path $P
     & wsl.exe -d $Distro -- timeout 12 systemctl --user stop voicevox 2>$null | Out-Null
   }
   if (Wait-Mati $VvUrl 8) { Write-Host 'VOICEVOX dihentikan.'; exit 0 }
+  Send-SvcState 'voicevox' 'on'
   Write-Host 'VOICEVOX masih menjawab setelah dihentikan.'
   exit 1
 }
@@ -235,7 +304,9 @@ if ($Nama -eq 'voicevox' -and $Proyek -and (Test-Path -LiteralPath (Join-Path $P
 # ============================================================ VOICEVOX / 9Router / Hermes
 if ($UnitWsl.ContainsKey($Nama)) {
   $u = $UnitWsl[$Nama]
+  $svcKey = if ($Nama -eq 'router') { '9router' } else { $Nama }
   if ($Aksi -eq 'nyala') {
+    Send-SvcState $svcKey 'on'
     if ((Get-HttpCode $u.Url) -gt 0) { Write-Host "$($u.Label) sudah menjawab."; exit 0 }
     if (-not (Start-Wsl @($u.Unit))) { exit 1 }
     Write-Host "Menyalakan $($u.Label)..."
@@ -244,12 +315,15 @@ if ($UnitWsl.ContainsKey($Nama)) {
     Write-Host "$($u.Label) belum menjawab setelah $TungguDetik detik."
     exit 1
   }
+  # Sinyal dulu: kalau WSL sudah mati pun, server.py tidak perlu menunggu timeout ke layanan ini
+  Send-SvcState $svcKey 'off'
   # mati: jangan membangunkan WSL hanya untuk mematikan layanan
   if (-not (Test-WslJalan)) { Write-Host "WSL mati, jadi $($u.Label) memang sudah mati."; exit 0 }
   $batasStop = if ($Nama -eq 'hermes') { 75 } else { 12 }   # systemd memberi Hermes sampai 70 detik (TimeoutStopSec)
   Write-Host "Mematikan $($u.Label) (maks $batasStop detik)..."
   & wsl.exe -d $Distro -- timeout $batasStop systemctl --user stop $u.Unit 2>$null | Out-Null
   if (Wait-Mati $u.Url 8) { Write-Host "$($u.Label) dihentikan."; exit 0 }
+  Send-SvcState $svcKey 'on'   # gagal berhenti: server.py jangan menganggapnya mati
   Write-Host "$($u.Label) masih menjawab setelah dihentikan."
   exit 1
 }
@@ -275,15 +349,20 @@ if ($Nama -eq 'server') {
     exit 1
   }
   $ada = $false
+  $pidMati = @()
   $dengar = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue
   foreach ($c in $dengar) {
     $proc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $c.OwningProcess)
     if ($proc -and $proc.CommandLine -like '*server.py*') {
       & taskkill.exe /PID $c.OwningProcess /T /F | Out-Null
+      $pidMati += [int]$c.OwningProcess
       $ada = $true
     }
   }
-  if ($ada) { Write-Host 'server.py dihentikan' } else { Write-Host 'server.py tidak jalan di :8765' }
+  if ($ada) {
+    if (-not (Wait-ProsesHilang { @(Get-Process -Id $pidMati -ErrorAction SilentlyContinue) } 10)) { Write-Host 'PERINGATAN: proses server.py belum hilang setelah 10 detik (berkas bisa masih terkunci).' }
+    Write-Host 'server.py dihentikan'
+  } else { Write-Host 'server.py tidak jalan di :8765' }
   exit 0
 }
 
@@ -307,6 +386,8 @@ if ($Nama -eq 'overlay') {
   }
   if ($jalan.Count -gt 0) {
     foreach ($p in $jalan) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+    $elCari = { @(Get-CimInstance Win32_Process -Filter "Name='electron.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) }) }
+    if (-not (Wait-ProsesHilang $elCari 10)) { Write-Host 'PERINGATAN: proses overlay belum hilang setelah 10 detik (berkas bisa masih terkunci).' }
     Write-Host 'Overlay dihentikan'
   } else {
     Write-Host 'Overlay tidak jalan'
