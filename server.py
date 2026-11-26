@@ -1339,7 +1339,13 @@ REA_CARVE = os.getenv("REA_CARVE", "0").strip().lower() in ("1", "true", "on", "
 REA_REPORT_DIR = Path(os.getenv("REA_REPORT_DIR", "").strip() or (Path(__file__).resolve().parent / "rea-reports"))
 _rea_triage_var: "contextvars.ContextVar[str]" = contextvars.ContextVar("rea_triage", default="")
 try:
-    import rea_triage as _rt   # v91: berkas rea_triage.py di folder yang sama dengan server.py
+    # REA versi terpisah (rea_triage.py + rea_parts/) boleh tinggal di subfolder rea_triage_split; folder itu didaftarkan ke jalur impor.
+    # Folder yang sama dengan server.py tetap dicari lebih dulu bila rea_triage.py juga ada di sana (jalur lama tidak berubah).
+    import sys as _sys
+    _rea_dir = Path(__file__).resolve().parent / "rea_triage_split"
+    if (_rea_dir / "rea_triage.py").is_file() and not (Path(__file__).resolve().parent / "rea_triage.py").is_file() and str(_rea_dir) not in _sys.path:
+        _sys.path.insert(0, str(_rea_dir))
+    import rea_triage as _rt   # v91: berkas rea_triage.py di folder yang sama dengan server.py (atau di rea_triage_split)
 except Exception as _e:        # tanpa modul: /rea tetap jalan seperti v83
     _rt = None
     print("[WARN] rea_triage.py tidak dimuat (%r); /rea berjalan tanpa triase lokal" % (_e,), flush=True)
